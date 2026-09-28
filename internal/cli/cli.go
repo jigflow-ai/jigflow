@@ -79,7 +79,9 @@ Commands:
   move <id> <status>      move an Artifact through a declared Transition,
                           running its Gates before and its Actions after;
                           a Human Transition asks a person to confirm it in
-                          an interactive terminal and is refused to agents
+                          an interactive terminal and is refused to agents;
+                          a body edited outside jfl is re-validated, and a
+                          Status or frontmatter changed outside jfl is refused
   next                    say which Skill to run on which Artifact
   version                 print the version
 
@@ -151,6 +153,15 @@ func cmdMove(e *env, args []string) error {
 	if err != nil {
 		return err
 	}
+	// Re-validate edits made outside the CLI before anything else: a body
+	// edit is allowed, a frontmatter edit refuses the Transition (ADR 0002).
+	bodyEdited, err := st.Verify(id)
+	if err != nil {
+		return err
+	}
+	if bodyEdited {
+		fmt.Fprintf(e.stdout, "%s: body edited outside jfl, re-validated\n", id)
+	}
 	all, err := st.List()
 	if err != nil {
 		return err
@@ -168,6 +179,11 @@ func cmdMove(e *env, args []string) error {
 		if out, err := e.shell(g.Cmd, a.ID, a.Status, to); err != nil {
 			return fmt.Errorf("%s: %q → %q refused: Gate %q failed (%s: %v)%s", a.ID, a.Status, to, g.Name, g.Cmd, err, indent(out))
 		}
+	}
+	// A Gate, or anyone while the move waited, may edit the body, which the
+	// move keeps, but not the frontmatter.
+	if _, err := st.Verify(id); err != nil {
+		return err
 	}
 	if err := st.Save(moved); err != nil {
 		return err

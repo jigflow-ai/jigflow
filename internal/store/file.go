@@ -4,10 +4,16 @@
 // in one committed state directory:
 //
 //	.jigflow/state/<id>.md
+//
+// The last frontmatter line is a content hash of what the Store wrote, so
+// edits made outside the CLI can be detected: bodies are free to edit, but
+// only the CLI may change Statuses and frontmatter (ADR 0002).
 package store
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"os"
@@ -41,6 +47,9 @@ type frontmatter struct {
 	Status string              `yaml:"status"`
 	Title  string              `yaml:"title"`
 	Links  map[string][]string `yaml:"links,omitempty"`
+	// Hash is the content hash the Store wrote, always the last line of
+	// the block; see contentHash.
+	Hash string `yaml:"hash,omitempty"`
 }
 
 const delim = "---\n"
@@ -98,8 +107,64 @@ func (f *File) Save(a engine.Artifact) error {
 	if err := os.MkdirAll(f.dir, 0o755); err != nil {
 		return err
 	}
-	content := delim + string(fm) + delim + body
+	content := delim + string(fm) + hashKey + " " + contentHash(string(fm), body) + "\n" + delim + body
 	return os.WriteFile(f.path(a.ID), []byte(content), 0o644)
+}
+
+const hashKey = "hash:"
+
+// contentHash is the content hash of an Artifact file whose frontmatter,
+// without its hash line, is fm. It hashes the frontmatter and the body
+// separately, so an edit made outside the CLI can be told apart as touching
+// the body only or the frontmatter too.
+func contentHash(fm, body string) string { return fmDigest(fm) + " " + bodyDigest(body) }
+
+func fmDigest(fm string) string     { return "frontmatter=" + digest(fm) }
+func bodyDigest(body string) string { return "body=" + digest(body) }
+
+func digest(s string) string {
+	sum := sha256.Sum256([]byte(s))
+	return hex.EncodeToString(sum[:8])
+}
+
+// EditedOutsideError reports an Artifact whose frontmatter is not what the
+// Store last wrote: only the CLI may change Statuses and frontmatter.
+type EditedOutsideError struct {
+	ID     string
+	Reason string
+}
+
+func (e *EditedOutsideError) Error() string {
+	return fmt.Sprintf("%s: %s; only jfl may change Statuses and frontmatter — restore the file and use jfl move", e.ID, e.Reason)
+}
+
+// Verify re-validates the Artifact with the given id against what the Store
+// last wrote to its file. It reports whether the body was edited outside the
+// CLI, which is allowed, and returns an *EditedOutsideError when the
+// frontmatter was, which is not.
+func (f *File) Verify(id string) (bodyEdited bool, err error) {
+	if !validID(id) {
+		return false, fmt.Errorf("%q: %w", id, ErrNotFound)
+	}
+	pf, err := f.parse(f.path(id))
+	if errors.Is(err, os.ErrNotExist) {
+		return false, fmt.Errorf("%s: %w", id, ErrNotFound)
+	}
+	if err != nil {
+		return false, err
+	}
+	if pf.hash == "" {
+		return false, &EditedOutsideError{ID: id, Reason: "its file has no content hash, so it was not written by jfl"}
+	}
+	fmHash, bodyHash, _ := strings.Cut(pf.hash, " ")
+	if fmHash != fmDigest(pf.fm) {
+		return false, &EditedOutsideError{ID: id, Reason: "its frontmatter was changed outside jfl"}
+	}
+	if pf.artifact.ID != id {
+		// A file copied or renamed keeps a valid hash but names another Artifact.
+		return false, &EditedOutsideError{ID: id, Reason: fmt.Sprintf("its frontmatter id %s is not %s", pf.artifact.ID, id)}
+	}
+	return bodyHash != bodyDigest(pf.body), nil
 }
 
 // validID reports whether id can name a file inside the state directory.
@@ -109,23 +174,51 @@ func validID(id string) bool {
 
 func (f *File) path(id string) string { return filepath.Join(f.dir, id+".md") }
 
+// file is an Artifact file as parsed from disk.
+type file struct {
+	artifact engine.Artifact
+	body     string
+	fm       string // the frontmatter block without its hash line
+	hash     string // the content hash recorded in it, if any
+}
+
 // read parses an Artifact file into its frontmatter and body.
 func (f *File) read(path string) (engine.Artifact, string, error) {
+	pf, err := f.parse(path)
+	return pf.artifact, pf.body, err
+}
+
+func (f *File) parse(path string) (file, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return engine.Artifact{}, "", err
+		return file{}, err
 	}
 	rest, ok := bytes.CutPrefix(data, []byte(delim))
 	if !ok {
-		return engine.Artifact{}, "", fmt.Errorf("%s: no frontmatter block", path)
+		return file{}, fmt.Errorf("%s: no frontmatter block", path)
 	}
 	fmText, body, ok := strings.Cut(string(rest), "\n"+delim)
 	if !ok {
-		return engine.Artifact{}, "", fmt.Errorf("%s: frontmatter block is not closed", path)
+		// A body emptied in an editor can take the delimiter's newline with it.
+		fmText, ok = strings.CutSuffix(string(rest), "\n"+strings.TrimSuffix(delim, "\n"))
+	}
+	if !ok {
+		return file{}, fmt.Errorf("%s: frontmatter block is not closed", path)
 	}
 	var fm frontmatter
 	if err := yaml.Unmarshal([]byte(fmText), &fm); err != nil {
-		return engine.Artifact{}, "", fmt.Errorf("%s: %w", path, err)
+		return file{}, fmt.Errorf("%s: %w", path, err)
 	}
-	return engine.Artifact{ID: fm.ID, Type: fm.Type, Status: fm.Status, Title: fm.Title, Links: fm.Links}, body, nil
+	// The hash line is the last line the Store writes in the block; anything
+	// else, including a hash line moved elsewhere, is frontmatter.
+	unhashed := fmText + "\n"
+	if i := strings.LastIndex(fmText, "\n") + 1; strings.HasPrefix(fmText[i:], hashKey) {
+		unhashed = fmText[:i]
+	}
+	return file{
+		artifact: engine.Artifact{ID: fm.ID, Type: fm.Type, Status: fm.Status, Title: fm.Title, Links: fm.Links},
+		body:     body,
+		fm:       unhashed,
+		hash:     fm.Hash,
+	}, nil
 }
