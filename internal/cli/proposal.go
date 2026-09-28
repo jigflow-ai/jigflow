@@ -150,8 +150,33 @@ func cmdApprove(e *env, args []string) error {
 	if err := verify(); err != nil {
 		return err
 	}
-	for _, c := range changes {
-		if err := st.Save(c.Artifact); err != nil {
+	// A tracker gives each Artifact it creates its own id, so the ids the
+	// engine allocated are renamed, in the Links and moves of later items
+	// too. A creation an agent proposed is its text, so it is created as
+	// that agent's, carrying the AI-generated marker.
+	renamed := map[string]string{}
+	rename := func(id string) string {
+		if r, ok := renamed[id]; ok {
+			return r
+		}
+		return id
+	}
+	for i := range changes {
+		c := &changes[i]
+		c.Artifact.ID = rename(c.Artifact.ID)
+		for name, ids := range c.Artifact.Links {
+			for j, id := range ids {
+				c.Artifact.Links[name][j] = rename(id)
+			}
+		}
+		if c.Created() {
+			kept, err := st.Create(c.Artifact, engine.Actor{Session: p.By})
+			if err != nil {
+				return err
+			}
+			renamed[c.Artifact.ID] = kept.ID
+			c.Artifact = kept
+		} else if err := st.Save(c.Artifact); err != nil {
 			return err
 		}
 		if err := e.unfocus(pb, c.Artifact); err != nil {

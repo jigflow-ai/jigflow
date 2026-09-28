@@ -9,7 +9,9 @@
 //	.jigflow/migrations/*.yaml   Playbook Migrations, one or more per file
 //
 // The Playbook file may extend a single Base Playbook, laid out the same way
-// in a directory of its own, whose parts the Playbook overrides by name.
+// in a directory of its own, whose parts the Playbook overrides by name. It
+// also holds the project's Connectors and their settings, which Artifact
+// Types that keep their Artifacts in a tracker name as their Store.
 //
 // A Playbook that fails any check doesn't load: Load reports every problem
 // at once, so `jfl check` and every other command print the same list.
@@ -36,13 +38,83 @@ import (
 const Dir = ".jigflow"
 
 type playbookFile struct {
-	Name    string    `yaml:"name"`
-	Extends yaml.Node `yaml:"extends"` // the Base Playbook; see parseBaseRef
+	Name       string                   `yaml:"name"`
+	Extends    yaml.Node                `yaml:"extends"` // the Base Playbook; see parseBaseRef
+	Connectors map[string]connectorFile `yaml:"connectors"`
+}
+
+// FileStore is the Store an Artifact Type may name to say, as it does when
+// it names none, that its Artifacts are files in the repository.
+const FileStore = "files"
+
+// DefaultMarker is the AI-generated marker added to text agents write into
+// a tracker when the Connector's settings don't word it.
+const DefaultMarker = "_Written by an AI agent through JigFlow._"
+
+// connectorFile is a Connector and the project's settings for it: the
+// executable, the settings it is sent as they are, and how the Artifacts of
+// each Artifact Type it keeps look in the tracker.
+//
+//	connectors:
+//	  github:
+//	    command: jfl-connector-github
+//	    settings: {repo: acme/shop}
+//	    marker: "_Drafted by an agent._"
+//	    types:
+//	      Ticket:
+//	        statuses:
+//	          in-progress: "status: doing"   # a label
+//	          done: {state: closed}
+//	        fields:
+//	          category: {enhancement: "kind: feature"}
+type connectorFile struct {
+	Command  string         `yaml:"command"`
+	Args     []string       `yaml:"args"`
+	Marker   string         `yaml:"marker"`
+	Settings map[string]any `yaml:"settings"`
+	Types    map[string]struct {
+		Settings map[string]any                 `yaml:"settings"`
+		Statuses map[string]termFile            `yaml:"statuses"`
+		Fields   map[string]map[string]termFile `yaml:"fields"`
+	} `yaml:"types"`
+}
+
+// termFile is a label or state in a tracker: the label's name, or a mapping
+// naming a label, a state, or both.
+//
+//	in-progress: "status: doing"
+//	done: {state: closed}
+type termFile engine.TrackerTerm
+
+func (tf *termFile) UnmarshalYAML(n *yaml.Node) error {
+	if n.Kind == yaml.ScalarNode {
+		return n.Decode(&tf.Label)
+	}
+	if n.Kind == yaml.MappingNode {
+		for i := 0; i < len(n.Content); i += 2 {
+			switch k := n.Content[i].Value; k {
+			case "label", "state":
+			default:
+				return fmt.Errorf("line %d: unknown field %q (want label or state)", n.Content[i].Line, k)
+			}
+		}
+	}
+	var v struct {
+		Label string `yaml:"label"`
+		State string `yaml:"state"`
+	}
+	if err := n.Decode(&v); err != nil {
+		return err
+	}
+	*tf = termFile{Label: v.Label, State: v.State}
+	return nil
 }
 
 type typeFile struct {
 	Name        string                     `yaml:"name"`
 	Prefix      string                     `yaml:"prefix"`
+	Store       string                     `yaml:"store"`
+	Fields      map[string][]string        `yaml:"fields"`
 	Statuses    []string                   `yaml:"statuses"`
 	Initial     []string                   `yaml:"initial"`
 	Final       []string                   `yaml:"final"`
@@ -135,7 +207,7 @@ func Load(root string) (*engine.Playbook, error) {
 		}
 		l = merge(base, own)
 	}
-	pb := &engine.Playbook{Name: own.name, Types: l.types, Skills: l.skills, Personas: l.personas, Guidelines: l.guidelines}
+	pb := &engine.Playbook{Name: own.name, Types: l.types, Skills: l.skills, Personas: l.personas, Guidelines: l.guidelines, Connectors: l.connectors}
 	problems, err := readMigrations(fsys, Dir, pb)
 	if err != nil {
 		return nil, err
@@ -143,7 +215,7 @@ func Load(root string) (*engine.Playbook, error) {
 	for _, name := range slices.Sorted(maps.Keys(l.skills)) {
 		problems = append(problems, l.skillProblems[name]...)
 	}
-	if problems = append(problems, check(pb, l.typeFiles, l.skillFiles)...); len(problems) > 0 {
+	if problems = append(problems, check(pb, l.typeFiles, l.skillFiles, l.connectorFiles)...); len(problems) > 0 {
 		return nil, &Invalid{Problems: problems}
 	}
 	return pb, nil
@@ -159,9 +231,10 @@ type layer struct {
 	skills     map[string]*engine.Skill
 	personas   []string
 	guidelines map[string]string // name -> its Markdown
+	connectors map[string]*engine.Connector
 
-	typeFiles, skillFiles map[string]string   // name -> the file declaring it
-	skillProblems         map[string][]string // Skill -> what its file lacks
+	typeFiles, skillFiles, connectorFiles map[string]string   // name -> the file declaring it
+	skillProblems                         map[string][]string // Skill -> what its file lacks
 }
 
 // readLayer reads the Playbook held in fsys. A missing playbook.yaml is an
@@ -172,12 +245,18 @@ func readLayer(fsys fs.FS, label string) (*layer, error) {
 		return nil, err
 	}
 	l := &layer{
-		name:          pf.Name,
-		skills:        map[string]*engine.Skill{},
-		guidelines:    map[string]string{},
-		typeFiles:     map[string]string{},
-		skillFiles:    map[string]string{},
-		skillProblems: map[string][]string{},
+		name:           pf.Name,
+		skills:         map[string]*engine.Skill{},
+		guidelines:     map[string]string{},
+		connectors:     map[string]*engine.Connector{},
+		typeFiles:      map[string]string{},
+		skillFiles:     map[string]string{},
+		connectorFiles: map[string]string{},
+		skillProblems:  map[string][]string{},
+	}
+	for name, cf := range pf.Connectors {
+		l.connectors[name] = connector(name, cf)
+		l.connectorFiles[name] = in(label, "playbook.yaml")
 	}
 	if !pf.Extends.IsZero() {
 		ref, err := parseBaseRef(&pf.Extends)
@@ -230,9 +309,14 @@ func (l *layer) readTypes(fsys fs.FS, label string) error {
 		if l.typeFiles[tf.Name] != "" {
 			return fmt.Errorf("%s: Artifact Type %q is declared twice", rel, tf.Name)
 		}
+		if tf.Store == FileStore {
+			tf.Store = ""
+		}
 		t := &engine.ArtifactType{
 			Name:     tf.Name,
 			Prefix:   tf.Prefix,
+			Store:    tf.Store,
+			Fields:   tf.Fields,
 			Statuses: tf.Statuses,
 			Initial:  tf.Initial,
 			Final:    tf.Final,
@@ -339,11 +423,13 @@ func (l *layer) readSkills(fsys fs.FS, label string) error {
 // Types follow the base's.
 func merge(base, own *layer) *layer {
 	m := &layer{
-		skills:        maps.Clone(base.skills),
-		guidelines:    maps.Clone(base.guidelines),
-		typeFiles:     maps.Clone(base.typeFiles),
-		skillFiles:    maps.Clone(base.skillFiles),
-		skillProblems: maps.Clone(base.skillProblems),
+		skills:         maps.Clone(base.skills),
+		guidelines:     maps.Clone(base.guidelines),
+		connectors:     maps.Clone(base.connectors),
+		typeFiles:      maps.Clone(base.typeFiles),
+		skillFiles:     maps.Clone(base.skillFiles),
+		connectorFiles: maps.Clone(base.connectorFiles),
+		skillProblems:  maps.Clone(base.skillProblems),
 	}
 	for _, t := range base.types {
 		if o := slices.IndexFunc(own.types, func(o *engine.ArtifactType) bool { return o.Name == t.Name }); o >= 0 {
@@ -362,7 +448,40 @@ func merge(base, own *layer) *layer {
 	maps.Copy(m.skillProblems, own.skillProblems)
 	m.personas = union(base.personas, own.personas)
 	maps.Copy(m.guidelines, own.guidelines)
+	maps.Copy(m.connectors, own.connectors)
+	maps.Copy(m.connectorFiles, own.connectorFiles)
 	return m
+}
+
+// connector is the Connector a Playbook file declares under name.
+func connector(name string, cf connectorFile) *engine.Connector {
+	c := &engine.Connector{Name: name, Command: cf.Command, Args: cf.Args, Marker: cf.Marker, Settings: cf.Settings}
+	if c.Marker == "" {
+		c.Marker = DefaultMarker
+	}
+	for typeName, tm := range cf.Types {
+		m := engine.TrackerMapping{Settings: tm.Settings}
+		for status, term := range tm.Statuses {
+			if m.Statuses == nil {
+				m.Statuses = map[string]engine.TrackerTerm{}
+			}
+			m.Statuses[status] = engine.TrackerTerm(term)
+		}
+		for field, values := range tm.Fields {
+			if m.Fields == nil {
+				m.Fields = map[string]map[string]engine.TrackerTerm{}
+			}
+			m.Fields[field] = map[string]engine.TrackerTerm{}
+			for value, term := range values {
+				m.Fields[field][value] = engine.TrackerTerm(term)
+			}
+		}
+		if c.Types == nil {
+			c.Types = map[string]engine.TrackerMapping{}
+		}
+		c.Types[typeName] = m
+	}
+	return c
 }
 
 // union is the names in a and then those in b, each once.

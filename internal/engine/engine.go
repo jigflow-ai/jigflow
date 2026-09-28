@@ -19,10 +19,39 @@ import (
 // Playbook is the complete declared way of working for a project.
 type Playbook struct {
 	Name       string
-	Types      []*ArtifactType   // in declaration order
-	Skills     map[string]*Skill // by name
-	Personas   []string          // names of the Personas the project declares
-	Guidelines map[string]string // the Guidelines the project declares: name -> its Markdown
+	Types      []*ArtifactType       // in declaration order
+	Skills     map[string]*Skill     // by name
+	Personas   []string              // names of the Personas the project declares
+	Guidelines map[string]string     // the Guidelines the project declares: name -> its Markdown
+	Connectors map[string]*Connector // the project's Connectors, by name
+}
+
+// Connector is how the project reaches an outside tracker that keeps the
+// Artifacts of some Artifact Types (ADR 0008): the executable to run, and
+// the project's settings for it.
+type Connector struct {
+	Name     string
+	Command  string   // the executable; a relative path is the project root's
+	Args     []string // arguments it is run with
+	Marker   string   // the AI-generated marker added to text agents write into the tracker
+	Settings map[string]any
+	Types    map[string]TrackerMapping // Artifact Type -> how its Artifacts look in the tracker
+}
+
+// TrackerMapping is how the Artifacts of one Artifact Type look in a
+// tracker: the project settings that map its Statuses and field values to
+// the tracker's labels or states. A Status or value it doesn't map is a
+// label of the same name.
+type TrackerMapping struct {
+	Settings map[string]any                    // merged over the Connector's for this Type
+	Statuses map[string]TrackerTerm            // Status -> its label or state
+	Fields   map[string]map[string]TrackerTerm // field -> value -> its label or state
+}
+
+// TrackerTerm is a label, a state, or both, in a tracker.
+type TrackerTerm struct {
+	Label string
+	State string
 }
 
 // Skill is a prompt file that tells an agent how to do one piece of work.
@@ -60,10 +89,13 @@ func (p *Playbook) Type(name string) *ArtifactType {
 	return nil
 }
 
-// ArtifactType is a user-declared kind of Artifact with its own Statuses.
+// ArtifactType is a user-declared kind of Artifact with its own fields,
+// Statuses and Store.
 type ArtifactType struct {
 	Name        string
-	Prefix      string // Artifact ids are "<Prefix>-<n>"
+	Prefix      string              // Artifact ids are "<Prefix>-<n>"
+	Store       string              // the Connector keeping its Artifacts; empty for the file Store
+	Fields      map[string][]string // field -> the values it may take
 	Statuses    []string
 	Initial     []string               // Statuses an Artifact may start in
 	Final       []string               // Statuses where work on an Artifact ends
@@ -123,6 +155,7 @@ type Artifact struct {
 	Type   string
 	Status string
 	Title  string
+	Fields map[string]string   // field -> its value
 	Links  map[string][]string // Link name -> ids of the linked Artifacts
 	Claim  string              // the agent session that owns the work on it; empty for none
 }
@@ -132,12 +165,13 @@ type Artifact struct {
 // Artifact already in the Store, used to allocate the next id for the Type's
 // prefix.
 //
-// links maps each Link name to the ids of the Artifacts it points to.
+// fields maps each of the Type's fields to one of the values it declares,
+// and links maps each Link name to the ids of the Artifacts it points to.
 //
 // Creating into a Status that has a Binding hands the Artifact to an agent
 // immediately, so it counts as a Human Transition: an agent may do it only
 // into an Inbox, and must otherwise put the creation in a Proposal.
-func Create(pb *Playbook, actor Actor, typeName, title, status string, links map[string][]string, existing []Artifact) (Artifact, error) {
+func Create(pb *Playbook, actor Actor, typeName, title, status string, fields map[string]string, links map[string][]string, existing []Artifact) (Artifact, error) {
 	t := pb.Type(typeName)
 	if t == nil {
 		return Artifact{}, fmt.Errorf("unknown Artifact Type %q. Declared Types: %s", typeName, strings.Join(typeNames(pb), ", "))
@@ -154,6 +188,15 @@ func Create(pb *Playbook, actor Actor, typeName, title, status string, links map
 	if actor.Agent() && t.Bindings[status] != "" && !slices.Contains(t.Inbox, status) {
 		return Artifact{}, fmt.Errorf("Creating a %s straight into %q would hand it to an agent immediately. An agent must put it in a Proposal for a human to approve.", t.Name, status)
 	}
+	for _, name := range slices.Sorted(maps.Keys(fields)) {
+		values, ok := t.Fields[name]
+		if !ok {
+			return Artifact{}, fmt.Errorf("a %s has no field %q. Declared fields: %s", t.Name, name, declared(slices.Sorted(maps.Keys(t.Fields))))
+		}
+		if !slices.Contains(values, fields[name]) {
+			return Artifact{}, fmt.Errorf("a %s's %s can't be %q. Declared values: %s", t.Name, name, fields[name], strings.Join(values, ", "))
+		}
+	}
 	for _, name := range slices.Sorted(maps.Keys(links)) {
 		target, ok := t.Links[name]
 		if !ok {
@@ -169,7 +212,10 @@ func Create(pb *Playbook, actor Actor, typeName, title, status string, links map
 			}
 		}
 	}
-	return Artifact{ID: nextID(t, existing), Type: t.Name, Status: status, Title: title, Links: links}, nil
+	if len(fields) == 0 {
+		fields = nil
+	}
+	return Artifact{ID: nextID(t, existing), Type: t.Name, Status: status, Title: title, Fields: fields, Links: links}, nil
 }
 
 // Move decides moving an Artifact to the Status to on behalf of actor. It is

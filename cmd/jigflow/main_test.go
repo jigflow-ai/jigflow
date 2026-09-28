@@ -13,11 +13,20 @@ import (
 
 var bin *clitest.Binary
 
+// fakeConnector is the path of the fake Connector executable, which keeps
+// its tracker in a JSON file and logs every request it gets.
+var fakeConnector string
+
 func TestMain(m *testing.M) {
 	var err error
 	bin, err = clitest.Build("github.com/jigflow-ai/jigflow/cmd/jigflow")
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+	if fakeConnector, err = bin.BuildHelper("github.com/jigflow-ai/jigflow/internal/clitest/fakeconnector", "fakeconnector"); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		bin.Cleanup()
 		os.Exit(1)
 	}
 	code := m.Run()

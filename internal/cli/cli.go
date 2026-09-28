@@ -1,5 +1,5 @@
 // Package cli is the shell around the workflow engine: it parses commands,
-// loads the Playbook, reads and writes the Store, and reports results.
+// loads the Playbook, reads and writes the Stores, and reports results.
 package cli
 
 import (
@@ -22,9 +22,10 @@ var Version = "dev"
 
 // Exit codes.
 const (
-	exitOK      = 0
-	exitRefused = 1 // the command was understood but refused or failed
-	exitUsage   = 2 // the command line was malformed
+	exitOK        = 0
+	exitRefused   = 1 // the command was understood but refused or failed
+	exitUsage     = 2 // the command line was malformed
+	exitConnector = 3 // a Connector failed: a tracker problem, not a refusal
 )
 
 // errUsage marks errors in how a command was invoked.
@@ -55,6 +56,12 @@ func Run(args []string, dir string, getenv func(string) string, stdin *os.File, 
 		return exitUsage
 	}
 	if err := cmd(e, args[1:]); err != nil {
+		// A Connector failing is a problem with the tracker, which the
+		// person must tell apart from the workflow refusing the command.
+		if _, ok := errors.AsType[*store.ConnectorError](err); ok {
+			fmt.Fprintf(stderr, "jfl %s: tracker problem, not a workflow refusal: %v\n", args[0], err)
+			return exitConnector
+		}
 		fmt.Fprintf(stderr, "jfl %s: %v\n", args[0], err)
 		if errors.Is(err, errUsage) {
 			return exitUsage
@@ -69,6 +76,7 @@ var commands = map[string]func(*env, []string) error{
 	"--version": cmdVersion,
 	"create":    cmdCreate,
 	"move":      cmdMove,
+	"comment":   cmdComment,
 	"next":      cmdNext,
 	"propose":   cmdPropose,
 	"query":     cmdQuery,
@@ -83,9 +91,13 @@ var commands = map[string]func(*env, []string) error{
 const usage = `Usage: jfl <command> [arguments]
 
 Commands:
-  create <Type> --title <title> [--status <status>] [--link <link>=<id>]...
+  create <Type> --title <title> [--status <status>] [--field <field>=<value>]...
+         [--link <link>=<id>]...
                           create an Artifact in one of the Type's initial Statuses,
-                          with Links to other Artifacts
+                          with values for its fields and Links to other
+                          Artifacts, in the Type's Store: a file, or an item
+                          of the tracker its Connector reaches, which gives
+                          it its id; an agent's carries the AI-generated marker
   move <id> <status>      move an Artifact through a declared Transition,
                           running its Gates before and its Actions after;
                           a Human Transition asks a person to confirm it in
@@ -95,6 +107,9 @@ Commands:
                           an agent session's move Claims the Artifact, and is
                           refused on one another session claims; entering a
                           Status with no Binding, or a final one, releases it
+  comment <id> <text>     add a comment to an Artifact: in the tracker, where
+                          an agent's ends with the AI-generated marker, or at
+                          the end of its file's body
   next [--autopilot]      say which Skill to run on which Artifact, preferring
                           what the session claims and skipping what others
                           claim, and make the pick the session's Focus; in an
@@ -147,6 +162,10 @@ Commands:
 Environment:
   JFL_SESSION             the agent session's id, set by Adapters; without it
                           the command is a person's
+
+Exit status:
+  0 done, 1 refused or failed, 2 malformed command line, 3 a Connector failed:
+  a problem reaching or using the tracker, not a workflow refusal
 `
 
 func cmdVersion(e *env, _ []string) error {
@@ -168,17 +187,24 @@ func cmdCheck(e *env, args []string) error {
 
 // load loads the Playbook and the Store it applies to. A Playbook that
 // would leave Artifacts in an undeclared Status doesn't load (ADR 0010).
-func (e *env) load() (*engine.Playbook, *store.File, error) {
+func (e *env) load() (*engine.Playbook, store.Store, error) {
 	pb, err := playbook.Load(e.dir)
 	if err != nil {
 		return nil, nil, err
 	}
-	st := store.NewFile(e.dir)
-	all, err := st.List()
+	// Only files can leave Artifacts in an undeclared Status, since a
+	// tracker's item is always in one of its Artifact Type's Statuses, so
+	// loading reads no tracker.
+	files, err := store.NewFile(e.dir).List()
 	if err != nil {
 		return nil, nil, err
 	}
-	if err := engine.CheckOrphans(pb, all); err != nil {
+	files = slices.DeleteFunc(files, func(a engine.Artifact) bool {
+		t := pb.Type(a.Type)
+		return t != nil && t.Store != ""
+	})
+	st := store.Open(e.dir, pb)
+	if err := engine.CheckOrphans(pb, files); err != nil {
 		return nil, nil, fmt.Errorf("%w\n%s", err, migrateHint)
 	}
 	return pb, st, nil
@@ -186,13 +212,15 @@ func (e *env) load() (*engine.Playbook, *store.File, error) {
 
 func cmdCreate(e *env, args []string) error {
 	if len(args) == 0 || args[0] == "" || args[0][0] == '-' {
-		return fmt.Errorf("%w: jfl create <Type> --title <title> [--status <status>] [--link <link>=<id>]...", errUsage)
+		return fmt.Errorf("%w: jfl create <Type> --title <title> [--status <status>] [--field <field>=<value>]... [--link <link>=<id>]...", errUsage)
 	}
 	typeName := args[0]
 	fs := flag.NewFlagSet("create", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 	title := fs.String("title", "", "title of the new Artifact")
 	status := fs.String("status", "", "starting Status (default: the Type's first initial Status)")
+	fields := fieldFlag{}
+	fs.Var(fields, "field", "a field's value, as <field>=<value>; repeatable")
 	links := linkFlag{}
 	fs.Var(links, "link", "a Link to another Artifact, as <link>=<id>; repeatable")
 	if err := fs.Parse(args[1:]); err != nil {
@@ -210,11 +238,11 @@ func cmdCreate(e *env, args []string) error {
 	if err != nil {
 		return err
 	}
-	a, err := engine.Create(pb, e.actor, typeName, *title, *status, links, existing)
+	a, err := engine.Create(pb, e.actor, typeName, *title, *status, fields, links, existing)
 	if err != nil {
 		return err
 	}
-	if err := st.Save(a); err != nil {
+	if a, err = st.Create(a, e.actor); err != nil {
 		return err
 	}
 	fmt.Fprintf(e.stdout, "created %s %q in %s\n", a.ID, a.Title, a.Status)
@@ -293,6 +321,21 @@ func (e *env) move(id, to string) error {
 		}
 		fmt.Fprintf(e.stdout, "Action %q succeeded%s\n", act.Name, indent(out))
 	}
+	return nil
+}
+
+func cmdComment(e *env, args []string) error {
+	if len(args) != 2 || strings.TrimSpace(args[1]) == "" {
+		return fmt.Errorf("%w: jfl comment <id> <text>", errUsage)
+	}
+	_, st, err := e.load()
+	if err != nil {
+		return err
+	}
+	if err := st.Comment(args[0], args[1], e.actor); err != nil {
+		return err
+	}
+	fmt.Fprintf(e.stdout, "commented on %s\n", args[0])
 	return nil
 }
 
@@ -384,6 +427,9 @@ func cmdQuery(e *env, args []string) error {
 		}
 		n++
 		line := fmt.Sprintf("%s %s %q: %s", a.ID, a.Type, a.Title, a.Status)
+		for _, name := range slices.Sorted(maps.Keys(a.Fields)) {
+			line += fmt.Sprintf(", %s: %s", name, a.Fields[name])
+		}
 		if a.Claim != "" {
 			line += ", claimed by agent session " + a.Claim
 		}
@@ -436,5 +482,19 @@ func (l linkFlag) Set(v string) error {
 		return fmt.Errorf("--link wants <link>=<id>, got %q", v)
 	}
 	l[name] = append(l[name], id)
+	return nil
+}
+
+// fieldFlag collects repeated --field <field>=<value> flags.
+type fieldFlag map[string]string
+
+func (f fieldFlag) String() string { return "" }
+
+func (f fieldFlag) Set(v string) error {
+	name, value, ok := strings.Cut(v, "=")
+	if !ok || name == "" || value == "" {
+		return fmt.Errorf("--field wants <field>=<value>, got %q", v)
+	}
+	f[name] = value
 	return nil
 }

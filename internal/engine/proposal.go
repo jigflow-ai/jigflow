@@ -130,7 +130,7 @@ func Approve(pb *Playbook, p Proposal, all []Artifact) ([]Change, error) {
 			if len(links) == 0 {
 				links = nil
 			}
-			a, err := Create(pb, Actor{}, it.Create, it.Title, it.Status, links, all)
+			a, err := Create(pb, Actor{}, it.Create, it.Title, it.Status, nil, links, all)
 			if err != nil {
 				return fail(err)
 			}

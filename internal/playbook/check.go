@@ -29,10 +29,15 @@ func (e *Invalid) Error() string {
 // per Artifact Type, Statuses no initial Status reaches, Statuses with no
 // way out that aren't final, Inboxes from which a Skill that changes code or
 // Artifacts is reachable without a Human Transition, undeclared Links, and
-// Bindings to missing Skills. typeFiles and skillFiles
-// map each Artifact Type and Skill to the file declaring it, for messages.
-func check(pb *engine.Playbook, typeFiles, skillFiles map[string]string) []string {
+// Bindings to missing Skills; and Stores naming no Connector, and project
+// settings for a Connector that map what doesn't exist. typeFiles,
+// skillFiles and connectorFiles map each Artifact Type, Skill and Connector
+// to the file declaring it, for messages.
+func check(pb *engine.Playbook, typeFiles, skillFiles, connectorFiles map[string]string) []string {
 	var problems []string
+	for _, name := range slices.Sorted(maps.Keys(pb.Connectors)) {
+		problems = append(problems, checkConnector(pb, pb.Connectors[name], connectorFiles[name])...)
+	}
 	for _, name := range slices.Sorted(maps.Keys(pb.Skills)) {
 		for _, ref := range pb.Skills[name].Personas {
 			if !slices.Contains(pb.Personas, ref.Name) && strings.TrimSpace(ref.Fallback) == "" {
@@ -69,6 +74,9 @@ func check(pb *engine.Playbook, typeFiles, skillFiles map[string]string) []strin
 					report("%s Inbox %q reaches /%s in %q without a Human Transition", t.Name, inbox, skill.Name, status)
 				}
 			}
+		}
+		if t.Store != "" && pb.Connectors[t.Store] == nil {
+			report("its Store %q is neither %s nor a Connector the Playbook file declares", t.Store, FileStore)
 		}
 		checkLinks(pb, t, report)
 		for _, status := range slices.Sorted(maps.Keys(t.Bindings)) {
@@ -139,4 +147,49 @@ func reach(t *engine.ArtifactType, from []string, follow func(engine.Transition)
 		}
 	}
 	return seen
+}
+
+// checkConnector reports a Connector with no command, and project settings
+// that map the Statuses or fields of an Artifact Type it doesn't keep, or
+// ones that Type doesn't declare, or map them to nothing.
+func checkConnector(pb *engine.Playbook, c *engine.Connector, file string) []string {
+	var problems []string
+	report := func(format string, args ...any) {
+		problems = append(problems, fmt.Sprintf("%s: Connector %q ", file, c.Name)+fmt.Sprintf(format, args...))
+	}
+	if c.Name == FileStore {
+		report("can't be named %s, the file Store's name", FileStore)
+	}
+	if strings.TrimSpace(c.Command) == "" {
+		report("needs a command")
+	}
+	for _, typeName := range slices.Sorted(maps.Keys(c.Types)) {
+		t, m := pb.Type(typeName), c.Types[typeName]
+		if t == nil || t.Store != c.Name {
+			report("maps Artifact Type %q, which it doesn't keep", typeName)
+			continue
+		}
+		for _, status := range slices.Sorted(maps.Keys(m.Statuses)) {
+			if !slices.Contains(t.Statuses, status) {
+				report("maps Status %q, which a %s doesn't declare", status, t.Name)
+			} else if m.Statuses[status] == (engine.TrackerTerm{}) {
+				report("maps Status %q to no label or state", status)
+			}
+		}
+		for _, field := range slices.Sorted(maps.Keys(m.Fields)) {
+			values, ok := t.Fields[field]
+			if !ok {
+				report("maps field %q, which a %s doesn't declare", field, t.Name)
+				continue
+			}
+			for _, value := range slices.Sorted(maps.Keys(m.Fields[field])) {
+				if !slices.Contains(values, value) {
+					report("maps %s %q, which isn't one of its values (%s)", field, value, strings.Join(values, ", "))
+				} else if m.Fields[field][value] == (engine.TrackerTerm{}) {
+					report("maps %s %q to no label or state", field, value)
+				}
+			}
+		}
+	}
+	return problems
 }

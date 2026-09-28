@@ -1,4 +1,7 @@
-// Package store keeps Artifacts where their Artifact Type says they live.
+// Package store keeps Artifacts where their Artifact Type says they live:
+// in the file Store, or in an outside tracker through the Connector Store
+// (see connector.go). Open returns the Store of a Playbook, which routes
+// each Artifact to its Artifact Type's.
 //
 // The file Store keeps each Artifact as a Markdown file with YAML frontmatter
 // in one committed state directory:
@@ -47,6 +50,7 @@ type frontmatter struct {
 	Type   string              `yaml:"type"`
 	Status string              `yaml:"status"`
 	Title  string              `yaml:"title"`
+	Fields map[string]string   `yaml:"fields,omitempty"`
 	Links  map[string][]string `yaml:"links,omitempty"`
 	Claim  string              `yaml:"claim,omitempty"`
 	// Hash is the content hash the Store wrote, always the last line of
@@ -91,6 +95,11 @@ func (f *File) Get(id string) (engine.Artifact, error) {
 	return a, err
 }
 
+// Create writes a new Artifact's file, with the id it was given.
+func (f *File) Create(a engine.Artifact, _ engine.Actor) (engine.Artifact, error) {
+	return a, f.Save(a)
+}
+
 // Save writes the Artifact's frontmatter, keeping any body already on disk.
 func (f *File) Save(a engine.Artifact) error {
 	if !validID(a.ID) {
@@ -102,7 +111,30 @@ func (f *File) Save(a engine.Artifact) error {
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return err
 	}
-	fm, err := yaml.Marshal(frontmatter{ID: a.ID, Type: a.Type, Status: a.Status, Title: a.Title, Links: a.Links, Claim: a.Claim})
+	return f.write(a, body)
+}
+
+// Comment appends text by by to the Artifact's body, after re-validating
+// the file as a move does: rewriting it would otherwise make an edit to its
+// frontmatter made outside the CLI look like the Store's.
+func (f *File) Comment(id, text string, by engine.Actor) error {
+	if _, err := f.Verify(id); err != nil {
+		return err
+	}
+	a, body, err := f.read(f.path(id))
+	if err != nil {
+		return err
+	}
+	who := "**Comment:**"
+	if by.Agent() {
+		who = "**Comment by agent session " + by.Session + ":**"
+	}
+	return f.write(a, strings.TrimRight(body, "\n")+"\n\n"+who+"\n\n"+strings.TrimRight(text, "\n")+"\n")
+}
+
+// write writes the Artifact's file with the given body.
+func (f *File) write(a engine.Artifact, body string) error {
+	fm, err := yaml.Marshal(frontmatter{ID: a.ID, Type: a.Type, Status: a.Status, Title: a.Title, Fields: a.Fields, Links: a.Links, Claim: a.Claim})
 	if err != nil {
 		return err
 	}
@@ -218,7 +250,7 @@ func (f *File) parse(path string) (file, error) {
 		unhashed = fmText[:i]
 	}
 	return file{
-		artifact: engine.Artifact{ID: fm.ID, Type: fm.Type, Status: fm.Status, Title: fm.Title, Links: fm.Links, Claim: fm.Claim},
+		artifact: engine.Artifact{ID: fm.ID, Type: fm.Type, Status: fm.Status, Title: fm.Title, Fields: fm.Fields, Links: fm.Links, Claim: fm.Claim},
 		body:     body,
 		fm:       unhashed,
 		hash:     fm.Hash,

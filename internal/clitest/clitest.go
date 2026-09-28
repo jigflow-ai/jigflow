@@ -54,6 +54,21 @@ func Build(pkg string) (*Binary, error) {
 	return b, nil
 }
 
+// BuildHelper compiles another main package the tests run, such as a fake
+// Connector, into the build directory, and returns the executable's path.
+func (b *Binary) BuildHelper(pkg, name string) (string, error) {
+	if runtime.GOOS == "windows" {
+		name += ".exe"
+	}
+	exe := filepath.Join(b.Dir, name)
+	cmd := exec.Command("go", "build", "-trimpath", "-o", exe, pkg)
+	cmd.Env = append(os.Environ(), "CGO_ENABLED=0")
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return "", fmt.Errorf("go build %s: %v\n%s", pkg, err, out)
+	}
+	return exe, nil
+}
+
 // Cleanup removes the build directory.
 func (b *Binary) Cleanup() { _ = os.RemoveAll(b.Dir) }
 
