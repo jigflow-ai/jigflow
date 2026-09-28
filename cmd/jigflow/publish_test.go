@@ -403,3 +403,21 @@ func TestPublishingKeepsThePersonsOwnClaudeCodeSettingsAndHooks(t *testing.T) {
 		t.Errorf("Stop hooks = %q, want the person's and jfl's, once", got)
 	}
 }
+
+// The router stands in for a Playbook's own "which skill do I use?" Skill
+// (ask-matt, in the Pocock Playbook): a Skill only a person starts has no
+// description the agent sees, so the router names it for the person.
+func TestTheRouterNamesTheSkillsOnlyAPersonStarts(t *testing.T) {
+	p := published(t)
+	p.Write(".jigflow/skills/wayfinder/SKILL.md", "---\nchanges: true\ninvocation: user\ndescription: Plan a huge chunk of work as a shared map of decision tickets.\n---\nChart the map.\n")
+	p.Write(".jigflow/skills/grilling/SKILL.md", "---\nchanges: false\ninvocation: agent\ndescription: Grill the user about a plan.\n---\nAsk.\n")
+	p.MustRun("publish", "claude-code")
+
+	_, body := skillFrontmatter(t, p.Read(".claude/skills/jigflow/SKILL.md"))
+	if want := "\n## Skills only a person starts\n\nWhen a person asks which Skill fits what they want to do, point them to one of these, which only they can start, by typing its name:\n\n- /wayfinder: Plan a huge chunk of work as a shared map of decision tickets.\n"; !strings.Contains(body, want) {
+		t.Errorf("router body =\n%s\nwant %q", body, want)
+	}
+	if strings.Contains(body, "/grilling") {
+		t.Errorf("router body =\n%s\nwant no agent-invoked Skill among those a person starts", body)
+	}
+}

@@ -2,6 +2,7 @@ package adapter
 
 import (
 	"fmt"
+	"maps"
 	"slices"
 	"strings"
 
@@ -13,10 +14,11 @@ import (
 const Router = "jigflow"
 
 // routerDescription is what the agent reads to choose the router Skill.
-const routerDescription = "Find the next piece of work in this project's JigFlow Playbook and the Skill to run on it. Use when unsure which Skill to run, or to pick up the next Artifact."
+const routerDescription = "Find the next piece of work in this project's JigFlow Playbook and the Skill to run on it. Use when unsure which Skill to run, to pick up the next Artifact, or when a person asks which Skill fits what they want to do."
 
 // routerPrompt is the router Skill's prompt: how to follow the Bindings,
-// then, per Artifact Type, what works on each Status.
+// then, per Artifact Type, what works on each Status, and the Skills only
+// a person starts.
 func routerPrompt(pb *engine.Playbook) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, `Route work through the Playbook %q.
@@ -30,7 +32,29 @@ func routerPrompt(pb *engine.Playbook) string {
 What works on each Status of each Artifact Type:
 `, pb.Name)
 	b.WriteString(statuses(pb, "##"))
+	b.WriteString(personStarted(pb))
 	return b.String()
+}
+
+// personStarted names the Skills only a person starts, with their
+// descriptions, so the agent can point a person asking which Skill fits
+// their situation to one: such a Skill's description is out of the agent's
+// reach. It is empty when the Playbook has none.
+func personStarted(pb *engine.Playbook) string {
+	var b strings.Builder
+	for _, name := range slices.Sorted(maps.Keys(pb.Skills)) {
+		if s := pb.Skills[name]; s.Invocation == engine.InvokedByUser {
+			if s.Description == "" {
+				fmt.Fprintf(&b, "- /%s\n", s.Name)
+			} else {
+				fmt.Fprintf(&b, "- /%s: %s\n", s.Name, s.Description)
+			}
+		}
+	}
+	if b.Len() == 0 {
+		return ""
+	}
+	return "\n## Skills only a person starts\n\nWhen a person asks which Skill fits what they want to do, point them to one of these, which only they can start, by typing its name:\n\n" + b.String()
 }
 
 // autopilot tells an agent how to run autopilot, which it drives: jfl runs

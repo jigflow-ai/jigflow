@@ -194,7 +194,8 @@ Commands:
                           Gates or Actions
   publish <adapter>       publish the Playbook's Skills, the Guidelines and
                           Personas they name, every active Persona and a
-                          router Skill built from its Bindings for a coding
+                          router Skill built from its Bindings, which also
+                          names the Skills only a person starts, for a coding
                           agent: claude-code, as Claude Code Skills in
                           .claude/skills, with the hooks that read its token
                           usage in .claude/settings.json, or agents-md, as a
@@ -250,7 +251,7 @@ Environment:
                           the git repository and ref jfl init --playbook pocock
                           extends, for a fork or a mirror (default
                           https://github.com/jigflow-ai/jigflow-playbook-pocock
-                          at v0.1.0)
+                          at v0.2.0)
 
 Exit status:
   0 done, 1 refused or failed, 2 malformed command line, 3 a Connector failed:

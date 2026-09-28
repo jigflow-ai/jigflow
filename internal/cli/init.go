@@ -75,8 +75,8 @@ var offers = []offer{
 	// The Pocock Playbook lives in a repository of its own, so it can
 	// follow upstream without a release of jfl (ADR 0009); a fork or a
 	// mirror can stand in for it.
-	{key: "pocock", name: "Pocock", about: "Matt Pocock's workflow: triage, specs broken into tickets, implement, review",
-		git: "https://github.com/jigflow-ai/jigflow-playbook-pocock", ref: "v0.1.0", env: "JFL_POCOCK"},
+	{key: "pocock", name: "Pocock", about: "Matt Pocock's workflow: triage, specs broken into tickets, implement, review, wayfinder maps",
+		git: "https://github.com/jigflow-ai/jigflow-playbook-pocock", ref: "v0.2.0", env: "JFL_POCOCK"},
 	{key: own, name: "Build my own", about: "describe how you work to the " + playbookAuthor + " Skill, which proposes a Playbook"},
 }
 
