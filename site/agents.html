@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agents and Adapters · JigFlow</title>
+<meta name="description" content="How Skills reach Claude Code and AGENTS.md agents, and how agent sessions work.">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="top"><div class="top-inner">
+<a class="brand" href="index.html"><svg class="brand-mark" viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="3" width="20" height="4" rx="1.5" fill="currentColor"/><rect x="4" y="7" width="4" height="14" rx="1.2" fill="currentColor" opacity=".55"/><rect x="10" y="7" width="4" height="10" rx="1.2" fill="currentColor" opacity=".75"/><rect x="16" y="7" width="4" height="6" rx="1.2" fill="currentColor"/></svg> JigFlow <small>docs</small></a>
+<div class="top-links"><a href="cli.html">CLI</a><a href="https://github.com/jigflow-ai/jigflow">GitHub</a></div>
+</div></header>
+<div class="layout">
+<aside class="side"><nav aria-label="Documentation">
+<h2>Start</h2><ul>
+<li><a href="index.html">Overview</a></li>
+<li><a href="getting-started.html">Getting started</a></li>
+</ul>
+<h2>Guide</h2><ul>
+<li><a href="concepts.html">Concepts</a></li>
+<li><a href="playbook.html">Playbook reference</a></li>
+<li><a href="playbooks.html">Shipped Playbooks</a></li>
+<li><a href="agents.html" aria-current="page">Agents and Adapters</a></li>
+<li><a href="proposals.html">Proposals and the Dashboard</a></li>
+<li><a href="connectors.html">Connectors</a></li>
+<li><a href="ledger.html">Ledger</a></li>
+</ul>
+<h2>Reference</h2><ul>
+<li><a href="cli.html">CLI</a></li>
+</ul>
+<h2>Elsewhere</h2><ul>
+<li><a href="https://github.com/jigflow-ai/jigflow/blob/main/CONTEXT.md">Glossary (CONTEXT.md)</a></li>
+<li><a href="https://github.com/jigflow-ai/jigflow/tree/main/docs/adr">Decision records</a></li>
+</ul></nav></aside>
+<main>
+<h1>Agents and Adapters</h1>
+<p class="lede">JigFlow doesn't call a model or run an agent loop. Claude Code, Codex, Cursor and the rest already do that well. An Adapter publishes the Playbook's Skills in the format your agent reads, and from then on the agent works through <code>jfl</code>.</p>
+
+<h2 id="adapters">Adapters</h2>
+<pre><code>jfl publish claude-code
+jfl publish agents-md</code></pre>
+<p><code>jfl init</code> runs one for you, and you can run it again after changing the Playbook. Publishing again replaces and removes only what <code>jfl</code> published, and leaves your own files alone.</p>
+<div class="table-wrap"><table>
+<tr><th>Adapter</th><th>What it writes</th></tr>
+<tr><td><code>claude-code</code></td><td>Each Skill as a Claude Code Skill in <code>.claude/skills/&lt;name&gt;/SKILL.md</code>, with the Guidelines and Personas it names next to it. The router Skill <code>jigflow</code>. Hooks in <code>.claude/settings.json</code> (SessionStart, Stop, SubagentStop, SessionEnd) that give each session its id and record its token usage in the <a href="ledger.html">Ledger</a>.</td></tr>
+<tr><td><code>agents-md</code></td><td>A section of <code>AGENTS.md</code> explaining how to work through <code>jfl</code>, with Skills in <code>.agents/skills</code> and Personas in <code>.agents/personas</code>. It works with any agent that reads <code>AGENTS.md</code>.</td></tr>
+</table></div>
+<p>Only usable Personas are published: the Playbook's own, your Persona Library's, and Persona Artifacts a person has activated. A Skill that names a Persona that isn't usable is told to work without it, and how to propose it.</p>
+
+<h2 id="router">The router Skill</h2>
+<p><code>jfl publish</code> writes one Skill you never write by hand. It is built from the Bindings: it tells the agent to run <code>jfl next</code>, run the Skill it names on the Artifact it names, and stop when <code>jfl</code> says nothing is left for an agent. It lists what works on each Status of each Artifact Type, and the Skills only a person starts. For the Larapilot-style Task:</p>
+<pre><code>## Task
+
+- ready: /implement, in a fresh session
+- in-progress: /implement
+- in-review: /review, in a fresh session
+- reviewed: human work, never an agent's
+- done: final</code></pre>
+
+<h2 id="sessions">Agent sessions</h2>
+<p><code>jfl</code> tells an agent from a person by <code>JFL_SESSION</code>. A command run with it set is an agent session's, and one run without it is a person's. The Claude Code hooks set it at the start of each session. With <code>agents-md</code>, <code>AGENTS.md</code> tells the agent to export one id of its own and keep it.</p>
+<p>An agent session can't make a Human Transition, approve or reject a Proposal, run <code>migrate</code>, or create an Artifact straight into a Status with a Binding, unless that Status is an Inbox.</p>
+
+<h3 id="focus">Focus</h3>
+<p><code>jfl next</code> makes the Artifact it hands out the session's <strong>Focus</strong>, and Transitions move it. Focus lives only in the session, never in git. The Ledger uses it to charge time and tokens to the Artifact actually being worked on.</p>
+
+<h3 id="claims">Claims and parallel sessions</h3>
+<p>An agent session's <code>jfl move</code> <strong>Claims</strong> the Artifact: it records the session as owner, in the file or as the tracker's assignee. <code>jfl next</code> prefers what the session already claims and skips what other sessions claim. <code>jfl</code> refuses a move on an Artifact another session claims. The Claim is released when the Artifact enters a Status with no Binding, or a final one. This is how several sessions can work one Pocock wayfinder Map at the same time without picking the same Decision Ticket.</p>
+
+<h3 id="fresh">Fresh and isolated sessions</h3>
+<p>A Binding can ask for its Skill to run in a fresh session (<code>fresh: true</code>), so a reviewer doesn't carry the implementer's context, or in an isolated sub-agent (<code>isolated: true</code>). The router Skill and <code>jfl next</code> say so, and the agent follows.</p>
+
+<h2 id="autopilot">Autopilot</h2>
+<pre><code>jfl next --autopilot</code></pre>
+<p>Autopilot is <code>next</code> repeated: the agent runs the Skill, asks again, and keeps going. It stops, saying why and listing what waits for a person, when:</p>
+<ul>
+  <li>nothing is left for an agent;</li>
+  <li>the session's last move was refused (a failing Gate, a Human Transition);</li>
+  <li>the Skill it handed out didn't move the Artifact on.</li>
+</ul>
+<p>It never skips a checkpoint, because the checkpoints are Statuses with no Binding and Human Transitions, which autopilot can't pass.</p>
+
+<h2 id="mcp">The MCP server</h2>
+<pre><code>claude mcp add jfl -- jfl mcp</code></pre>
+<p><code>jfl mcp</code> serves the agent-safe commands over stdio as MCP tools: <code>next</code>, <code>move</code> (never a Human Transition), <code>propose</code>, <code>query</code>, <code>show</code>, and <code>create</code> into an Inbox. Approving and rejecting are left out altogether. The server is always an agent session, using <code>JFL_SESSION</code> when set, or a fresh id for its lifetime. <code>jfl publish</code> doesn't register it, so add it to your agent as above if you want tools rather than shell commands.</p>
+
+<h2 id="skills-rules">What a Skill may do</h2>
+<p>A Skill tells the agent how to do one piece of work. It reads and changes workflow state only through <code>jfl</code>: <code>show</code> and <code>query</code> to read, <code>create</code>, <code>comment</code>, <code>move</code> and <code>propose</code> to change. It edits code and an Artifact's body directly. If the body of an Artifact kept in a file changes outside <code>jfl</code>, the next move re-validates it. A changed Status or frontmatter is refused. Text an agent writes to a tracker is marked as AI-generated.</p>
+<footer class="page-footer"><a href="playbooks.html">← Shipped Playbooks</a><a href="proposals.html">Proposals and the Dashboard →</a></footer>
+</main>
+</div>
+</body>
+</html>

@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Getting started · JigFlow</title>
+<meta name="description" content="Install jfl, set a project up with jfl init, and work the first loop.">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="top"><div class="top-inner">
+<a class="brand" href="index.html"><svg class="brand-mark" viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="3" width="20" height="4" rx="1.5" fill="currentColor"/><rect x="4" y="7" width="4" height="14" rx="1.2" fill="currentColor" opacity=".55"/><rect x="10" y="7" width="4" height="10" rx="1.2" fill="currentColor" opacity=".75"/><rect x="16" y="7" width="4" height="6" rx="1.2" fill="currentColor"/></svg> JigFlow <small>docs</small></a>
+<div class="top-links"><a href="cli.html">CLI</a><a href="https://github.com/jigflow-ai/jigflow">GitHub</a></div>
+</div></header>
+<div class="layout">
+<aside class="side"><nav aria-label="Documentation">
+<h2>Start</h2><ul>
+<li><a href="index.html">Overview</a></li>
+<li><a href="getting-started.html" aria-current="page">Getting started</a></li>
+</ul>
+<h2>Guide</h2><ul>
+<li><a href="concepts.html">Concepts</a></li>
+<li><a href="playbook.html">Playbook reference</a></li>
+<li><a href="playbooks.html">Shipped Playbooks</a></li>
+<li><a href="agents.html">Agents and Adapters</a></li>
+<li><a href="proposals.html">Proposals and the Dashboard</a></li>
+<li><a href="connectors.html">Connectors</a></li>
+<li><a href="ledger.html">Ledger</a></li>
+</ul>
+<h2>Reference</h2><ul>
+<li><a href="cli.html">CLI</a></li>
+</ul>
+<h2>Elsewhere</h2><ul>
+<li><a href="https://github.com/jigflow-ai/jigflow/blob/main/CONTEXT.md">Glossary (CONTEXT.md)</a></li>
+<li><a href="https://github.com/jigflow-ai/jigflow/tree/main/docs/adr">Decision records</a></li>
+</ul></nav></aside>
+<main>
+<h1>Getting started</h1>
+<p class="lede">This page takes an empty repository to a working loop with the Larapilot-style Playbook, which ships inside <code>jfl</code>. It takes about five minutes.</p>
+
+<h2 id="install">Install</h2>
+<p>JigFlow is one static binary, with no language runtime. Build it from the repository:</p>
+<pre><code>git clone https://github.com/jigflow-ai/jigflow &amp;&amp; cd jigflow
+make build                      <span class="c"># bin/jigflow, the bin/jfl alias, and the two Connectors</span>
+export PATH="$PWD/bin:$PATH"</code></pre>
+<p>With Go installed you can use <code>go install github.com/jigflow-ai/jigflow/cmd/jigflow@latest</code> instead, and link <code>jfl</code> to <code>jigflow</code> yourself. The GitHub and Linear Connectors are separate executables (<code>jfl-connector-github</code>, <code>jfl-connector-linear</code>), needed only when an Artifact Type is kept in a tracker.</p>
+
+<h2 id="init">Set a project up</h2>
+<pre><code>mkdir todo &amp;&amp; cd todo &amp;&amp; git init
+printf 'module todo\n\ngo 1.22\n' &gt; go.mod
+jfl init</code></pre>
+<p><code>jfl init</code> asks, at the terminal, whatever its flags don't say:</p>
+<ol>
+  <li><strong>Which Playbook.</strong> Larapilot-style, Pocock, or your own. There is no default, on purpose: you choose your way of working. Without a terminal and without <code>--playbook</code>, it refuses and writes nothing.</li>
+  <li><strong>Which Adapter</strong> to publish the Skills through: <code>claude-code</code> or <code>agents-md</code>.</li>
+  <li><strong>Connector settings</strong>, for Artifact Types kept in a tracker: the repository or team, and the label of each Status. The Larapilot-style Playbook keeps everything in files, so it asks nothing here.</li>
+</ol>
+<p>The same thing without questions:</p>
+<pre><code>jfl init --playbook larapilot --adapter claude-code</code></pre>
+<pre class="out"><code>wrote .jigflow/playbook.yaml, extending the Larapilot-style Playbook
+detected Go (go.mod)
+proposed P-1: set up the Gates and a starter Guideline for the project's toolchain (3 changes, waiting for you: read it in .jigflow/proposals/P-1.yaml, then jfl approve P-1 or jfl reject P-1, or decide in jfl ui)
+  1. give Gate "tests" the command go test ./...
+  2. give Gate "lint" the command go vet ./...
+  3. add Guideline "conventions" (18 lines)
+published Playbook "todo" for Claude Code</code></pre>
+<p>It detects the toolchain from the files at the root: a Makefile's <code>test</code> and <code>lint</code> targets first, then Go, Rust, Python, Node.js or PHP. Nothing it detects is applied yet. It comes as <a href="proposals.html">Proposal</a> P-1, which you read and then approve or reject as a whole:</p>
+<pre><code>jfl approve P-1</code></pre>
+<pre class="out"><code>P-1 from a person: set up the Gates and a starter Guideline for the project's toolchain
+  1. give Gate "tests" the command go test ./...
+  2. give Gate "lint" the command go vet ./...
+  3. add Guideline "conventions" (18 lines)
+Approve all 3 changes as one unit? [y/N] y
+approved P-1 as one unit:
+  …</code></pre>
+<p>Your project's Playbook is now just this. Everything else comes from the Base Playbook it extends:</p>
+<pre><code><span class="c"># .jigflow/playbook.yaml</span>
+name: todo
+extends: {builtin: larapilot}
+gates:
+  tests: go test ./...
+  lint: go vet ./...</code></pre>
+<p>Running <code>jfl init</code> again is safe. It keeps the Playbook, publishes again through the same Adapters, and asks for or proposes only what's missing.</p>
+
+<h2 id="first-loop">The first loop</h2>
+<p>Create a PRD. A person creates it in <code>inception</code>, for a product not built yet, or in <code>adopt</code>, for an existing codebase:</p>
+<pre><code>jfl create PRD --title "Todo app" --status inception
+jfl next</code></pre>
+<pre class="out"><code>created PRD-1 "Todo app" in inception
+run /inception on PRD-1 "Todo app"</code></pre>
+<p>Open Claude Code in the project and run <code>/inception</code>. The Skill interviews you and writes the PRD's body, then runs <code>jfl move PRD-1 in-review</code>. <code>in-review</code> has no Binding, so there the agent is done:</p>
+<pre><code>jfl next</code></pre>
+<pre class="out"><code>nothing for an agent to do
+Skipped:
+  PRD-1: "in-review" has no Binding, so it's human work</code></pre>
+<p>Read the PRD in <code>.jigflow/state/PRD-1.md</code>. Approving it is a Human Transition, so <code>jfl</code> asks you to confirm and refuses it to an agent session:</p>
+<pre><code>jfl move PRD-1 approved</code></pre>
+<pre class="out"><code>PRD-1 "Todo app": "in-review" → "approved" is a Human Transition. Make it? [y/N] y
+PRD-1: in-review → approved</code></pre>
+<p>From here the Playbook does the routing:</p>
+<ul>
+  <li><code>/spec</code> proposes the PRD's Requirements, each with a MoSCoW priority. You approve the Proposal.</li>
+  <li><code>/plan</code> proposes Stories for each Requirement, broken into Tasks.</li>
+  <li><code>/implement</code> works a Task test-first. Moving it to <code>in-review</code> runs the <code>tests</code> and <code>lint</code> Gates, and a failing Gate refuses the move.</li>
+  <li><code>/review</code> reviews it in a fresh session and sends it back, or leaves it <code>reviewed</code>.</li>
+  <li>You accept it with <code>jfl move T-1 done</code>, a Human Transition whose Action commits the Task as one commit.</li>
+</ul>
+<p>To see the whole path an Artifact Type can take, without creating anything, use <code>jfl simulate</code>:</p>
+<pre><code>jfl simulate Task</code></pre>
+<pre class="out"><code>Task: 1 path from an initial Status to a final one
+
+1. ready → in-progress → in-review → reviewed → done
+   ready: Skill /implement; Readiness: every "blocked_by" item is done
+     → in-progress
+   in-progress: Skill /implement
+     → in-review; Gates: tests (go test ./...), lint (go vet ./...)
+   in-review: Skill /review
+     → reviewed
+   reviewed: no Binding, human work
+     → done; Human Transition; Actions: commit (git add --all &amp;&amp; git commit --quiet --message "$JFL_ARTIFACT: $JFL_TITLE")
+   done: final</code></pre>
+
+<h2 id="autopilot">Let the agent drive</h2>
+<p>You don't have to name each Skill. <code>jfl publish</code> generates a router Skill, <code>jigflow</code>, that tells the agent to run <code>jfl next</code>, run the Skill it names, and repeat. Ask the agent to work on its own and it runs <strong>autopilot</strong> (<code>jfl next --autopilot</code>). Autopilot stops, saying why, when nothing is left for an agent, when its last move was refused, or when the Skill it handed out didn't move the Artifact on. What's waiting for you shows at the top of the Dashboard:</p>
+<pre><code>jfl ui                          <span class="c"># http://127.0.0.1:7457, on this machine only</span></code></pre>
+
+<h2 id="other-playbooks">Other ways to start</h2>
+<ul>
+  <li><code>jfl init --playbook pocock</code>: Matt Pocock's workflow, with Specs, Tickets and Issues in GitHub Issues. Until its repository is published, point it at a local checkout: <code>JFL_POCOCK_GIT=/path/to/jigflow-playbook-pocock jfl init --playbook pocock</code>.</li>
+  <li><code>jfl init --playbook own</code>: then run <code>/playbook-author</code> in your agent, which interviews you and proposes a Playbook.</li>
+</ul>
+<p>Both are described in <a href="playbooks.html">Shipped Playbooks</a>.</p>
+<footer class="page-footer"><a href="index.html">← Overview</a><a href="concepts.html">Concepts →</a></footer>
+</main>
+</div>
+</body>
+</html>

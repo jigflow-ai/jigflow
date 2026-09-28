@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Connectors · JigFlow</title>
+<meta name="description" content="Keeping Artifacts in GitHub Issues, Linear or another tracker.">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="top"><div class="top-inner">
+<a class="brand" href="index.html"><svg class="brand-mark" viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="3" width="20" height="4" rx="1.5" fill="currentColor"/><rect x="4" y="7" width="4" height="14" rx="1.2" fill="currentColor" opacity=".55"/><rect x="10" y="7" width="4" height="10" rx="1.2" fill="currentColor" opacity=".75"/><rect x="16" y="7" width="4" height="6" rx="1.2" fill="currentColor"/></svg> JigFlow <small>docs</small></a>
+<div class="top-links"><a href="cli.html">CLI</a><a href="https://github.com/jigflow-ai/jigflow">GitHub</a></div>
+</div></header>
+<div class="layout">
+<aside class="side"><nav aria-label="Documentation">
+<h2>Start</h2><ul>
+<li><a href="index.html">Overview</a></li>
+<li><a href="getting-started.html">Getting started</a></li>
+</ul>
+<h2>Guide</h2><ul>
+<li><a href="concepts.html">Concepts</a></li>
+<li><a href="playbook.html">Playbook reference</a></li>
+<li><a href="playbooks.html">Shipped Playbooks</a></li>
+<li><a href="agents.html">Agents and Adapters</a></li>
+<li><a href="proposals.html">Proposals and the Dashboard</a></li>
+<li><a href="connectors.html" aria-current="page">Connectors</a></li>
+<li><a href="ledger.html">Ledger</a></li>
+</ul>
+<h2>Reference</h2><ul>
+<li><a href="cli.html">CLI</a></li>
+</ul>
+<h2>Elsewhere</h2><ul>
+<li><a href="https://github.com/jigflow-ai/jigflow/blob/main/CONTEXT.md">Glossary (CONTEXT.md)</a></li>
+<li><a href="https://github.com/jigflow-ai/jigflow/tree/main/docs/adr">Decision records</a></li>
+</ul></nav></aside>
+<main>
+<h1>Connectors</h1>
+<p class="lede">By default an Artifact is a Markdown file in <code>.jigflow/state/</code>, committed with the code. When the team works in a tracker instead, an Artifact Type can keep its Artifacts there, through a Connector.</p>
+
+<p>A Connector is an external executable, in any language, that speaks a small JSON protocol over stdin and stdout. <code>jfl</code> stays the only writer. It still enforces Transitions, Gates, Readiness, Guards and Claims, and uses the Connector only to read and write the tracker. Two reference Connectors ship with <code>jfl</code>: <code>jfl-connector-github</code> and <code>jfl-connector-linear</code>. <code>make build</code> puts both in <code>bin/</code>.</p>
+
+<h2 id="setting-up">Setting one up</h2>
+<p>The Artifact Type names its Store:</p>
+<pre><code><span class="c"># .jigflow/types/ticket.yaml</span>
+name: Ticket
+prefix: T
+store: github
+statuses: [needs-triage, ready-for-agent, in-progress, in-review, done]
+<span class="c"># …</span></code></pre>
+<p>The project's <code>playbook.yaml</code> declares the Connector and maps Statuses and field values to the tracker's labels or states:</p>
+<pre><code>connectors:
+  github:
+    command: jfl-connector-github  <span class="c"># on PATH, or a path relative to the project root</span>
+    settings: {repo: acme/shop}
+    marker: "_Drafted by an AI agent._"
+    types:
+      Ticket:
+        settings: {label: ticket}       <span class="c"># tells Tickets apart from other issues</span>
+        statuses:
+          in-progress: "status: doing"  <span class="c"># a label</span>
+          done: {state: closed}         <span class="c"># a state; {label: …, state: …} for both</span>
+        fields:
+          category:
+            enhancement: "kind: feature"</code></pre>
+<p>A Status or value you don't map becomes a label with its own name, so a tracker whose labels already match the Playbook needs no mapping. <code>jfl init</code> asks for the settings a shipped Playbook leaves empty and the label of each Status, or takes them as <code>--setting github.repo=acme/shop</code> and <code>--label Ticket.in-progress="status: doing"</code>.</p>
+<p>Credentials never go in the Playbook file, which is committed. A Connector reads them from the environment <code>jfl</code> runs in.</p>
+
+<h2 id="github">GitHub Issues</h2>
+<div class="table-wrap"><table>
+<tr><th>Setting</th><th></th></tr>
+<tr><td><code>repo</code></td><td><code>owner/name</code>. Required.</td></tr>
+<tr><td><code>label</code></td><td>Per Type: the label that tells its issues apart. At most one Type can do without one.</td></tr>
+<tr><td><code>create_labels</code></td><td><code>true</code> creates missing labels. By default a missing label is an error, so a typo doesn't fill the repository with labels.</td></tr>
+<tr><td><code>assignee</code></td><td>The login a Claim assigns. By default, the token's user.</td></tr>
+</table></div>
+<p>The token comes from <code>GH_TOKEN</code> or <code>GITHUB_TOKEN</code>. With the GitHub CLI signed in, <code>GH_TOKEN=$(gh auth token) jfl …</code> works. Claims are assignees, with the agent session kept in a hidden HTML comment in the body. <code>blocked_by</code> Links between issues are GitHub's native issue dependencies. Pull requests are never Artifacts. <a href="https://github.com/jigflow-ai/jigflow/blob/main/docs/github-connector.md">Full GitHub Connector docs →</a></p>
+
+<h2 id="linear">Linear</h2>
+<pre><code>connectors:
+  linear:
+    command: jfl-connector-linear
+    settings: {team: ENG}
+    types:
+      Ticket:
+        settings: {label: ticket}
+        statuses:
+          ready-for-agent: {state: Todo}
+          in-progress: {state: In Progress}
+          done: {state: Done}</code></pre>
+<p>A Linear team usually keeps its workflow in workflow states, so map each Status to one. The API key comes from <code>LINEAR_API_KEY</code>. Ids follow the team's numbers (<code>ENG-41</code> is <code>T-41</code>). Claims are assignees, with the session kept in a <em>JigFlow</em> attachment on the issue. <code>blocked_by</code> Links are Linear's blocking relations. <a href="https://github.com/jigflow-ai/jigflow/blob/main/docs/linear-connector.md">Full Linear Connector docs →</a></p>
+
+<h2 id="edits">Edits made in the tracker</h2>
+<p>Teammates work in the tracker too, so for its Artifacts the tracker is the source of truth. Bodies and comments are free to edit there, and a Status or Claim changed there is where <code>jfl</code>'s next move starts from. An issue a teammate files without labels is in the Type's first initial Status. What <code>jfl</code> does check is that the tracker didn't change under it: after the Gates run, a move reads the item again, and refuses if its Status or Claim changed in the meantime.</p>
+<div class="callout warn"><p><code>jfl</code> can't write a tracker issue's body yet. Skills that need to write one, like the Pocock Playbook's <code>to-spec</code>, post the text as the first comment once a person approves. <code>jfl show &lt;id&gt;</code> prints the body and the comments together.</p></div>
+
+<h2 id="failures">When the tracker fails</h2>
+<p>A tracker problem (bad credentials, rate limits, the network) is reported as such, with exit status 3, so a script or an agent can tell it apart from a workflow refusal, which exits 1:</p>
+<pre class="out"><code>jfl move: tracker problem, not a workflow refusal: Connector "github" was rate-limited by the tracker: API rate limit exceeded. Retry in 60s.</code></pre>
+<p>A tracker has no transactions. A Proposal approved into a tracker creates and moves its items one request at a time, after every Gate has passed, so a failure part way leaves the items before it applied.</p>
+
+<h2 id="writing">Writing a Connector</h2>
+<p><code>jfl</code> runs the Connector once per request, in the project root. It writes one JSON request to stdin and reads one JSON response from stdout. The operations are <code>list</code>, <code>get</code>, <code>create</code>, <code>status</code>, <code>claim</code> and <code>comment</code>:</p>
+<pre><code>{"protocol": 1, "op": "status", "type": "Ticket", "settings": {"repo": "acme/shop"},
+ "id": "41", "from": {"label": "ready-for-agent"}, "to": {"label": "status: doing"}}</code></pre>
+<p>A Connector knows nothing of Statuses, Transitions or sessions. <code>jfl</code> maps Statuses to labels and states, adds the AI-generated marker to agents' text, and names Artifacts by prefix and tracker id. The Connector only talks to the tracker. <a href="https://github.com/jigflow-ai/jigflow/blob/main/docs/connector-protocol.md">The full protocol, with every field and error kind →</a></p>
+<footer class="page-footer"><a href="proposals.html">← Proposals and the Dashboard</a><a href="ledger.html">Ledger →</a></footer>
+</main>
+</div>
+</body>
+</html>

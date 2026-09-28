@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CLI · JigFlow</title>
+<meta name="description" content="Every jfl command, flag, environment variable and exit status.">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="top"><div class="top-inner">
+<a class="brand" href="index.html"><svg class="brand-mark" viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="3" width="20" height="4" rx="1.5" fill="currentColor"/><rect x="4" y="7" width="4" height="14" rx="1.2" fill="currentColor" opacity=".55"/><rect x="10" y="7" width="4" height="10" rx="1.2" fill="currentColor" opacity=".75"/><rect x="16" y="7" width="4" height="6" rx="1.2" fill="currentColor"/></svg> JigFlow <small>docs</small></a>
+<div class="top-links"><a href="cli.html">CLI</a><a href="https://github.com/jigflow-ai/jigflow">GitHub</a></div>
+</div></header>
+<div class="layout">
+<aside class="side"><nav aria-label="Documentation">
+<h2>Start</h2><ul>
+<li><a href="index.html">Overview</a></li>
+<li><a href="getting-started.html">Getting started</a></li>
+</ul>
+<h2>Guide</h2><ul>
+<li><a href="concepts.html">Concepts</a></li>
+<li><a href="playbook.html">Playbook reference</a></li>
+<li><a href="playbooks.html">Shipped Playbooks</a></li>
+<li><a href="agents.html">Agents and Adapters</a></li>
+<li><a href="proposals.html">Proposals and the Dashboard</a></li>
+<li><a href="connectors.html">Connectors</a></li>
+<li><a href="ledger.html">Ledger</a></li>
+</ul>
+<h2>Reference</h2><ul>
+<li><a href="cli.html" aria-current="page">CLI</a></li>
+</ul>
+<h2>Elsewhere</h2><ul>
+<li><a href="https://github.com/jigflow-ai/jigflow/blob/main/CONTEXT.md">Glossary (CONTEXT.md)</a></li>
+<li><a href="https://github.com/jigflow-ai/jigflow/tree/main/docs/adr">Decision records</a></li>
+</ul></nav></aside>
+<main>
+<h1>CLI</h1>
+<p class="lede">Every <code>jfl</code> command, flag and environment variable. The descriptions are the same as <code>jfl</code> prints when run with no arguments. The examples are one-liners.</p>
+<p><span class="tag agent">MCP</span> marks the commands the MCP server (<code>jfl mcp</code>) gives agent sessions. <span class="tag human">person</span> marks those only a person may run. Many others refuse particular things to an agent session, such as a Human Transition. An agent session is any command run with <code>JFL_SESSION</code> set, which the Adapters do.</p>
+<ul><li><a href="#setting-up">Setting up</a>: <a href="#init"><code>init</code></a>, <a href="#publish"><code>publish</code></a>, <a href="#version"><code>version</code></a></li><li><a href="#working-with-artifacts">Working with Artifacts</a>: <a href="#create"><code>create</code></a>, <a href="#move"><code>move</code></a>, <a href="#comment"><code>comment</code></a>, <a href="#show"><code>show</code></a>, <a href="#query"><code>query</code></a>, <a href="#next"><code>next</code></a></li><li><a href="#proposals">Proposals</a>: <a href="#propose"><code>propose</code></a>, <a href="#approve"><code>approve</code></a>, <a href="#reject"><code>reject</code></a></li><li><a href="#the-playbook">The Playbook</a>: <a href="#check"><code>check</code></a>, <a href="#simulate"><code>simulate</code></a>, <a href="#migrate"><code>migrate</code></a></li><li><a href="#visibility">Visibility</a>: <a href="#ui"><code>ui</code></a>, <a href="#ledger"><code>ledger</code></a></li><li><a href="#agent-integration">Agent integration</a>: <a href="#mcp"><code>mcp</code></a>, <a href="#hook"><code>hook</code></a></li></ul>
+<h2 id="setting-up">Setting up</h2>
+<h3 id="init"><code>init</code></h3>
+<pre><code>jfl init [--playbook larapilot|pocock|own] [--adapter &lt;adapter&gt;]
+       [--setting &lt;connector&gt;[.&lt;Type&gt;].&lt;setting&gt;=&lt;value&gt;]... [--label &lt;Type&gt;.&lt;status&gt;=&lt;label&gt;]...</code></pre>
+<p>Set the project up, asking at the terminal what the flags don't say: the Playbook to use, with no default (Larapilot-style, Pocock, or your own, which the playbook-author Skill builds with you); the settings a tracker's Connector needs and the label of each Status it keeps; and the Adapter to publish through. It proposes, as one Proposal, the commands of the Gates tests and lint and a starter Guideline, conventions, from the toolchain it detects. Running it again keeps what is set up and asks only for what is missing.</p>
+<p class="label">Example</p><pre><code>jfl init --playbook larapilot --adapter claude-code</code></pre>
+<h3 id="publish"><code>publish</code></h3>
+<pre><code>jfl publish &lt;adapter&gt;</code></pre>
+<p>Publish the Playbook's Skills, the Guidelines and Personas they name, every active Persona and a router Skill built from its Bindings, which also names the Skills only a person starts, for a coding agent: claude-code, as Claude Code Skills in .claude/skills, with the hooks that read its token usage in .claude/settings.json, or agents-md, as a section of AGENTS.md, Skills in .agents/skills and Personas in .agents/personas; publishing again replaces and removes only what jfl published. Active Personas are those of the Persona Library ($XDG_CONFIG_HOME/jigflow/personas, or ~/.config/jigflow/personas) and of the Playbook, and the active Persona Artifacts; the project's, active or retired, override the Library's by name.</p>
+<p class="label">Example</p><pre><code>jfl publish agents-md</code></pre>
+<h3 id="version"><code>version</code></h3>
+<pre><code>jfl version</code></pre>
+<p>Print the version.</p>
+<p class="label">Example</p><pre><code>jfl version</code></pre>
+<h2 id="working-with-artifacts">Working with Artifacts</h2>
+<h3 id="create"><code>create</code> <span class="tag agent">MCP</span></h3>
+<pre><code>jfl create &lt;Type&gt; --title &lt;title&gt; [--status &lt;status&gt;] [--field &lt;field&gt;=&lt;value&gt;]...
+         [--link &lt;link&gt;=&lt;id&gt;]...</code></pre>
+<p>Create an Artifact in one of the Type's initial Statuses, with values for its fields and Links to other Artifacts, in the Type's Store: a file, or an item of the tracker its Connector reaches, which gives it its id; an agent's carries the AI-generated marker. Every Playbook has the built-in Persona Type: its title is the Persona's name and its body describes it; anyone may create one into proposed, and only a person moves it to active or retired.</p>
+<p class="label">Example</p><pre><code>jfl create Task --title &quot;Token table&quot; --field priority=must --link part_of=ST-1</code></pre>
+<h3 id="move"><code>move</code> <span class="tag agent">MCP</span></h3>
+<pre><code>jfl move &lt;id&gt; &lt;status&gt;</code></pre>
+<p>Move an Artifact through a declared Transition, running its Gates before and its Actions after; a Human Transition asks a person to confirm it in an interactive terminal and is refused to agents, and one the Playbook marks human: dashboard is made only in the Dashboard (jfl ui); a body edited outside jfl is re-validated, and a Status or frontmatter changed outside jfl is refused; an agent session's move Claims the Artifact, and is refused on one another session claims; entering a Status with no Binding, or a final one, releases it.</p>
+<p class="label">Example</p><pre><code>jfl move T-1 in-review</code></pre>
+<h3 id="comment"><code>comment</code></h3>
+<pre><code>jfl comment &lt;id&gt; &lt;text&gt;</code></pre>
+<p>Add a comment to an Artifact: in the tracker, where an agent's ends with the AI-generated marker, or at the end of its file's body.</p>
+<p class="label">Example</p><pre><code>jfl comment T-1 &quot;The migration needs an index on user_id.&quot;</code></pre>
+<h3 id="show"><code>show</code> <span class="tag agent">MCP</span></h3>
+<pre><code>jfl show &lt;id&gt;</code></pre>
+<p>Print an Artifact as query lists it, then its body and the comments its tracker keeps, so Skills read Artifacts kept in a tracker through jfl too.</p>
+<p class="label">Example</p><pre><code>jfl show T-1</code></pre>
+<h3 id="query"><code>query</code> <span class="tag agent">MCP</span></h3>
+<pre><code>jfl query [--type &lt;Type&gt;] [--status &lt;status&gt;]</code></pre>
+<p>List the Artifacts, with their Status, Claim and Links, optionally only those of one Type or in one Status.</p>
+<p class="label">Example</p><pre><code>jfl query --type Task --status ready</code></pre>
+<h3 id="next"><code>next</code> <span class="tag agent">MCP</span></h3>
+<pre><code>jfl next [--autopilot]</code></pre>
+<p>Say which Skill to run on which Artifact, preferring what the session claims and skipping what others claim, and make the pick the session's Focus; in an interactive terminal, show the alternatives too; --autopilot is one step of an agent session's autopilot, which stops, saying why and what waits for a person, when nothing is left for an agent, its last move was refused, or the Skill it handed out didn't move the Artifact on.</p>
+<p class="label">Example</p><pre><code>jfl next --autopilot</code></pre>
+<h2 id="proposals">Proposals</h2>
+<h3 id="propose"><code>propose</code> <span class="tag agent">MCP</span></h3>
+<pre><code>jfl propose &lt;file&gt;</code></pre>
+<p>Put forward the creations and Transitions in a Proposal file for a person to approve or reject as one unit; creations may give the Type's fields values and Link to each other by ref; an item may change the Playbook instead, giving a Gate its command, adding a Guideline, or declaring an Artifact Type or writing a Skill, either replacing the one of that name; a Proposal whose Playbook would fail check is refused.</p>
+<p class="label">Example</p><pre><code>jfl propose breakdown.yaml</code></pre>
+<h3 id="approve"><code>approve</code> <span class="tag human">person</span></h3>
+<pre><code>jfl approve &lt;proposal&gt;</code></pre>
+<p>Apply every change in a pending Proposal, or none; only a person may, confirming it in an interactive terminal or in the Dashboard, and its items may then make Human Transitions and create into Statuses with a Binding; one making a Transition the Playbook requires the Dashboard for is approved only there.</p>
+<p class="label">Example</p><pre><code>jfl approve P-2</code></pre>
+<h3 id="reject"><code>reject</code> <span class="tag human">person</span></h3>
+<pre><code>jfl reject &lt;proposal&gt;</code></pre>
+<p>Drop a pending Proposal, changing nothing; only a person may.</p>
+<p class="label">Example</p><pre><code>jfl reject P-2</code></pre>
+<h2 id="the-playbook">The Playbook</h2>
+<h3 id="check"><code>check</code></h3>
+<pre><code>jfl check [--proposal &lt;proposal&gt;]</code></pre>
+<p>Validate the Playbook, merged over the Base Playbook it extends, listing every problem, or the Artifacts it leaves in an undeclared Status; every other command refuses to run while there are any. --proposal validates it as that pending Proposal would make it, writing nothing.</p>
+<p class="label">Example</p><pre><code>jfl check --proposal P-3</code></pre>
+<h3 id="simulate"><code>simulate</code></h3>
+<pre><code>jfl simulate &lt;Type&gt; [--proposal &lt;proposal&gt;] [--source]</code></pre>
+<p>Walk a pretend Artifact of the Type through the Playbook: print each path from an initial Status to a final one, visiting no Status twice, with the Skill, Readiness, Guards, Gates, Actions and Human Transitions along it; writes no state and runs no Gates or Actions. --proposal walks it through the Playbook as that pending Proposal would make it; --source first prints the file declaring the Type.</p>
+<p class="label">Example</p><pre><code>jfl simulate Task --source</code></pre>
+<h3 id="migrate"><code>migrate</code> <span class="tag human">person</span></h3>
+<pre><code>jfl migrate</code></pre>
+<p>Apply the Playbook Migrations: move every Artifact in a Status its Artifact Type no longer declares to the Status a Migration maps it to, all of them or none; only a person may.</p>
+<p class="label">Example</p><pre><code>jfl migrate</code></pre>
+<h2 id="visibility">Visibility</h2>
+<h3 id="ui"><code>ui</code></h3>
+<pre><code>jfl ui [--addr &lt;host:port&gt;] serve the Dashboard on this machine, at 127.0.0.1:7457</code></pre>
+<p>Unless --addr names another loopback address, until interrupted: the Artifacts of each Type with their Status, Claim and Links and who they wait on, the human queue and pending Proposals first, the Ledger summed, and each Type's Status machine drawn. The browser that opens the link it prints may approve or reject Proposals, editing their creations first, and make Human Transitions; a Dashboard an agent session starts is only to look at. It never edits an Artifact's body.</p>
+<p class="label">Example</p><pre><code>jfl ui --addr 127.0.0.1:8080</code></pre>
+<h3 id="ledger"><code>ledger</code></h3>
+<pre><code>jfl ledger</code></pre>
+<p>Sum the Ledger: the time each Artifact spent in each Status, so far in the one it is in, and the agent session time and tokens charged to it while it was in Focus; the time every Artifact of a Type spent in each Status; and agent time and tokens with nothing in Focus, which are unattributed. Every create, Transition, approved Proposal and migration, and every change of a session's Focus, adds an entry of its own to the committed .jigflow/ledger, timed by jfl's clock; tokens come only from the agent's own records, and agents without any record time only.</p>
+<p class="label">Example</p><pre><code>jfl ledger</code></pre>
+<h2 id="agent-integration">Agent integration</h2>
+<h3 id="mcp"><code>mcp</code></h3>
+<pre><code>jfl mcp</code></pre>
+<p>Serve the agent-safe commands as an MCP server over stdio, as an agent session: next, move (never a Human Transition), propose, query, and create into an Inbox; never approve or reject. The session is JFL_SESSION, or a fresh one for the server's life.</p>
+<p class="label">Example</p><pre><code>claude mcp add jfl -- jfl mcp</code></pre>
+<h3 id="hook"><code>hook</code></h3>
+<pre><code>jfl hook claude-code</code></pre>
+<p>Run by the Claude Code hooks jfl publish sets up, never by an agent session: at SessionStart, give the session's commands JFL_SESSION; after each turn, and at the end of a sub-agent or the session, add the token usage Claude Code's transcripts record to the Ledger.</p>
+<p class="label">Example</p><pre><code>jfl hook claude-code   # run by the hooks jfl publish writes, not by you</code></pre>
+<h2 id="environment">Environment</h2><div class="table-wrap"><table><tr><th>Variable</th><th>Meaning</th></tr>
+<tr><td><code>JFL_SESSION</code></td><td>The agent session's id, set by Adapters; without it the command is a person's.</td></tr>
+<tr><td><code>XDG_CONFIG_HOME</code></td><td>Where the user's Persona Library is, under jigflow/personas (default ~/.config).</td></tr>
+<tr><td><code>JFL_POCOCK_GIT, JFL_POCOCK_REF</code></td><td>The git repository and ref jfl init --playbook pocock extends, for a fork or a mirror (default https://github.com/jigflow-ai/jigflow-playbook-pocock at v0.3.0).</td></tr>
+</table></div>
+<h2 id="exit-status">Exit status</h2><div class="table-wrap"><table><tr><th>Code</th><th>Meaning</th></tr>
+<tr><td><code>0</code></td><td>Done.</td></tr>
+<tr><td><code>1</code></td><td>Refused or failed: a workflow refusal, such as a failing Gate or a Human Transition asked for by an agent.</td></tr>
+<tr><td><code>2</code></td><td>Malformed command line.</td></tr>
+<tr><td><code>3</code></td><td>A Connector failed: a problem reaching or using the tracker, not a workflow refusal.</td></tr>
+</table></div>
+<footer class="page-footer"><a href="ledger.html">← Ledger</a><span></span></footer>
+</main>
+</div>
+</body>
+</html>

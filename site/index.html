@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>JigFlow docs</title>
+<meta name="description" content="What JigFlow is and how its loop works.">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="top"><div class="top-inner">
+<a class="brand" href="index.html"><svg class="brand-mark" viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="3" width="20" height="4" rx="1.5" fill="currentColor"/><rect x="4" y="7" width="4" height="14" rx="1.2" fill="currentColor" opacity=".55"/><rect x="10" y="7" width="4" height="10" rx="1.2" fill="currentColor" opacity=".75"/><rect x="16" y="7" width="4" height="6" rx="1.2" fill="currentColor"/></svg> JigFlow <small>docs</small></a>
+<div class="top-links"><a href="cli.html">CLI</a><a href="https://github.com/jigflow-ai/jigflow">GitHub</a></div>
+</div></header>
+<div class="layout">
+<aside class="side"><nav aria-label="Documentation">
+<h2>Start</h2><ul>
+<li><a href="index.html" aria-current="page">Overview</a></li>
+<li><a href="getting-started.html">Getting started</a></li>
+</ul>
+<h2>Guide</h2><ul>
+<li><a href="concepts.html">Concepts</a></li>
+<li><a href="playbook.html">Playbook reference</a></li>
+<li><a href="playbooks.html">Shipped Playbooks</a></li>
+<li><a href="agents.html">Agents and Adapters</a></li>
+<li><a href="proposals.html">Proposals and the Dashboard</a></li>
+<li><a href="connectors.html">Connectors</a></li>
+<li><a href="ledger.html">Ledger</a></li>
+</ul>
+<h2>Reference</h2><ul>
+<li><a href="cli.html">CLI</a></li>
+</ul>
+<h2>Elsewhere</h2><ul>
+<li><a href="https://github.com/jigflow-ai/jigflow/blob/main/CONTEXT.md">Glossary (CONTEXT.md)</a></li>
+<li><a href="https://github.com/jigflow-ai/jigflow/tree/main/docs/adr">Decision records</a></li>
+</ul></nav></aside>
+<main>
+<h1>JigFlow</h1>
+<p class="lede">Define your own agent workflow as a Playbook, and run it inside the coding agent you already use. The human checkpoints are enforced by the tool, not left to the agent's goodwill.</p>
+
+<p>JigFlow (<code>jigflow</code>, alias <code>jfl</code>) is a single Go binary. It isn't a new agent: it sits under Claude Code, or any agent that reads <code>AGENTS.md</code>, and becomes the only thing allowed to write workflow state. The agent asks <code>jfl</code> what to work on next and asks it to record every move. <code>jfl</code> checks each move against the Playbook, and refuses it when the tests fail, when the work is blocked, or when the move is one only a person may make.</p>
+
+<h2 id="why">Why</h2>
+<p>If you work with coding agents you probably want a repeatable loop: an idea becomes a spec, the spec becomes tickets, tickets get implemented and reviewed, and a person decides what ships. Today there are two kinds of option, and both leave something out.</p>
+<ul>
+  <li><strong>Opinionated workflow packs</strong> like Larapilot enforce exactly this loop, but it's their loop, and it's tied to one ecosystem.</li>
+  <li><strong>Prompt-only skill collections</strong> like Matt Pocock's skills work in any language and are easy to change. But nothing enforces them: an agent can skip triage, approve its own plan, or merge without review. The checkpoints are conventions the agent is asked to follow.</li>
+</ul>
+<p>JigFlow keeps the flexibility of the second and the enforcement of the first. You declare your own kinds of work, their lifecycles and their checks. Gates are plain commands (<code>go test ./...</code>, <code>pytest</code>, <code>phpstan</code>), so it works in any codebase.</p>
+
+<h2 id="loop">The loop</h2>
+<figure>
+<svg viewBox="0 -14 720 264" role="img" aria-labelledby="loop-title loop-desc">
+  <title id="loop-title">The JigFlow loop</title>
+  <desc id="loop-desc">jfl next hands the agent a Skill and an Artifact. The agent runs the Skill and asks jfl move for a Transition. jfl runs the Gates and checks Readiness and Guards. When the Artifact reaches a Status with no Binding, the work waits for a person, who makes the Human Transition.</desc>
+  <defs><marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="d-arrow" d="M0,0 L10,5 L0,10 z"/></marker></defs>
+  <rect class="d-jfl" x="20" y="30" width="180" height="70" rx="10"/>
+  <text class="d-text" x="110" y="60" text-anchor="middle">jfl next</text>
+  <text class="d-sub" x="110" y="80" text-anchor="middle">picks a Skill + Artifact</text>
+  <rect class="d-agent" x="270" y="30" width="180" height="70" rx="10"/>
+  <text class="d-text" x="360" y="60" text-anchor="middle">Agent runs the Skill</text>
+  <text class="d-sub" x="360" y="80" text-anchor="middle">writes code, the Artifact body</text>
+  <rect class="d-jfl" x="520" y="30" width="180" height="70" rx="10"/>
+  <text class="d-text" x="610" y="60" text-anchor="middle">jfl move</text>
+  <text class="d-sub" x="610" y="80" text-anchor="middle">Gates, Readiness, Guards</text>
+  <rect class="d-human" x="270" y="160" width="180" height="70" rx="10"/>
+  <text class="d-text" x="360" y="190" text-anchor="middle">A person decides</text>
+  <text class="d-sub" x="360" y="210" text-anchor="middle">Human Transition, Proposal</text>
+  <path class="d-line" d="M200,65 H266" marker-end="url(#ah)"/>
+  <path class="d-line" d="M450,65 H516" marker-end="url(#ah)"/>
+  <path class="d-line" d="M610,100 V195 H454" marker-end="url(#ah)"/>
+  <text class="d-sub" x="602" y="150" text-anchor="end">Status with no Binding</text>
+  <path class="d-line" d="M270,195 H110 V104" marker-end="url(#ah)"/>
+  <text class="d-sub" x="118" y="150">next Status has a Binding</text>
+  <path class="d-line" d="M610,30 V12 H110 V26" marker-end="url(#ah)"/>
+  <text class="d-sub" x="360" y="8" text-anchor="middle">refused or moved on: ask again</text>
+</svg>
+<figcaption>Green is the agent's work, purple a person's, blue what <code>jfl</code> enforces.</figcaption>
+</figure>
+<p>The Playbook's Status machine <em>is</em> the workflow. Each Status of an Artifact Type is either <strong>bound</strong> to a Skill, so <code>jfl next</code> hands it to an agent, or it has no Binding, and then it is human work. Moves into and out of a Status can be declared <strong>Human Transitions</strong>: the agent may propose them, but only a person at an interactive terminal, or in the local Dashboard, can make them.</p>
+
+<h2 id="what">What you get</h2>
+<ul>
+  <li><strong>Your own Artifact Types</strong>: PRDs, Specs, Tickets, ADRs, whatever your process has, each with its Statuses, Transitions, fields and Links.</li>
+  <li><strong>Enforced checks</strong>: Gates (commands that must pass), Readiness (e.g. every <code>blocked_by</code> is done) and Guards on Linked Artifacts.</li>
+  <li><strong>Proposals</strong>: an agent's plan, like a breakdown into ten Tickets, arrives as one unit a person approves or rejects.</li>
+  <li><strong>Storage where the team wants it</strong>: Markdown files in git, or GitHub Issues and Linear through Connectors.</li>
+  <li><strong>Visibility</strong>: a local Dashboard, and a committed Ledger of time per Status and tokens per Artifact.</li>
+  <li><strong>Two shipped Playbooks</strong> and a <code>playbook-author</code> Skill that builds yours by interviewing you.</li>
+</ul>
+
+<h2 id="next">Where to go next</h2>
+<div class="cards">
+  <a class="card" href="getting-started.html"><strong>Getting started</strong><span>Install, <code>jfl init</code>, the first loop.</span></a>
+  <a class="card" href="concepts.html"><strong>Concepts</strong><span>Playbook, Artifact, Binding, Proposal, Claim…</span></a>
+  <a class="card" href="playbook.html"><strong>Playbook reference</strong><span>Write or change a Playbook by hand.</span></a>
+  <a class="card" href="cli.html"><strong>CLI</strong><span>Every command and flag.</span></a>
+</div>
+<footer class="page-footer"><span></span><a href="getting-started.html">Getting started →</a></footer>
+</main>
+</div>
+</body>
+</html>

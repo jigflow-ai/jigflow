@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Concepts · JigFlow</title>
+<meta name="description" content="The words JigFlow uses, and what each one means.">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="top"><div class="top-inner">
+<a class="brand" href="index.html"><svg class="brand-mark" viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="3" width="20" height="4" rx="1.5" fill="currentColor"/><rect x="4" y="7" width="4" height="14" rx="1.2" fill="currentColor" opacity=".55"/><rect x="10" y="7" width="4" height="10" rx="1.2" fill="currentColor" opacity=".75"/><rect x="16" y="7" width="4" height="6" rx="1.2" fill="currentColor"/></svg> JigFlow <small>docs</small></a>
+<div class="top-links"><a href="cli.html">CLI</a><a href="https://github.com/jigflow-ai/jigflow">GitHub</a></div>
+</div></header>
+<div class="layout">
+<aside class="side"><nav aria-label="Documentation">
+<h2>Start</h2><ul>
+<li><a href="index.html">Overview</a></li>
+<li><a href="getting-started.html">Getting started</a></li>
+</ul>
+<h2>Guide</h2><ul>
+<li><a href="concepts.html" aria-current="page">Concepts</a></li>
+<li><a href="playbook.html">Playbook reference</a></li>
+<li><a href="playbooks.html">Shipped Playbooks</a></li>
+<li><a href="agents.html">Agents and Adapters</a></li>
+<li><a href="proposals.html">Proposals and the Dashboard</a></li>
+<li><a href="connectors.html">Connectors</a></li>
+<li><a href="ledger.html">Ledger</a></li>
+</ul>
+<h2>Reference</h2><ul>
+<li><a href="cli.html">CLI</a></li>
+</ul>
+<h2>Elsewhere</h2><ul>
+<li><a href="https://github.com/jigflow-ai/jigflow/blob/main/CONTEXT.md">Glossary (CONTEXT.md)</a></li>
+<li><a href="https://github.com/jigflow-ai/jigflow/tree/main/docs/adr">Decision records</a></li>
+</ul></nav></aside>
+<main>
+<h1>Concepts</h1>
+<p class="lede">JigFlow uses a small set of words, always with the same meaning: in the CLI's messages, in Playbooks, in these docs. This page is the glossary, taken from the project's <a href="https://github.com/jigflow-ai/jigflow/blob/main/CONTEXT.md">CONTEXT.md</a>.</p>
+<p>Here is how they fit together. A <a href="#playbook">Playbook</a> declares <a href="#artifact-type">Artifact Types</a>, such as a Task. A Task Artifact sits in one <a href="#status">Status</a> at a time and moves only through declared <a href="#transition">Transitions</a>. A <a href="#binding">Binding</a> ties a Status to the <a href="#skill">Skill</a> an agent runs there, and a Status with no Binding is a person's work. <a href="#gate">Gates</a>, <a href="#readiness">Readiness</a> and <a href="#guard">Guards</a> decide whether a move may happen. A <a href="#human-transition">Human Transition</a> or a <a href="#proposal">Proposal</a> is where a person decides.</p>
+<p>Each entry also lists the words it deliberately isn't, so the vocabulary stays unambiguous. JigFlow says "Artifact", not "ticket", and "Gate", not "check".</p>
+<h2 id="section-playbook">Playbook</h2>
+<dl class="terms">
+<dt id="playbook">Playbook</dt>
+<dd>The complete user-defined way of working for a project: its Artifact Types, Statuses, Transitions, Gates, Skills and Personas. The shipped default Playbook is written in the same format and has no special privileges.<br><span class="avoid">Not: Framework, workflow, pack, methodology</span></dd>
+<dt id="base-playbook">Base Playbook</dt>
+<dd>The single Playbook another Playbook extends; the extending Playbook overrides its parts by name.<br><span class="avoid">Not: Parent, template, preset</span></dd>
+<dt id="playbook-migration">Playbook Migration</dt>
+<dd>A declared mapping from old Statuses to new ones, applied to existing Artifacts when a Playbook or its Base Playbook changes.<br><span class="avoid">Not: Upgrade, schema change</span></dd>
+<dt id="adapter">Adapter</dt>
+<dd>The part that publishes a Playbook's Skills in the format a particular coding agent expects.<br><span class="avoid">Not: Integration, plugin, connector</span></dd>
+</dl>
+<h2 id="section-workflow-state">Workflow state</h2>
+<dl class="terms">
+<dt id="artifact">Artifact</dt>
+<dd>A file in the repository that holds one unit of workflow state (e.g. a requirement, a story, a task) and is the source of truth for it.<br><span class="avoid">Not: Document, record, ticket</span></dd>
+<dt id="artifact-type">Artifact Type</dt>
+<dd>A user-declared kind of Artifact, with its own fields, its own set of Statuses, and its own Store.<br><span class="avoid">Not: Schema, template, entity</span></dd>
+<dt id="store">Store</dt>
+<dd>Where the Artifacts of one Artifact Type live: files in the repository (the default) or an outside tracker reached through a Connector.<br><span class="avoid">Not: Backend, storage, repository</span></dd>
+<dt id="status">Status</dt>
+<dd>The current position of an Artifact in the lifecycle declared by its Artifact Type.<br><span class="avoid">Not: State, stage, phase</span></dd>
+<dt id="readiness">Readiness</dt>
+<dd>A declared condition on a Status that must hold before agent work on an Artifact in that Status can start (e.g. every <em>blocked_by</em> Link is done).<br><span class="avoid">Not: Precondition, blocked flag</span></dd>
+<dt id="inbox">Inbox</dt>
+<dd>A Status where agents may create Artifacts directly without a Human Transition. It is valid only if no Skill that changes code or Artifacts can be reached from it without passing a Human Transition.<br><span class="avoid">Not: Queue, backlog, intake</span></dd>
+<dt id="transition">Transition</dt>
+<dd>A declared move of an Artifact from one Status to another.<br><span class="avoid">Not: Step, promotion</span></dd>
+<dt id="gate">Gate</dt>
+<dd>A user-declared command that must succeed for a Transition to happen. A Playbook may declare one by name only and leave its command to the project's Playbook file, which <code>jfl init</code> proposes from the project's toolchain.<br><span class="avoid">Not: Check, hook, quality gate</span></dd>
+<dt id="guard">Guard</dt>
+<dd>A declared condition on the Statuses of Linked Artifacts that must hold for a Transition to happen. Unlike Readiness, it is checked only at the moment of the move.<br><span class="avoid">Not: Rule, precondition, constraint</span></dd>
+<dt id="link">Link</dt>
+<dd>A typed, declared relation from one Artifact to another (e.g. a Story <em>implements</em> a Requirement).<br><span class="avoid">Not: Reference, relation, parent</span></dd>
+<dt id="action">Action</dt>
+<dd>A user-declared command run after a Transition succeeds (e.g. commit, open a branch, notify).<br><span class="avoid">Not: Hook, effect, callback</span></dd>
+<dt id="human-transition">Human Transition</dt>
+<dd>A Transition that only a human may perform; the agent can propose it but never make it. Creating an Artifact directly into a Status that has a Binding also counts as a Human Transition, unless that Status is an Inbox. A Playbook may require one to be made in the Dashboard. It guards against accidents, not against a determined agent.<br><span class="avoid">Not: Approval step, manual step</span></dd>
+<dt id="focus">Focus</dt>
+<dd>The Artifact a session is currently working on; set by <code>next</code> and moved by Transitions. It lives only in the session, never in git.<br><span class="avoid">Not: Claim, current task, active item</span></dd>
+<dt id="proposal">Proposal</dt>
+<dd>A set of one or more Artifacts, Transitions or changes to the Playbook (a Gate's command, a Guideline, an Artifact Type, a Skill) an agent, or <code>jfl init</code>, puts forward together, approved or rejected by a human as one unit.<br><span class="avoid">Not: Batch, changeset, request</span></dd>
+<dt id="claim">Claim</dt>
+<dd>A recorded owner on an Artifact, stored in the tracker's assignee or in the file, so parallel sessions don't pick the same work. Unlike a Focus, it is shared. It is released automatically when the Artifact enters a Status with no Binding or a final Status.<br><span class="avoid">Not: Lock, assignment, reservation</span></dd>
+</dl>
+<h2 id="section-visibility">Visibility</h2>
+<dl class="terms">
+<dt id="ledger">Ledger</dt>
+<dd>The committed record of the time each Artifact spends in each Status, and of agent session time, and tokens where the agent's own records expose them (never numbers the agent reports), charged to the Artifact in Focus or to unattributed.<br><span class="avoid">Not: Usage log, metrics, telemetry</span></dd>
+<dt id="connector">Connector</dt>
+<dd>An external executable, written in any language, through which the CLI reads and writes Artifacts kept in an outside tracker, mapping Statuses to that tracker's labels or states.<br><span class="avoid">Not: Integration, plugin, sync</span></dd>
+<dt id="dashboard">Dashboard</dt>
+<dd>The local web view of a project's Artifacts, human queue, pending Proposals, Ledger and Status machines, served only on the developer's machine, and the preferred place to approve or reject Proposals and perform Human Transitions. It never edits an Artifact's body.<br><span class="avoid">Not: UI, console, admin panel</span></dd>
+</dl>
+<h2 id="section-agent-guidance">Agent guidance</h2>
+<dl class="terms">
+<dt id="skill">Skill</dt>
+<dd>A SKILL.md prompt file that tells an agent how to do one piece of work in the workflow; it may request Transitions but never write state directly.<br><span class="avoid">Not: Command, prompt, recipe</span></dd>
+<dt id="invocation-mode">Invocation Mode</dt>
+<dd>How a Skill may be started: by a person only (user), by the agent whenever relevant (agent), or through a Binding (bound).<br><span class="avoid">Not: Trigger, activation</span></dd>
+<dt id="binding">Binding</dt>
+<dd>The declared association between a Status of an Artifact Type and the Skill that works on Artifacts in that Status. The set of Bindings is the Playbook's topology; a Status with no Binding is human work and is never handed to an agent. A Binding may ask for the Skill to run in a fresh session.<br><span class="avoid">Not: Route, handler, pipeline, orchestration</span></dd>
+<dt id="guideline">Guideline</dt>
+<dd>A rule file in the Playbook that Skills reference and load only when needed; the home of language and codebase conventions.<br><span class="avoid">Not: Runtime pack, rules, convention file</span></dd>
+<dt id="persona">Persona</dt>
+<dd>A named point of view a Skill asks the agent to adopt; it is not a separate agent and has no memory of its own. A Persona proposed on demand is itself an Artifact of the built-in Persona Type (proposed, active, retired): the agent may propose one, but it becomes usable only through a Human Transition. Those the Playbook or the Persona Library ship are usable as they are. Adapters publish only the usable ones.<br><span class="avoid">Not: Role, agent, character</span></dd>
+<dt id="persona-library">Persona Library</dt>
+<dd>A user-level collection of Personas reused across projects; a project Persona with the same name, one the Playbook ships or a Persona Artifact a person has activated or retired, overrides a library one.<br><span class="avoid">Not: Persona registry, persona pack</span></dd>
+</dl>
+<footer class="page-footer"><a href="getting-started.html">← Getting started</a><a href="playbook.html">Playbook reference →</a></footer>
+</main>
+</div>
+</body>
+</html>

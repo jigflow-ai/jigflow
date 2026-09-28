@@ -1,0 +1,201 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Playbook reference · JigFlow</title>
+<meta name="description" content="The files a Playbook is made of, and every key they take.">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="top"><div class="top-inner">
+<a class="brand" href="index.html"><svg class="brand-mark" viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="3" width="20" height="4" rx="1.5" fill="currentColor"/><rect x="4" y="7" width="4" height="14" rx="1.2" fill="currentColor" opacity=".55"/><rect x="10" y="7" width="4" height="10" rx="1.2" fill="currentColor" opacity=".75"/><rect x="16" y="7" width="4" height="6" rx="1.2" fill="currentColor"/></svg> JigFlow <small>docs</small></a>
+<div class="top-links"><a href="cli.html">CLI</a><a href="https://github.com/jigflow-ai/jigflow">GitHub</a></div>
+</div></header>
+<div class="layout">
+<aside class="side"><nav aria-label="Documentation">
+<h2>Start</h2><ul>
+<li><a href="index.html">Overview</a></li>
+<li><a href="getting-started.html">Getting started</a></li>
+</ul>
+<h2>Guide</h2><ul>
+<li><a href="concepts.html">Concepts</a></li>
+<li><a href="playbook.html" aria-current="page">Playbook reference</a></li>
+<li><a href="playbooks.html">Shipped Playbooks</a></li>
+<li><a href="agents.html">Agents and Adapters</a></li>
+<li><a href="proposals.html">Proposals and the Dashboard</a></li>
+<li><a href="connectors.html">Connectors</a></li>
+<li><a href="ledger.html">Ledger</a></li>
+</ul>
+<h2>Reference</h2><ul>
+<li><a href="cli.html">CLI</a></li>
+</ul>
+<h2>Elsewhere</h2><ul>
+<li><a href="https://github.com/jigflow-ai/jigflow/blob/main/CONTEXT.md">Glossary (CONTEXT.md)</a></li>
+<li><a href="https://github.com/jigflow-ai/jigflow/tree/main/docs/adr">Decision records</a></li>
+</ul></nav></aside>
+<main>
+<h1>Playbook reference</h1>
+<p class="lede">A Playbook is a directory of plain files: YAML for the workflow, Markdown for what agents read. This page lists every file and every key. The examples come from the Larapilot-style and Pocock Playbooks, which both pass <code>jfl check</code>.</p>
+
+<p>You rarely write one from scratch. Usually a project <a href="#extends">extends</a> a shipped Playbook and overrides a few parts by name, or asks <a href="playbooks.html#playbook-author"><code>/playbook-author</code></a> to propose the changes. Either way, agents never edit these files. A change to the Playbook reaches the project as a <a href="proposals.html">Proposal</a> a person approves, or as a person's own edit.</p>
+
+<h2 id="layout">Layout</h2>
+<pre><code>.jigflow/
+  playbook.yaml            <span class="c"># name, extends, gates, connectors</span>
+  types/*.yaml             <span class="c"># one Artifact Type per file, declared in file-name order</span>
+  skills/&lt;name&gt;/SKILL.md   <span class="c"># Skills</span>
+  guidelines/&lt;name&gt;.md     <span class="c"># Guidelines</span>
+  personas/&lt;name&gt;.md       <span class="c"># Personas</span>
+  migrations/*.yaml        <span class="c"># Playbook Migrations (the project's only)</span>
+  state/                   <span class="c"># Artifacts kept in files: written by jfl, never by hand</span>
+  proposals/               <span class="c"># Proposals</span>
+  ledger/                  <span class="c"># the Ledger: one committed file per entry</span>
+  playbook.lock            <span class="c"># the commit a git Base Playbook's ref resolved to</span></code></pre>
+<p>A Playbook shipped on its own, like the Pocock one, has the same layout at the root of its repository, without the state directories.</p>
+
+<h2 id="playbook-yaml"><code>playbook.yaml</code></h2>
+<pre><code>name: shop
+extends: {git: https://github.com/jigflow-ai/jigflow-playbook-pocock, ref: v0.3.0}
+gates:
+  tests: go test ./...
+  lint: go vet ./...
+connectors:
+  github:
+    command: jfl-connector-github
+    settings: {repo: acme/shop}
+    types:
+      Ticket:
+        settings: {label: ticket}
+        statuses:
+          in-progress: "status: doing"   <span class="c"># a label</span>
+          done: {state: closed}          <span class="c"># a state</span></code></pre>
+<div class="table-wrap"><table>
+<tr><th>Key</th><th>What it is</th></tr>
+<tr><td><code>name</code></td><td>The Playbook's name, shown by <code>publish</code> and the router Skill.</td></tr>
+<tr><td><code>extends</code></td><td>The single <a href="#extends">Base Playbook</a>.</td></tr>
+<tr><td><code>gates</code></td><td>The project's command for each Gate named here, wherever the Playbook declares it. It overrides a declared command. This is how a shipped Playbook declares a Gate by name only and leaves the command to you.</td></tr>
+<tr><td><code>connectors</code></td><td>The Connectors that Stores name, with their settings and how Statuses and fields map to the tracker. See <a href="connectors.html">Connectors</a>.</td></tr>
+</table></div>
+
+<h2 id="extends">Base Playbooks: <code>extends</code></h2>
+<p>A Playbook extends at most one Base Playbook, named in one of three ways:</p>
+<pre><code>extends: {builtin: larapilot}                                <span class="c"># built into jfl</span>
+extends: {path: ../playbooks/ours}                           <span class="c"># a directory, relative to the project root</span>
+extends: {git: https://github.com/acme/playbook, ref: v2.1.0} <span class="c"># a git repository, pinned to a ref</span></code></pre>
+<p>The extending Playbook's parts override the base's parts <strong>by name</strong>: an Artifact Type, Skill, Guideline, Persona, Connector or Gate command of the same name replaces the base's one, and everything else is kept. A replaced Artifact Type keeps the base's place in the declaration order, and new ones come after the base's. For a git base, <code>jfl</code> records in <code>.jigflow/playbook.lock</code> the commit the ref resolved to, and keeps using it until you change the ref.</p>
+
+<h2 id="types">Artifact Types: <code>types/*.yaml</code></h2>
+<p>This is the Larapilot-style Task, complete:</p>
+<pre><code>name: Task
+prefix: T                       <span class="c"># ids are T-1, T-2, …</span>
+links:
+  part_of: Story
+  blocked_by: Task
+statuses: [ready, in-progress, in-review, reviewed, done]
+initial: [ready]
+final: [done]
+bindings:
+  ready: {skill: implement, fresh: true}
+  in-progress: implement
+  in-review: {skill: review, fresh: true}
+readiness:
+  ready:
+    - {kind: linked-all-in, link: blocked_by, statuses: [done]}
+transitions:
+  - {from: ready, to: in-progress}
+  - from: in-progress
+    to: in-review
+    gates:
+      - {name: tests}
+      - {name: lint}
+  - {from: in-review, to: in-progress}
+  - {from: in-review, to: reviewed}
+  - {from: reviewed, to: in-progress, human: true}
+  - from: reviewed
+    to: done
+    human: true
+    actions:
+      - {name: commit, cmd: 'git add --all &amp;&amp; git commit --quiet --message "$JFL_ARTIFACT: $JFL_TITLE"'}</code></pre>
+<div class="table-wrap"><table>
+<tr><th>Key</th><th>What it is</th></tr>
+<tr><td><code>name</code>, <code>prefix</code></td><td>The Type's name, used in commands (<code>jfl create Task</code>), and the prefix of its Artifacts' ids.</td></tr>
+<tr><td><code>store</code></td><td><code>files</code> (the default) keeps Artifacts as Markdown in <code>.jigflow/state/</code>. Any other value names a Connector.</td></tr>
+<tr><td><code>fields</code></td><td>Each field with the values it may take, e.g. <code>priority: [must, should, could, wont]</code>. They're set at creation (<code>--field priority=must</code>, or in a Proposal).</td></tr>
+<tr><td><code>statuses</code></td><td>Every Status, in order.</td></tr>
+<tr><td><code>initial</code>, <code>final</code></td><td>Where Artifacts may be created, and where they end. Entering a final Status releases a Claim.</td></tr>
+<tr><td><code>inbox</code></td><td>Statuses anyone, agents included, may create into directly. <code>jfl check</code> refuses an Inbox from which a Skill that changes code or Artifacts is reachable without passing a Human Transition.</td></tr>
+<tr><td><code>links</code></td><td>Named, typed Links to Artifacts of other Types (or the same one).</td></tr>
+<tr><td><code>bindings</code></td><td>For each Status an agent works on, the Skill that does it. A Status with no Binding is human work.</td></tr>
+<tr><td><code>readiness</code></td><td>Per Status, the conditions that must hold before agent work may start there.</td></tr>
+<tr><td><code>transitions</code></td><td>Every allowed move. Anything not listed is refused.</td></tr>
+</table></div>
+
+<h3 id="bindings">Bindings</h3>
+<pre><code>bindings:
+  in-progress: implement                              <span class="c"># just the Skill</span>
+  in-review: {skill: review, fresh: true}             <span class="c"># in a fresh session</span>
+  ready: {skill: implement, isolated: true}           <span class="c"># in an isolated sub-agent</span></code></pre>
+<p>The set of Bindings is the Playbook's topology: <code>jfl next</code> hands out only bound Statuses, and the router Skill lists them. A Status keeps a <a href="concepts.html#claim">Claim</a> only while it has a Binding.</p>
+
+<h3 id="transitions">Transitions</h3>
+<div class="table-wrap"><table>
+<tr><th>Key</th><th>What it is</th></tr>
+<tr><td><code>from</code>, <code>to</code></td><td>The two Statuses.</td></tr>
+<tr><td><code>human</code></td><td><code>true</code> makes it a Human Transition, confirmed at an interactive terminal or in the Dashboard and refused to agent sessions. <code>dashboard</code> requires the Dashboard.</td></tr>
+<tr><td><code>gates</code></td><td>Commands that must succeed <em>before</em> the move. A failing Gate refuses the move and prints its output.</td></tr>
+<tr><td><code>actions</code></td><td>Commands run <em>after</em> the move succeeds (commit, open a branch, notify).</td></tr>
+<tr><td><code>guards</code></td><td>Conditions on Linked Artifacts, checked at the moment of the move.</td></tr>
+</table></div>
+<p>A Gate or Action is <code>{name, cmd}</code>. A Gate may give only a <code>name</code>, with the command coming from <code>playbook.yaml</code>'s <code>gates:</code>. Until it has one, the Playbook still loads, but a move through that Gate is refused with a message saying where to set it. Both run through the shell in the project root with no stdin, and see <code>JFL_ARTIFACT</code> (the id), <code>JFL_TITLE</code>, <code>JFL_FROM</code> and <code>JFL_TO</code> in their environment.</p>
+
+<h3 id="conditions">Readiness and Guards</h3>
+<p>Both take a list of conditions, of two kinds:</p>
+<pre><code>- {kind: linked-all-in, link: blocked_by, statuses: [done]}   <span class="c"># every Artifact this Link points to is in one of these Statuses</span>
+- {kind: has-incoming, link: part_of, min: 1}                 <span class="c"># at least min Artifacts point here through this Link</span></code></pre>
+<p><strong>Readiness</strong> is declared per Status and holds agent work back: <code>jfl next</code> skips an Artifact that isn't ready and says why. A <strong>Guard</strong> is declared on a Transition and is checked only when the move is made. The Larapilot PRD, for example, can't reach <code>specified</code> until at least one Requirement is <code>part_of</code> it.</p>
+
+<h2 id="skills">Skills: <code>skills/&lt;name&gt;/SKILL.md</code></h2>
+<pre><code>---
+description: Implement the Task in Focus as one change that passes the project's tests and lint, then hand it to review.
+changes: true
+invocation: bound
+guidelines: [conventions]
+personas:
+  - name: engineer
+    fallback: "Makes the smallest change that does the job well, in the style of the code around it…"
+---
+Implement the Task in Focus.
+
+1. If it is in ready, run `jfl move &lt;id&gt; in-progress`. …</code></pre>
+<div class="table-wrap"><table>
+<tr><th>Key</th><th>What it is</th></tr>
+<tr><td><code>description</code></td><td>When to use it. Adapters publish it for the agent.</td></tr>
+<tr><td><code>changes</code></td><td>Required: <code>true</code> if the Skill changes code or Artifacts. <code>jfl check</code> uses it to validate Inboxes.</td></tr>
+<tr><td><code>invocation</code></td><td>Required <a href="concepts.html#invocation-mode">Invocation Mode</a>: <code>user</code> (a person starts it), <code>agent</code> (the agent may use it whenever relevant) or <code>bound</code> (only through a Binding).</td></tr>
+<tr><td><code>guidelines</code></td><td>Guidelines published next to the Skill, for it to load when needed.</td></tr>
+<tr><td><code>personas</code></td><td>Personas to adopt. The <code>fallback</code> describes one that isn't usable yet, so the agent can work without it and propose it.</td></tr>
+</table></div>
+<p>A Skill never writes workflow state itself. It reads and changes Artifacts through <code>jfl</code> (<code>show</code>, <code>query</code>, <code>create</code>, <code>comment</code>, <code>move</code>, <code>propose</code>), so every check applies. Don't write a router Skill by hand: <code>jfl publish</code> generates it from the Bindings.</p>
+
+<h2 id="guidelines-personas">Guidelines and Personas</h2>
+<p>A <strong>Guideline</strong> (<code>guidelines/&lt;name&gt;.md</code>) is a rule file Skills name and load only when needed. It is the home of language and codebase conventions. <code>jfl init</code> proposes a starter <code>conventions</code> Guideline from what it finds in the repository.</p>
+<p>A <strong>Persona</strong> (<code>personas/&lt;name&gt;.md</code>) is a named point of view a Skill asks the agent to adopt. Personas the Playbook ships, and those of your Persona Library (<code>~/.config/jigflow/personas</code>), are usable as they are. One an agent proposes is an Artifact of the built-in <code>Persona</code> Type, and becomes usable only when a person moves it to <code>active</code>. A project Persona overrides a Library one of the same name.</p>
+
+<h2 id="migrations">Playbook Migrations: <code>migrations/*.yaml</code></h2>
+<p>When a Playbook, or its Base Playbook, stops declaring a Status that Artifacts are in, every command except <code>check</code> refuses to run until they're moved. A Migration maps the old Statuses to new ones, per Artifact Type:</p>
+<pre><code><span class="c"># .jigflow/migrations/doing.yaml</span>
+Ticket:
+  in-progress: doing</code></pre>
+<p><code>jfl migrate</code> applies them, all or none, and only a person may run it. Only the project declares Migrations, since its Artifacts are what they move.</p>
+
+<h2 id="checking">Checking a Playbook</h2>
+<pre><code>jfl check                    <span class="c"># every problem, in the Playbook merged over its base</span>
+jfl simulate Task            <span class="c"># each path from an initial Status to a final one</span>
+jfl simulate Task --source   <span class="c"># the file declaring it first, a built-in base's too</span></code></pre>
+<p><code>simulate</code> walks a pretend Artifact through the Playbook, listing the Skill, Readiness, Guards, Gates, Actions and Human Transitions along each path. It writes no state and runs nothing. Both take <code>--proposal P-n</code> to check the Playbook as a pending Proposal would make it, before anyone approves it.</p>
+<footer class="page-footer"><a href="concepts.html">← Concepts</a><a href="playbooks.html">Shipped Playbooks →</a></footer>
+</main>
+</div>
+</body>
+</html>

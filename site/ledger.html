@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ledger · JigFlow</title>
+<meta name="description" content="Time per Status and tokens per Artifact, committed with the code.">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="top"><div class="top-inner">
+<a class="brand" href="index.html"><svg class="brand-mark" viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="3" width="20" height="4" rx="1.5" fill="currentColor"/><rect x="4" y="7" width="4" height="14" rx="1.2" fill="currentColor" opacity=".55"/><rect x="10" y="7" width="4" height="10" rx="1.2" fill="currentColor" opacity=".75"/><rect x="16" y="7" width="4" height="6" rx="1.2" fill="currentColor"/></svg> JigFlow <small>docs</small></a>
+<div class="top-links"><a href="cli.html">CLI</a><a href="https://github.com/jigflow-ai/jigflow">GitHub</a></div>
+</div></header>
+<div class="layout">
+<aside class="side"><nav aria-label="Documentation">
+<h2>Start</h2><ul>
+<li><a href="index.html">Overview</a></li>
+<li><a href="getting-started.html">Getting started</a></li>
+</ul>
+<h2>Guide</h2><ul>
+<li><a href="concepts.html">Concepts</a></li>
+<li><a href="playbook.html">Playbook reference</a></li>
+<li><a href="playbooks.html">Shipped Playbooks</a></li>
+<li><a href="agents.html">Agents and Adapters</a></li>
+<li><a href="proposals.html">Proposals and the Dashboard</a></li>
+<li><a href="connectors.html">Connectors</a></li>
+<li><a href="ledger.html" aria-current="page">Ledger</a></li>
+</ul>
+<h2>Reference</h2><ul>
+<li><a href="cli.html">CLI</a></li>
+</ul>
+<h2>Elsewhere</h2><ul>
+<li><a href="https://github.com/jigflow-ai/jigflow/blob/main/CONTEXT.md">Glossary (CONTEXT.md)</a></li>
+<li><a href="https://github.com/jigflow-ai/jigflow/tree/main/docs/adr">Decision records</a></li>
+</ul></nav></aside>
+<main>
+<h1>Ledger</h1>
+<p class="lede">How long did this Task wait for review? How many tokens did the agent spend on it? The Ledger answers from records <code>jfl</code> keeps itself, committed with the code, and never from numbers the agent reports.</p>
+
+<pre><code>jfl ledger</code></pre>
+<pre class="out"><code>Time per Artifact:
+  PRD-1 PRD "Todo app"
+    inception  0s
+    in-review  0s so far
+Time per Status:
+  PRD
+    inception  0s over 1 Artifact
+    in-review  0s over 1 Artifact, 1 there now
+Agent time unattributed: 0s</code></pre>
+<p class="label">From the Getting started project, a moment after moving PRD-1 to in-review.</p>
+
+<h2 id="what">What it records</h2>
+<ul>
+  <li><strong>Time per Status</strong>: every create, Transition, approved Proposal and migration adds an entry, so <code>jfl ledger</code> can sum how long each Artifact spent in each Status, and how long it has been in the current one.</li>
+  <li><strong>Agent session time</strong>: every change of a session's Focus adds an entry. The time between two changes is charged to the Artifact in Focus, or to <em>unattributed</em> when nothing was.</li>
+  <li><strong>Tokens</strong>, where the agent's own records expose them. With Claude Code, the hooks <code>jfl publish claude-code</code> installs read Claude Code's session transcripts after each turn, each sub-agent and at the end of the session. They charge each message's tokens to the Artifact that was in Focus when the message was written.</li>
+</ul>
+<p>Agents without such records, like those reading <code>AGENTS.md</code>, get time only. <code>jfl ledger</code> shows tokens once some have been recorded.</p>
+
+<h2 id="storage">Where it lives</h2>
+<p>The Ledger is <code>.jigflow/ledger/</code>, one file per entry, named by when it was written and a random id of the process that wrote it. Entries are only ever added. Parallel sessions, on one machine or on branches merged later, never touch the same file, so git never has a conflict to report. It is committed whichever Store keeps the Artifacts.</p>
+<pre><code>.jigflow/ledger/
+  20260928T180511.825762216Z-c77d3c60-0001.yaml
+  20260928T180511.834234121Z-aee1cf68-0001.yaml
+  20260928T180517.367071840Z-d53a03ba-0001.yaml</code></pre>
+
+<h2 id="trust">Why it doesn't ask the agent</h2>
+<p>A ledger the agent can make up is worse than none. So no command or MCP tool takes usage numbers. Times come from <code>jfl</code>'s own clock when it writes an entry, and tokens come from Claude Code's transcripts, read by a hook that refuses to run inside an agent session. As with Human Transitions, this guards against accidents, not against an agent determined to forge its own transcripts. The reasoning is in ADRs <a href="https://github.com/jigflow-ai/jigflow/blob/main/docs/adr/0007-ledger-never-self-reported.md">0007</a>, <a href="https://github.com/jigflow-ai/jigflow/blob/main/docs/adr/0014-ledger-is-one-committed-file-per-entry.md">0014</a> and <a href="https://github.com/jigflow-ai/jigflow/blob/main/docs/adr/0015-claude-code-usage-from-its-transcripts-through-hooks.md">0015</a>.</p>
+<p>The Dashboard (<code>jfl ui</code>) shows the same sums next to the backlog.</p>
+<footer class="page-footer"><a href="connectors.html">← Connectors</a><a href="cli.html">CLI →</a></footer>
+</main>
+</div>
+</body>
+</html>

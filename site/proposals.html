@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Proposals and the Dashboard · JigFlow</title>
+<meta name="description" content="Changes a person approves as one unit, and the local Dashboard.">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="top"><div class="top-inner">
+<a class="brand" href="index.html"><svg class="brand-mark" viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="3" width="20" height="4" rx="1.5" fill="currentColor"/><rect x="4" y="7" width="4" height="14" rx="1.2" fill="currentColor" opacity=".55"/><rect x="10" y="7" width="4" height="10" rx="1.2" fill="currentColor" opacity=".75"/><rect x="16" y="7" width="4" height="6" rx="1.2" fill="currentColor"/></svg> JigFlow <small>docs</small></a>
+<div class="top-links"><a href="cli.html">CLI</a><a href="https://github.com/jigflow-ai/jigflow">GitHub</a></div>
+</div></header>
+<div class="layout">
+<aside class="side"><nav aria-label="Documentation">
+<h2>Start</h2><ul>
+<li><a href="index.html">Overview</a></li>
+<li><a href="getting-started.html">Getting started</a></li>
+</ul>
+<h2>Guide</h2><ul>
+<li><a href="concepts.html">Concepts</a></li>
+<li><a href="playbook.html">Playbook reference</a></li>
+<li><a href="playbooks.html">Shipped Playbooks</a></li>
+<li><a href="agents.html">Agents and Adapters</a></li>
+<li><a href="proposals.html" aria-current="page">Proposals and the Dashboard</a></li>
+<li><a href="connectors.html">Connectors</a></li>
+<li><a href="ledger.html">Ledger</a></li>
+</ul>
+<h2>Reference</h2><ul>
+<li><a href="cli.html">CLI</a></li>
+</ul>
+<h2>Elsewhere</h2><ul>
+<li><a href="https://github.com/jigflow-ai/jigflow/blob/main/CONTEXT.md">Glossary (CONTEXT.md)</a></li>
+<li><a href="https://github.com/jigflow-ai/jigflow/tree/main/docs/adr">Decision records</a></li>
+</ul></nav></aside>
+<main>
+<h1>Proposals and the Dashboard</h1>
+<p class="lede">A Proposal is how an agent puts forward something bigger than one move: a breakdown into ten Tickets, a new Artifact Type, a Gate's command. A person approves or rejects it as one unit, and nothing in it happens until then.</p>
+
+<h2 id="why">Why a unit</h2>
+<p>Suppose an agent breaks a Spec into Tickets and creates them one by one. If the breakdown is wrong you find out after the fact, with half of it already in the tracker. With a Proposal the whole breakdown waits in one file. You read it, change it if you like, and approve it. Approval applies every item or none: if one fails, the files are put back as they were. While a Proposal is pending, <code>jfl next</code> skips the Artifacts it touches, so autopilot doesn't redo work that's waiting for you.</p>
+
+<h2 id="file">The Proposal file</h2>
+<p>An agent writes it and runs <code>jfl propose &lt;file&gt;</code>. <code>jfl</code> gives it an id and keeps it in <code>.jigflow/proposals/</code>:</p>
+<pre><code>summary: break S-1 into tickets
+items:
+  - {create: Ticket, ref: table, title: Reset-token table, fields: {category: enhancement}, links: {part_of: [S-1]}}
+  - {create: Ticket, title: Reset endpoint, links: {part_of: [S-1], blocked_by: [table]}}
+  - {move: S-1, to: ticketed}</code></pre>
+<p>A <code>ref</code> names an Artifact the Proposal creates, so later items can Link to it before it has an id. Quote titles that contain <code>:</code>, <code>?</code> or <code>,</code>, as YAML requires.</p>
+
+<h3 id="items">Item kinds</h3>
+<div class="table-wrap"><table>
+<tr><th>Item</th><th>What approving it does</th></tr>
+<tr><td><code>{create: &lt;Type&gt;, title, ref?, status?, fields?, links?}</code></td><td>Creates an Artifact. An approved Proposal may create into a Status with a Binding, which an agent can't do directly.</td></tr>
+<tr><td><code>{move: &lt;id or ref&gt;, to: &lt;status&gt;}</code></td><td>Makes a Transition, Human Transitions included.</td></tr>
+<tr><td><code>{gate: &lt;name&gt;, cmd: &lt;command&gt;}</code></td><td>Gives a Gate the project's command, in <code>playbook.yaml</code>'s <code>gates:</code>.</td></tr>
+<tr><td><code>{guideline: &lt;name&gt;, text: …}</code></td><td>Adds a Guideline. It never overwrites an existing one.</td></tr>
+<tr><td><code>{type: &lt;name&gt;, text: &lt;YAML&gt;}</code></td><td>Declares an Artifact Type as a whole file, replacing the project's Type of that name or overriding the Base Playbook's.</td></tr>
+<tr><td><code>{skill: &lt;name&gt;, text: &lt;SKILL.md&gt;}</code></td><td>Writes a Skill, the same way.</td></tr>
+</table></div>
+<p>The last four change the Playbook. <code>jfl propose</code> refuses a Proposal whose resulting Playbook would fail <code>jfl check</code>, or would leave Artifacts in a Status no longer declared. On approval <code>jfl</code> writes the files, checks the Playbook again, and restores every file if anything fails. A Proposal can't yet declare a Connector or a Playbook Migration.</p>
+
+<h3 id="before-approving">Checking one before approving it</h3>
+<pre><code>jfl check --proposal P-3
+jfl simulate Ticket --proposal P-3</code></pre>
+<p>Both load the Playbook as the pending Proposal would make it, in memory, and write nothing. <code>/playbook-author</code> shows you their output before it asks you to approve.</p>
+
+<h2 id="deciding">Approving and rejecting</h2>
+<pre><code>jfl approve P-3        <span class="c"># lists every item, then asks: Approve all 3 changes as one unit? [y/N]</span>
+jfl reject P-3</code></pre>
+<p>Only a person may approve or reject, at an interactive terminal or in the Dashboard. An agent session is refused, and the MCP server doesn't offer these commands at all. If an item makes a Transition that the Playbook marks <code>human: dashboard</code>, the Proposal can only be approved in the Dashboard.</p>
+
+<h2 id="dashboard">The Dashboard</h2>
+<pre><code>jfl ui</code></pre>
+<pre class="out"><code>Dashboard at http://127.0.0.1:7457/?key=P3OOB3YVWLWHN5RDIL6UXQXENL
+Open this link in your browser to approve Proposals and make Human Transitions there; it is yours alone, until jfl ui stops.</code></pre>
+<p><code>jfl ui</code> serves a local web view until you interrupt it. It shows:</p>
+<ul>
+  <li>your <strong>human queue</strong> and <strong>pending Proposals</strong>, first;</li>
+  <li>the Artifacts of each Type with their Status, Claim, Links and who they're waiting on;</li>
+  <li>the <a href="ledger.html">Ledger</a>, summed;</li>
+  <li>each Artifact Type's Status machine, drawn.</li>
+</ul>
+<p>In the browser you can approve or reject Proposals, editing a proposed creation's title, starting Status and Links first, and make Human Transitions. It is the preferred place for these decisions, because you see the context next to the decision.</p>
+<div class="callout">
+<p>The Dashboard listens only on a loopback address (<code>127.0.0.1</code> unless <code>--addr</code> names another). Decisions need the link <code>jfl ui</code> prints, which carries a random key made each time it starts. An agent that finds the port with <code>curl</code> can look, but can't decide. A Dashboard started by an agent session is read-only. It never edits an Artifact's body. See ADRs <a href="https://github.com/jigflow-ai/jigflow/blob/main/docs/adr/0016-dashboard-serves-only-this-machine.md">0016</a> and <a href="https://github.com/jigflow-ai/jigflow/blob/main/docs/adr/0017-dashboard-decisions-need-the-link-jfl-ui-prints.md">0017</a>.</p>
+</div>
+
+<h2 id="guardrail">What Human Transitions protect against</h2>
+<p>Human Transitions and approvals guard against <em>accidents</em>: an agent that moves on too eagerly, a Skill that forgets to wait. An agent can run any shell command, so they can't stop a determined one. The CLI asks for confirmation at an interactive terminal, and the MCP server doesn't offer them at all. The Dashboard is the stronger channel, since an agent in a terminal can't click in your browser, and a Playbook can require it for a Transition with <code>human: dashboard</code> (<a href="https://github.com/jigflow-ai/jigflow/blob/main/docs/adr/0003-human-transitions-are-a-guardrail.md">ADR 0003</a>).</p>
+<footer class="page-footer"><a href="agents.html">← Agents and Adapters</a><a href="connectors.html">Connectors →</a></footer>
+</main>
+</div>
+</body>
+</html>
