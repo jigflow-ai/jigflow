@@ -54,6 +54,8 @@ type itemFile struct {
 	Gate      string `yaml:"gate,omitempty"`
 	Cmd       string `yaml:"cmd,omitempty"`
 	Guideline string `yaml:"guideline,omitempty"`
+	Type      string `yaml:"type,omitempty"`
+	Skill     string `yaml:"skill,omitempty"`
 	Text      string `yaml:"text,omitempty"`
 }
 
@@ -71,6 +73,8 @@ type itemFile struct {
 //	items:
 //	  - {gate: tests, cmd: go test ./...}
 //	  - {guideline: conventions, text: "# Conventions\n…"}
+//	  - {type: Note, text: "name: Note\nprefix: N\n…"}
+//	  - {skill: write-note, text: "---\ndescription: …"}
 func ParseProposal(data []byte) (summary string, items []engine.ProposalItem, err error) {
 	var in struct {
 		Summary string     `yaml:"summary"`

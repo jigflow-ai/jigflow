@@ -77,7 +77,7 @@ The Artifact a session is currently working on; set by `next` and moved by Trans
 _Avoid_: Claim, current task, active item
 
 **Proposal**:
-A set of one or more Artifacts, Transitions or changes to the Playbook (a Gate's command, a Guideline) an agent, or `jfl init`, puts forward together, approved or rejected by a human as one unit.
+A set of one or more Artifacts, Transitions or changes to the Playbook (a Gate's command, a Guideline, an Artifact Type, a Skill) an agent, or `jfl init`, puts forward together, approved or rejected by a human as one unit.
 _Avoid_: Batch, changeset, request
 
 **Claim**:

@@ -1,7 +1,9 @@
 package cli
 
 import (
+	"flag"
 	"fmt"
+	"io"
 	"slices"
 	"strings"
 
@@ -9,13 +11,31 @@ import (
 )
 
 // cmdSimulate walks a pretend Artifact of one Artifact Type through the
-// Playbook and prints every Path it can take. It is a dry run: it writes no
+// Playbook, or the Playbook as a pending Proposal would make it, and prints
+// every Path it can take. It is a dry run: it writes no
 // state and runs no Gates or Actions.
 func cmdSimulate(e *env, args []string) error {
-	if len(args) != 1 {
-		return fmt.Errorf("%w: jfl simulate <Type>", errUsage)
+	const use = "jfl simulate <Type> [--proposal <proposal>] [--source]"
+	if len(args) == 0 || args[0] == "" || args[0][0] == '-' {
+		return fmt.Errorf("%w: %s", errUsage, use)
 	}
-	pb, _, err := e.load()
+	fs := flag.NewFlagSet("simulate", flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+	proposal := fs.String("proposal", "", "simulate the Playbook as this pending Proposal would make it")
+	source := fs.Bool("source", false, "print the file declaring the Type first")
+	if err := fs.Parse(args[1:]); err != nil {
+		return fmt.Errorf("%w: %v", errUsage, err)
+	}
+	if fs.NArg() > 0 {
+		return fmt.Errorf("%w: %s", errUsage, use)
+	}
+	var pb *engine.Playbook
+	var err error
+	if *proposal != "" {
+		pb, err = e.proposed(*proposal)
+	} else {
+		pb, _, err = e.load()
+	}
 	if err != nil {
 		return err
 	}
@@ -26,6 +46,14 @@ func cmdSimulate(e *env, args []string) error {
 			names[i] = other.Name
 		}
 		return fmt.Errorf("unknown Artifact Type %q. Declared Types: %s", args[0], strings.Join(names, ", "))
+	}
+	if *source {
+		if t.File == "" {
+			fmt.Fprintf(e.stdout, "# %s is built into jfl\n\n", t.Name)
+		} else {
+			fmt.Fprintf(e.stdout, "# %s\n%s\n", t.File, strings.TrimRight(t.Source, "\n"))
+			fmt.Fprintln(e.stdout)
+		}
 	}
 	paths := engine.Paths(t)
 	n := "1 path"

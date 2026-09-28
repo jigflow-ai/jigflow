@@ -107,6 +107,8 @@ type ArtifactType struct {
 	Readiness   map[string][]Condition // Status -> what must hold before agent work there may start
 	Transitions []Transition
 	Migrations  map[string]string // an old, undeclared Status -> the Status its Artifacts migrate to
+	File        string            // the file declaring it, as its author knows it; empty when built in
+	Source      string            // that file, as written
 }
 
 // Hints are how a Binding asks for its Skill to run, which Adapters

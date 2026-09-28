@@ -234,7 +234,12 @@ type commandFile struct {
 // Base Playbook when it extends one. Artifact Types are declared in the
 // lexical order of their file names, a Base Playbook's first.
 func Load(root string) (*engine.Playbook, error) {
-	fsys := os.DirFS(filepath.Join(root, Dir))
+	return load(root, os.DirFS(filepath.Join(root, Dir)))
+}
+
+// load reads the Playbook whose own files are in fsys, laid out as Dir is,
+// for the project rooted at root, where its Base Playbook is resolved.
+func load(root string, fsys fs.FS) (*engine.Playbook, error) {
 	own, err := readLayer(fsys, Dir)
 	if errors.Is(err, os.ErrNotExist) {
 		return nil, fmt.Errorf("no Playbook found: %s is missing", path.Join(Dir, "playbook.yaml"))
@@ -373,11 +378,15 @@ func (l *layer) readTypes(fsys fs.FS, label string) error {
 	}
 	slices.Sort(paths)
 	for _, p := range paths {
-		var tf typeFile
-		if err := readYAML(fsys, label, p, &tf); err != nil {
+		data, err := fs.ReadFile(fsys, p)
+		if err != nil {
 			return err
 		}
 		rel := in(label, p)
+		var tf typeFile
+		if err := decodeYAML(data, rel, &tf); err != nil {
+			return err
+		}
 		if tf.Name == "" || tf.Prefix == "" {
 			return fmt.Errorf("%s: an Artifact Type needs a name and a prefix", rel)
 		}
@@ -397,6 +406,8 @@ func (l *layer) readTypes(fsys fs.FS, label string) error {
 			Final:    tf.Final,
 			Inbox:    tf.Inbox,
 			Links:    tf.Links,
+			File:     rel,
+			Source:   string(data),
 		}
 		for status, b := range tf.Bindings {
 			if t.Bindings == nil {

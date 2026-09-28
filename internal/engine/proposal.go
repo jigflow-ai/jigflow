@@ -29,8 +29,12 @@ type Proposal struct {
 // ProposalItem is one change in a Proposal: the creation of an Artifact of
 // the Type Create, with values for its fields, the Transition of the Artifact Move to the Status To, or
 // a change to the Playbook (ADR 0004): giving the Gates named Gate the
-// command Cmd, or adding the Guideline named Guideline, whose Markdown is
-// Text.
+// command Cmd, adding the Guideline named Guideline, whose Markdown is Text,
+// declaring the Artifact Type named Type, whose YAML file is Text, or writing
+// the Skill named Skill, whose SKILL.md is Text. A Type or a Skill the
+// Playbook has already is replaced, so the Playbook's own Types and Skills,
+// and those of its Base Playbook, which the project's override by name, can
+// be changed as well as added.
 //
 // A creation's id is allocated only on approval, so other items of the same
 // Proposal refer to it by its Ref, in their Links or as the Artifact they
@@ -48,12 +52,16 @@ type ProposalItem struct {
 	Gate      string
 	Cmd       string
 	Guideline string
+	Type      string
+	Skill     string
 	Text      string
 }
 
 // ChangesPlaybook reports whether the item changes the Playbook rather
 // than an Artifact.
-func (it ProposalItem) ChangesPlaybook() bool { return it.Gate != "" || it.Guideline != "" }
+func (it ProposalItem) ChangesPlaybook() bool {
+	return it.Gate != "" || it.Guideline != "" || it.Type != "" || it.Skill != ""
+}
 
 // String describes the item for a person deciding on it.
 func (it ProposalItem) String() string {
@@ -78,9 +86,18 @@ func (it ProposalItem) String() string {
 	case it.Gate != "":
 		return fmt.Sprintf("give Gate %q the command %s", it.Gate, it.Cmd)
 	case it.Guideline != "":
-		return fmt.Sprintf("add Guideline %q (%s)", it.Guideline, plural(strings.Count(strings.TrimRight(it.Text, "\n"), "\n")+1, "line"))
+		return fmt.Sprintf("add Guideline %q (%s)", it.Guideline, it.lines())
+	case it.Type != "":
+		return fmt.Sprintf("declare Artifact Type %q (%s)", it.Type, it.lines())
+	case it.Skill != "":
+		return fmt.Sprintf("write Skill %q (%s)", it.Skill, it.lines())
 	}
 	return fmt.Sprintf("move %s → %s", it.Move, it.To)
+}
+
+// lines says how long the item's text is.
+func (it ProposalItem) lines() string {
+	return plural(strings.Count(strings.TrimRight(it.Text, "\n"), "\n")+1, "line")
 }
 
 func plural(n int, noun string) string {
@@ -90,9 +107,9 @@ func plural(n int, noun string) string {
 	return fmt.Sprintf("%d %ss", n, noun)
 }
 
-// guidelineName is what a Guideline's name may be: Skills name it, and it
-// is the name of its file.
-var guidelineName = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
+// fileName is what a Guideline's or a Skill's name may be: Skills and
+// Bindings name it, and it is the name of its file or directory.
+var fileName = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
 
 // Change is one item of an approved Proposal, as applied.
 type Change struct {
@@ -156,24 +173,39 @@ func Approve(pb *Playbook, p Proposal, all []Artifact) ([]Change, error) {
 			return nil, fmt.Errorf("item %d (%s): %w", i+1, it, err)
 		}
 		kinds := 0
-		for _, is := range []bool{it.Create != "", it.Move != "" || it.To != "", it.Gate != "" || it.Cmd != "", it.Guideline != "" || it.Text != ""} {
+		for _, is := range []bool{it.Create != "", it.Move != "" || it.To != "", it.Gate != "" || it.Cmd != "", it.Guideline != "", it.Type != "", it.Skill != ""} {
 			if is {
 				kinds++
 			}
 		}
+		textual := it.Guideline != "" || it.Type != "" || it.Skill != ""
 		switch {
-		case kinds != 1:
+		case kinds != 1 || (it.Text != "" && !textual):
 			return nil, fmt.Errorf("item %d: %s", i+1, itemKinds)
 		case it.Gate != "" || it.Cmd != "":
 			if strings.TrimSpace(it.Gate) == "" || strings.TrimSpace(it.Cmd) == "" {
 				return fail(errors.New("giving a Gate its command needs the Gate's name and a cmd"))
 			}
-		case it.Guideline != "" || it.Text != "":
-			if !guidelineName.MatchString(it.Guideline) {
+		case it.Guideline != "":
+			if !fileName.MatchString(it.Guideline) {
 				return fail(fmt.Errorf("a Guideline's name is its file's, which Skills refer to: letters, digits, '.', '_' and '-', such as conventions; not %q", it.Guideline))
 			}
 			if strings.TrimSpace(it.Text) == "" {
 				return fail(errors.New("a Guideline needs its Markdown, as text"))
+			}
+		case it.Type != "":
+			if strings.ContainsAny(it.Type, `/\`) || strings.HasPrefix(it.Type, ".") {
+				return fail(fmt.Errorf("an Artifact Type's file is named after it, so its name can't start with '.' or hold '/' or '\\': not %q", it.Type))
+			}
+			if strings.TrimSpace(it.Text) == "" {
+				return fail(errors.New("an Artifact Type needs its file's YAML, as text"))
+			}
+		case it.Skill != "":
+			if !fileName.MatchString(it.Skill) {
+				return fail(fmt.Errorf("a Skill's name is its directory's, which Bindings refer to: letters, digits, '.', '_' and '-', such as implement; not %q", it.Skill))
+			}
+			if strings.TrimSpace(it.Text) == "" {
+				return fail(errors.New("a Skill needs its SKILL.md, as text"))
 			}
 		case it.Create != "":
 			if _, dup := refs[it.Ref]; dup {
@@ -217,7 +249,7 @@ func Approve(pb *Playbook, p Proposal, all []Artifact) ([]Change, error) {
 }
 
 // itemKinds says what a Proposal item may be.
-const itemKinds = "an item either creates (create, title, and optionally status, fields and links), moves (move, to), gives a Gate its command (gate, cmd) or adds a Guideline (guideline, text)"
+const itemKinds = "an item either creates (create, title, and optionally status, fields and links), moves (move, to), gives a Gate its command (gate, cmd), adds a Guideline (guideline, text), declares an Artifact Type (type, text) or writes a Skill (skill, text)"
 
 // touched returns, for every Artifact an item of a pending Proposal moves, the
 // id of that Proposal. Creations touch nothing yet: their Artifacts don't

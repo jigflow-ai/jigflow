@@ -115,8 +115,7 @@ Commands:
                           set the project up, asking at the terminal what the
                           flags don't say: the Playbook to use, with no
                           default (Larapilot-style, Pocock, or your own, which
-                          the playbook-author Skill builds when this build has
-                          it); the settings a tracker's Connector needs and the
+                          the playbook-author Skill builds with you); the settings a tracker's Connector needs and the
                           label of each Status it keeps; and the Adapter to
                           publish through. It proposes, as one Proposal, the
                           commands of the Gates tests and lint and a starter
@@ -162,7 +161,10 @@ Commands:
                           one unit; creations may give the Type's fields
                           values and Link to each other by ref;
                           an item may change the Playbook instead, giving a
-                          Gate its command or adding a Guideline
+                          Gate its command, adding a Guideline, or declaring
+                          an Artifact Type or writing a Skill, either
+                          replacing the one of that name; a Proposal whose
+                          Playbook would fail check is refused
   query [--type <Type>] [--status <status>]
                           list the Artifacts, with their Status, Claim and
                           Links, optionally only those of one Type or in one
@@ -178,20 +180,26 @@ Commands:
                           requires the Dashboard for is approved only there
   reject <proposal>       drop a pending Proposal, changing nothing; only a
                           person may
-  check                   validate the Playbook, merged over the Base Playbook
+  check [--proposal <proposal>]
+                          validate the Playbook, merged over the Base Playbook
                           it extends, listing every problem, or the Artifacts
                           it leaves in an undeclared Status; every other
-                          command refuses to run while there are any
+                          command refuses to run while there are any.
+                          --proposal validates it as that pending Proposal
+                          would make it, writing nothing
   migrate                 apply the Playbook Migrations: move every Artifact in
                           a Status its Artifact Type no longer declares to the
                           Status a Migration maps it to, all of them or none;
                           only a person may
-  simulate <Type>         walk a pretend Artifact of the Type through the
+  simulate <Type> [--proposal <proposal>] [--source]
+                          walk a pretend Artifact of the Type through the
                           Playbook: print each path from an initial Status to
                           a final one, visiting no Status twice, with the
                           Skill, Readiness, Guards, Gates, Actions and Human
                           Transitions along it; writes no state and runs no
-                          Gates or Actions
+                          Gates or Actions. --proposal walks it through the
+                          Playbook as that pending Proposal would make it;
+                          --source first prints the file declaring the Type
   publish <adapter>       publish the Playbook's Skills, the Guidelines and
                           Personas they name, every active Persona and a
                           router Skill built from its Bindings, which also
@@ -251,7 +259,7 @@ Environment:
                           the git repository and ref jfl init --playbook pocock
                           extends, for a fork or a mirror (default
                           https://github.com/jigflow-ai/jigflow-playbook-pocock
-                          at v0.2.0)
+                          at v0.3.0)
 
 Exit status:
   0 done, 1 refused or failed, 2 malformed command line, 3 a Connector failed:
@@ -264,8 +272,22 @@ func cmdVersion(e *env, _ []string) error {
 }
 
 func cmdCheck(e *env, args []string) error {
-	if len(args) != 0 {
-		return fmt.Errorf("%w: jfl check takes no arguments", errUsage)
+	fs := flag.NewFlagSet("check", flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+	proposal := fs.String("proposal", "", "check the Playbook as this pending Proposal would make it")
+	if err := fs.Parse(args); err != nil {
+		return fmt.Errorf("%w: %v", errUsage, err)
+	}
+	if fs.NArg() > 0 {
+		return fmt.Errorf("%w: jfl check [--proposal <proposal>]", errUsage)
+	}
+	if *proposal != "" {
+		pb, err := e.proposed(*proposal)
+		if err != nil {
+			return err
+		}
+		fmt.Fprintf(e.stdout, "Playbook %q, as %s would make it: no problems\n", pb.Name, *proposal)
+		return nil
 	}
 	pb, _, err := e.load()
 	if err != nil {
@@ -282,22 +304,75 @@ func (e *env) load() (*engine.Playbook, store.Store, error) {
 	if err != nil {
 		return nil, nil, err
 	}
+	if err := e.checkOrphans(pb); err != nil {
+		return nil, nil, err
+	}
+	return pb, store.Open(e.dir, pb), nil
+}
+
+// checkOrphans refuses a Playbook that would leave Artifacts in an
+// undeclared Status (ADR 0010).
+func (e *env) checkOrphans(pb *engine.Playbook) error {
 	// Only files can leave Artifacts in an undeclared Status, since a
 	// tracker's item is always in one of its Artifact Type's Statuses, so
-	// loading reads no tracker.
+	// this reads no tracker.
 	files, err := store.NewFile(e.dir).List()
 	if err != nil {
-		return nil, nil, err
+		return err
 	}
 	files = slices.DeleteFunc(files, func(a engine.Artifact) bool {
 		t := pb.Type(a.Type)
 		return t != nil && t.Store != ""
 	})
-	st := store.Open(e.dir, pb)
 	if err := engine.CheckOrphans(pb, files); err != nil {
-		return nil, nil, fmt.Errorf("%w\n%s", err, migrateHint)
+		return fmt.Errorf("%w\n%s", err, migrateHint)
 	}
-	return pb, st, nil
+	return nil
+}
+
+// proposed loads the Playbook as the pending Proposal id would make it once
+// approved, writing nothing, so that it can be checked and simulated first.
+func (e *env) proposed(id string) (*engine.Playbook, error) {
+	if _, _, err := e.load(); err != nil {
+		return nil, err
+	}
+	p, err := store.NewProposals(e.dir).Get(id)
+	if err != nil {
+		return nil, err
+	}
+	if p.Status != engine.Pending {
+		return nil, fmt.Errorf("%s isn't pending: it was %s", p.ID, p.Status)
+	}
+	items := playbookItems(p.Items)
+	if len(items) == 0 {
+		return nil, fmt.Errorf("%s changes nothing in the Playbook", p.ID)
+	}
+	return e.candidate(items)
+}
+
+// candidate loads the Playbook as the items, which change it, would make
+// it, refusing one that fails its checks or would leave Artifacts in an
+// undeclared Status.
+func (e *env) candidate(items []engine.ProposalItem) (*engine.Playbook, error) {
+	pb, err := playbook.Candidate(e.dir, items)
+	if err != nil {
+		return nil, err
+	}
+	if err := e.checkOrphans(pb); err != nil {
+		return nil, err
+	}
+	return pb, nil
+}
+
+// playbookItems are the items that change the Playbook.
+func playbookItems(items []engine.ProposalItem) []engine.ProposalItem {
+	var out []engine.ProposalItem
+	for _, it := range items {
+		if it.ChangesPlaybook() {
+			out = append(out, it)
+		}
+	}
+	return out
 }
 
 func cmdCreate(e *env, args []string) error {

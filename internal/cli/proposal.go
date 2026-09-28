@@ -44,6 +44,13 @@ func cmdPropose(e *env, args []string) error {
 	if err != nil {
 		return fmt.Errorf("not proposed: %w", err)
 	}
+	// A Playbook the Proposal would break is reported now, to the agent,
+	// rather than to the person approving it.
+	if changes := playbookItems(items); len(changes) > 0 {
+		if _, err := e.candidate(changes); err != nil {
+			return fmt.Errorf("not proposed: as the Proposal would make it, %w", err)
+		}
+	}
 	if err := ps.Save(p); err != nil {
 		return err
 	}
@@ -169,14 +176,9 @@ func (e *env) approve(id string, edit func(pb *engine.Playbook, p *engine.Propos
 	}
 	// The Playbook's changes are written first, all of them or none, so
 	// that a Playbook they'd break changes no Artifact either.
-	var playbookItems []engine.ProposalItem
-	for _, it := range p.Items {
-		if it.ChangesPlaybook() {
-			playbookItems = append(playbookItems, it)
-		}
-	}
-	if len(playbookItems) > 0 {
-		if err := playbook.Apply(e.dir, playbookItems); err != nil {
+	changesPlaybook := playbookItems(p.Items)
+	if len(changesPlaybook) > 0 {
+		if err := playbook.Apply(e.dir, changesPlaybook, e.checkOrphans); err != nil {
 			return notApplied(err)
 		}
 	}
@@ -221,7 +223,7 @@ func (e *env) approve(id string, edit func(pb *engine.Playbook, p *engine.Propos
 		return err
 	}
 	fmt.Fprintf(e.stdout, "approved %s as one unit:\n", p.ID)
-	for _, it := range playbookItems {
+	for _, it := range changesPlaybook {
 		fmt.Fprintf(e.stdout, "  %s\n", it)
 	}
 	for _, c := range changes {

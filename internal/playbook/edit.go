@@ -4,9 +4,14 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"io/fs"
+	"maps"
 	"os"
+	"path"
 	"path/filepath"
+	"slices"
 	"strings"
+	"testing/fstest"
 
 	"github.com/jigflow-ai/jigflow/internal/engine"
 	"go.yaml.in/yaml/v3"
@@ -14,70 +19,170 @@ import (
 
 // Apply writes the items of an approved Proposal that change the Playbook
 // into the project rooted at root: a Gate's command into the Playbook file,
-// which keeps the rest of what it says, and a Guideline into its own file,
-// overriding the Base Playbook's of the same name. It applies all of them
-// or none: when one can't be, or the Playbook they make fails its checks,
-// it puts every file back as it was.
-func Apply(root string, items []engine.ProposalItem) (err error) {
-	saved := map[string][]byte{} // path -> its content before, nil if it didn't exist
-	save := func(path string) error {
-		if _, ok := saved[path]; ok {
-			return nil
-		}
-		data, err := os.ReadFile(path)
-		if err != nil && !errors.Is(err, os.ErrNotExist) {
-			return err
-		}
-		saved[path] = data
-		return nil
+// which keeps the rest of what it says, a Guideline, an Artifact Type or a
+// Skill into its own file, overriding the Base Playbook's of the same name.
+// It applies all of them or none: when one can't be, or the Playbook they
+// make fails its checks or verify, it puts every file back as it was.
+func Apply(root string, items []engine.ProposalItem, verify func(*engine.Playbook) error) (err error) {
+	files, err := changes(root, items)
+	if err != nil {
+		return err
 	}
+	dir := filepath.Join(root, Dir)
+	saved := map[string][]byte{} // path -> its content before, nil if it didn't exist
 	defer func() {
 		if err == nil {
 			return
 		}
 		for path, data := range saved {
-			if data == nil {
-				os.Remove(path)
-			} else {
+			if data != nil {
 				os.WriteFile(path, data, 0o644)
+				continue
+			}
+			os.Remove(path)
+			// Remove the directories writing it made, and only those.
+			for d := filepath.Dir(path); d != dir && os.Remove(d) == nil; d = filepath.Dir(d) {
 			}
 		}
 	}()
-	pbFile := filepath.Join(root, Dir, "playbook.yaml")
-	for _, it := range items {
-		switch {
-		case it.Gate != "":
-			if err := save(pbFile); err != nil {
+	for _, rel := range slices.Sorted(maps.Keys(files)) {
+		path := filepath.Join(dir, filepath.FromSlash(rel))
+		data, err := os.ReadFile(path)
+		if err != nil && !errors.Is(err, os.ErrNotExist) {
+			return err
+		}
+		saved[path] = data
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			return err
+		}
+		if err := os.WriteFile(path, files[rel], 0o644); err != nil {
+			return err
+		}
+	}
+	pb, err := Load(root)
+	if err != nil {
+		return err
+	}
+	return verify(pb)
+}
+
+// Candidate loads the Playbook of the project rooted at root as the items
+// of a Proposal would make it once approved, writing nothing, so that a
+// Playbook can be checked and simulated before a person approves it.
+func Candidate(root string, items []engine.ProposalItem) (*engine.Playbook, error) {
+	files, err := changes(root, items)
+	if err != nil {
+		return nil, err
+	}
+	own := os.DirFS(filepath.Join(root, Dir))
+	fsys := fstest.MapFS{}
+	for _, top := range []string{"playbook.yaml", "types", "skills", "personas", "guidelines", "migrations"} {
+		err := fs.WalkDir(own, top, func(p string, d fs.DirEntry, err error) error {
+			if err != nil {
+				if p == top && errors.Is(err, fs.ErrNotExist) {
+					return nil
+				}
 				return err
 			}
-			f, err := OpenFile(root)
+			if d.IsDir() {
+				return nil
+			}
+			data, err := fs.ReadFile(own, p)
 			if err != nil {
 				return err
 			}
-			if err := f.Set(it.Cmd, "gates", it.Gate); err != nil {
-				return err
-			}
-			if err := f.Save(); err != nil {
-				return err
-			}
-		case it.Guideline != "":
-			path := filepath.Join(root, Dir, "guidelines", it.Guideline+".md")
-			if _, err := os.Stat(path); err == nil {
-				return fmt.Errorf("Guideline %q already exists, in %s; edit that file instead", it.Guideline, filepath.Join(Dir, "guidelines", it.Guideline+".md"))
-			}
-			if err := save(path); err != nil {
-				return err
-			}
-			if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-				return err
-			}
-			if err := os.WriteFile(path, []byte(it.Text), 0o644); err != nil {
-				return err
-			}
+			fsys[p] = &fstest.MapFile{Data: data}
+			return nil
+		})
+		if err != nil {
+			return nil, err
 		}
 	}
-	_, err = Load(root)
-	return err
+	for rel, data := range files {
+		fsys[rel] = &fstest.MapFile{Data: data}
+	}
+	return load(root, fsys)
+}
+
+// changes returns the files, by their path in Dir, that the items write,
+// each with its content once they are all written.
+func changes(root string, items []engine.ProposalItem) (map[string][]byte, error) {
+	dir := filepath.Join(root, Dir)
+	files := map[string][]byte{}
+	for _, it := range items {
+		switch {
+		case it.Gate != "":
+			data, ok := files["playbook.yaml"]
+			if !ok {
+				var err error
+				if data, err = os.ReadFile(filepath.Join(dir, "playbook.yaml")); err != nil {
+					return nil, err
+				}
+			}
+			f, err := parseFile(root, data)
+			if err != nil {
+				return nil, err
+			}
+			if err := f.Set(it.Cmd, "gates", it.Gate); err != nil {
+				return nil, err
+			}
+			if files["playbook.yaml"], err = f.encode(); err != nil {
+				return nil, err
+			}
+		case it.Guideline != "":
+			rel := path.Join("guidelines", it.Guideline+".md")
+			if _, err := os.Stat(filepath.Join(dir, filepath.FromSlash(rel))); err == nil {
+				return nil, fmt.Errorf("Guideline %q already exists, in %s; edit that file instead", it.Guideline, path.Join(Dir, rel))
+			}
+			files[rel] = []byte(it.Text)
+		case it.Type != "":
+			rel, err := typePath(dir, it)
+			if err != nil {
+				return nil, err
+			}
+			files[rel] = []byte(it.Text)
+		case it.Skill != "":
+			files[path.Join("skills", it.Skill, "SKILL.md")] = []byte(it.Text)
+		}
+	}
+	return files, nil
+}
+
+// typePath is the path in dir, the project's Playbook, of the file the
+// Artifact Type the item declares is written to: the file of the project's
+// that declares it already, which it replaces, or else one named after it.
+func typePath(dir string, it engine.ProposalItem) (string, error) {
+	var declared struct {
+		Name string `yaml:"name"`
+	}
+	if err := yaml.Unmarshal([]byte(it.Text), &declared); err != nil {
+		return "", fmt.Errorf("Artifact Type %q: %w", it.Type, err)
+	}
+	if declared.Name != it.Type {
+		return "", fmt.Errorf("the text of Artifact Type %q declares %q: its name must be the item's", it.Type, declared.Name)
+	}
+	paths, err := filepath.Glob(filepath.Join(dir, "types", "*.yaml"))
+	if err != nil {
+		return "", err
+	}
+	named := strings.ToLower(strings.ReplaceAll(it.Type, " ", "-")) + ".yaml"
+	for _, p := range paths {
+		data, err := os.ReadFile(p)
+		if err != nil {
+			return "", err
+		}
+		var other struct {
+			Name string `yaml:"name"`
+		}
+		_ = yaml.Unmarshal(data, &other)
+		switch {
+		case other.Name == it.Type:
+			return path.Join("types", filepath.Base(p)), nil
+		case filepath.Base(p) == named:
+			return "", fmt.Errorf("Artifact Type %q would be written to %s, which declares %q", it.Type, path.Join(Dir, "types", named), other.Name)
+		}
+	}
+	return path.Join("types", named), nil
 }
 
 // File is the project's Playbook file, open for changing what it says
@@ -90,11 +195,16 @@ type File struct {
 
 // OpenFile opens the Playbook file of the project rooted at root.
 func OpenFile(root string) (*File, error) {
-	f := &File{root: root}
-	data, err := os.ReadFile(f.path())
+	data, err := os.ReadFile(filepath.Join(root, Dir, "playbook.yaml"))
 	if err != nil {
 		return nil, err
 	}
+	return parseFile(root, data)
+}
+
+// parseFile reads data as the Playbook file of the project rooted at root.
+func parseFile(root string, data []byte) (*File, error) {
+	f := &File{root: root}
 	if err := yaml.Unmarshal(data, &f.doc); err != nil {
 		return nil, fmt.Errorf("%s: %w", filepath.Join(Dir, "playbook.yaml"), err)
 	}
@@ -216,13 +326,22 @@ func (f *File) Save() error {
 	if !f.changed {
 		return nil
 	}
+	data, err := f.encode()
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(f.path(), data, 0o644)
+}
+
+// encode is what the file says, as YAML.
+func (f *File) encode() ([]byte, error) {
 	var out bytes.Buffer
 	enc := yaml.NewEncoder(&out)
 	enc.SetIndent(2)
 	if err := enc.Encode(&f.doc); err != nil {
-		return err
+		return nil, err
 	}
-	return os.WriteFile(f.path(), out.Bytes(), 0o644)
+	return out.Bytes(), nil
 }
 
 // lookup returns the value of key in the mapping n, or nil.

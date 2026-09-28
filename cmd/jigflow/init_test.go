@@ -42,10 +42,13 @@ func TestInitAsksWhichPlaybookAndAdapterInATerminal(t *testing.T) {
 	if r.ExitCode != 0 {
 		t.Fatalf("init exited %d; terminal:\n%s", r.ExitCode, r.Output)
 	}
-	if !strings.Contains(r.Output, "playbook-author") {
-		t.Errorf("Build my own should say how the playbook-author Skill builds the Playbook, or that it isn't available:\n%s", r.Output)
+	if !strings.Contains(r.Output, "Next, run the playbook-author Skill in Claude Code") {
+		t.Errorf("Build my own should say to run the playbook-author Skill, which jfl ships:\n%s", r.Output)
 	}
 	p.MustRun("check")
+	if fm, _ := skillFrontmatter(t, p.Read(".claude/skills/playbook-author/SKILL.md")); fm["disable-model-invocation"] != true {
+		t.Errorf("playbook-author should be published as a Skill only a person starts: %v", fm)
+	}
 	if !strings.Contains(p.Read(".jigflow/published.yaml"), "claude-code:") {
 		t.Errorf("init didn't publish through the chosen Adapter:\n%s", p.Read(".jigflow/published.yaml"))
 	}
