@@ -73,6 +73,7 @@ var commands = map[string]func(*env, []string) error{
 	"reject":    cmdReject,
 	"check":     cmdCheck,
 	"migrate":   cmdMigrate,
+	"simulate":  cmdSimulate,
 }
 
 const usage = `Usage: jfl <command> [arguments]
@@ -110,6 +111,12 @@ Commands:
                           a Status its Artifact Type no longer declares to the
                           Status a Migration maps it to, all of them or none;
                           only a person may
+  simulate <Type>         walk a pretend Artifact of the Type through the
+                          Playbook: print each path from an initial Status to
+                          a final one, visiting no Status twice, with the
+                          Skill, Readiness, Guards, Gates, Actions and Human
+                          Transitions along it; writes no state and runs no
+                          Gates or Actions
   version                 print the version
 
 Environment:
