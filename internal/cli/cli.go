@@ -7,7 +7,9 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"maps"
 	"os"
+	"slices"
 	"strings"
 
 	"github.com/jigflow-ai/jigflow/internal/engine"
@@ -69,6 +71,7 @@ var commands = map[string]func(*env, []string) error{
 	"move":      cmdMove,
 	"next":      cmdNext,
 	"propose":   cmdPropose,
+	"query":     cmdQuery,
 	"approve":   cmdApprove,
 	"reject":    cmdReject,
 	"check":     cmdCheck,
@@ -104,6 +107,10 @@ Commands:
   propose <file>          put forward the creations and Transitions in a
                           Proposal file for a person to approve or reject as
                           one unit; creations may Link to each other by ref
+  query [--type <Type>] [--status <status>]
+                          list the Artifacts, with their Status, Claim and
+                          Links, optionally only those of one Type or in one
+                          Status
   approve <proposal>      apply every change in a pending Proposal, or none;
                           only a person may, confirming it in an interactive
                           terminal, and its items may then make Human
@@ -130,6 +137,11 @@ Commands:
                           .claude/skills, or agents-md, as a section of
                           AGENTS.md and Skills in .agents/skills; publishing
                           again replaces and removes only what jfl published
+  mcp                     serve the agent-safe commands as an MCP server over
+                          stdio, as an agent session: next, move (never a
+                          Human Transition), propose, query, and create into
+                          an Inbox; never approve or reject. The session is
+                          JFL_SESSION, or a fresh one for the server's life
   version                 print the version
 
 Environment:
@@ -335,6 +347,53 @@ func cmdNext(e *env, args []string) error {
 		for _, s := range res.Skipped {
 			fmt.Fprintf(e.stdout, "  %s: %s\n", s.Artifact.ID, s.Reason)
 		}
+	}
+	return nil
+}
+
+func cmdQuery(e *env, args []string) error {
+	fs := flag.NewFlagSet("query", flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+	typeName := fs.String("type", "", "only Artifacts of this Artifact Type")
+	status := fs.String("status", "", "only Artifacts in this Status")
+	if err := fs.Parse(args); err != nil {
+		return fmt.Errorf("%w: %v", errUsage, err)
+	}
+	if fs.NArg() > 0 {
+		return fmt.Errorf("%w: jfl query [--type <Type>] [--status <status>]", errUsage)
+	}
+	pb, st, err := e.load()
+	if err != nil {
+		return err
+	}
+	if *typeName != "" && pb.Type(*typeName) == nil {
+		var names []string
+		for _, t := range pb.Types {
+			names = append(names, t.Name)
+		}
+		return fmt.Errorf("unknown Artifact Type %q. Declared Types: %s", *typeName, strings.Join(names, ", "))
+	}
+	all, err := st.List()
+	if err != nil {
+		return err
+	}
+	n := 0
+	for _, a := range all {
+		if (*typeName != "" && a.Type != *typeName) || (*status != "" && a.Status != *status) {
+			continue
+		}
+		n++
+		line := fmt.Sprintf("%s %s %q: %s", a.ID, a.Type, a.Title, a.Status)
+		if a.Claim != "" {
+			line += ", claimed by agent session " + a.Claim
+		}
+		for _, name := range slices.Sorted(maps.Keys(a.Links)) {
+			line += fmt.Sprintf(", %s: %s", name, strings.Join(a.Links[name], " "))
+		}
+		fmt.Fprintln(e.stdout, line)
+	}
+	if n == 0 {
+		fmt.Fprintln(e.stdout, "no Artifacts")
 	}
 	return nil
 }
