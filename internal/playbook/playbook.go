@@ -32,6 +32,7 @@ type typeFile struct {
 	Statuses    []string                   `yaml:"statuses"`
 	Initial     []string                   `yaml:"initial"`
 	Final       []string                   `yaml:"final"`
+	Inbox       []string                   `yaml:"inbox"`
 	Bindings    map[string]string          `yaml:"bindings"`
 	Links       map[string]string          `yaml:"links"`
 	Readiness   map[string][]conditionFile `yaml:"readiness"`
@@ -94,6 +95,7 @@ func Load(root string) (*engine.Playbook, error) {
 			Statuses: tf.Statuses,
 			Initial:  tf.Initial,
 			Final:    tf.Final,
+			Inbox:    tf.Inbox,
 			Bindings: tf.Bindings,
 			Links:    tf.Links,
 		}

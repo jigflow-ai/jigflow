@@ -39,6 +39,7 @@ type ArtifactType struct {
 	Statuses    []string
 	Initial     []string               // Statuses an Artifact may start in
 	Final       []string               // Statuses where work on an Artifact ends
+	Inbox       []string               // Statuses agents may create into although they have a Binding
 	Bindings    map[string]string      // Status -> Skill; a Status with no Binding is human work
 	Links       map[string]string      // Link name -> the Artifact Type it points to
 	Readiness   map[string][]Condition // Status -> what must hold before agent work there may start
@@ -88,12 +89,17 @@ type Artifact struct {
 	Links  map[string][]string // Link name -> ids of the linked Artifacts
 }
 
-// Create decides a new Artifact of the named Type. An empty status means the
-// Type's first initial Status. existing is every Artifact already in the Store,
-// used to allocate the next id for the Type's prefix.
+// Create decides a new Artifact of the named Type on behalf of actor. An
+// empty status means the Type's first initial Status. existing is every
+// Artifact already in the Store, used to allocate the next id for the Type's
+// prefix.
 //
 // links maps each Link name to the ids of the Artifacts it points to.
-func Create(pb *Playbook, typeName, title, status string, links map[string][]string, existing []Artifact) (Artifact, error) {
+//
+// Creating into a Status that has a Binding hands the Artifact to an agent
+// immediately, so it counts as a Human Transition: an agent may do it only
+// into an Inbox, and must otherwise put the creation in a Proposal.
+func Create(pb *Playbook, actor Actor, typeName, title, status string, links map[string][]string, existing []Artifact) (Artifact, error) {
 	t := pb.Type(typeName)
 	if t == nil {
 		return Artifact{}, fmt.Errorf("unknown Artifact Type %q. Declared Types: %s", typeName, strings.Join(typeNames(pb), ", "))
@@ -106,6 +112,9 @@ func Create(pb *Playbook, typeName, title, status string, links map[string][]str
 	}
 	if !slices.Contains(t.Initial, status) {
 		return Artifact{}, fmt.Errorf("a %s can't start in %q. Allowed starting Statuses: %s", t.Name, status, strings.Join(t.Initial, ", "))
+	}
+	if actor.Agent() && t.Bindings[status] != "" && !slices.Contains(t.Inbox, status) {
+		return Artifact{}, fmt.Errorf("Creating a %s straight into %q would hand it to an agent immediately. An agent must put it in a Proposal for a human to approve.", t.Name, status)
 	}
 	for _, name := range slices.Sorted(maps.Keys(links)) {
 		target, ok := t.Links[name]

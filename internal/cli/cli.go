@@ -68,6 +68,9 @@ var commands = map[string]func(*env, []string) error{
 	"create":    cmdCreate,
 	"move":      cmdMove,
 	"next":      cmdNext,
+	"propose":   cmdPropose,
+	"approve":   cmdApprove,
+	"reject":    cmdReject,
 }
 
 const usage = `Usage: jfl <command> [arguments]
@@ -83,6 +86,15 @@ Commands:
                           a body edited outside jfl is re-validated, and a
                           Status or frontmatter changed outside jfl is refused
   next                    say which Skill to run on which Artifact
+  propose <file>          put forward the creations and Transitions in a
+                          Proposal file for a person to approve or reject as
+                          one unit; creations may Link to each other by ref
+  approve <proposal>      apply every change in a pending Proposal, or none;
+                          only a person may, confirming it in an interactive
+                          terminal, and its items may then make Human
+                          Transitions and create into Statuses with a Binding
+  reject <proposal>       drop a pending Proposal, changing nothing; only a
+                          person may
   version                 print the version
 
 Environment:
@@ -129,7 +141,7 @@ func cmdCreate(e *env, args []string) error {
 	if err != nil {
 		return err
 	}
-	a, err := engine.Create(pb, typeName, *title, *status, links, existing)
+	a, err := engine.Create(pb, e.actor, typeName, *title, *status, links, existing)
 	if err != nil {
 		return err
 	}
@@ -213,7 +225,11 @@ func cmdNext(e *env, args []string) error {
 	if err != nil {
 		return err
 	}
-	res := engine.Next(pb, artifacts)
+	proposals, err := store.NewProposals(e.dir).List()
+	if err != nil {
+		return err
+	}
+	res := engine.Next(pb, artifacts, proposals)
 	if len(res.Candidates) == 0 {
 		fmt.Fprintln(e.stdout, "nothing for an agent to do")
 	} else {
