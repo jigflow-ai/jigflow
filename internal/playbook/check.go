@@ -40,7 +40,7 @@ func check(pb *engine.Playbook, typeFiles, skillFiles map[string]string) []strin
 			}
 		}
 		for _, g := range pb.Skills[name].Guidelines {
-			if !slices.Contains(pb.Guidelines, g) {
+			if _, ok := pb.Guidelines[g]; !ok {
 				problems = append(problems, fmt.Sprintf("%s: Guideline %q doesn't exist", skillFiles[name], g))
 			}
 		}

@@ -74,6 +74,7 @@ var commands = map[string]func(*env, []string) error{
 	"check":     cmdCheck,
 	"migrate":   cmdMigrate,
 	"simulate":  cmdSimulate,
+	"publish":   cmdPublish,
 }
 
 const usage = `Usage: jfl <command> [arguments]
@@ -117,6 +118,12 @@ Commands:
                           Skill, Readiness, Guards, Gates, Actions and Human
                           Transitions along it; writes no state and runs no
                           Gates or Actions
+  publish <adapter>       publish the Playbook's Skills, the Guidelines they
+                          name and a router Skill built from its Bindings for
+                          a coding agent: claude-code, as Claude Code Skills in
+                          .claude/skills, or agents-md, as a section of
+                          AGENTS.md and Skills in .agents/skills; publishing
+                          again replaces and removes only what jfl published
   version                 print the version
 
 Environment:

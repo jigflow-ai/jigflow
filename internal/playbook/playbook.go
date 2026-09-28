@@ -47,7 +47,7 @@ type typeFile struct {
 	Initial     []string                   `yaml:"initial"`
 	Final       []string                   `yaml:"final"`
 	Inbox       []string                   `yaml:"inbox"`
-	Bindings    map[string]string          `yaml:"bindings"`
+	Bindings    map[string]bindingFile     `yaml:"bindings"`
 	Links       map[string]string          `yaml:"links"`
 	Readiness   map[string][]conditionFile `yaml:"readiness"`
 	Transitions []struct {
@@ -60,13 +60,44 @@ type typeFile struct {
 	} `yaml:"transitions"`
 }
 
+// bindingFile is a Binding: the name of its Skill, or a mapping that also
+// says how the Skill should run.
+//
+//	in-progress: implement
+//	in-progress: {skill: implement, fresh: true, isolated: true}
+type bindingFile struct {
+	Skill    string `yaml:"skill"`
+	Fresh    bool   `yaml:"fresh"`    // run the Skill in a fresh session
+	Isolated bool   `yaml:"isolated"` // run the Skill in an isolated sub-agent
+}
+
+func (b *bindingFile) UnmarshalYAML(n *yaml.Node) error {
+	if n.Kind == yaml.ScalarNode {
+		return n.Decode(&b.Skill)
+	}
+	// A misspelt key is an error, as everywhere else in a Playbook; a
+	// Node's Decode doesn't check for them.
+	if n.Kind == yaml.MappingNode {
+		for i := 0; i < len(n.Content); i += 2 {
+			switch k := n.Content[i].Value; k {
+			case "skill", "fresh", "isolated":
+			default:
+				return fmt.Errorf("line %d: unknown Binding field %q (want skill, fresh or isolated)", n.Content[i].Line, k)
+			}
+		}
+	}
+	type plain bindingFile
+	return n.Decode((*plain)(b))
+}
+
 // skillFile is the frontmatter of a SKILL.md. Changes is a pointer so a
 // Skill that doesn't say whether it changes anything can be told apart.
 type skillFile struct {
-	Changes    *bool    `yaml:"changes"`
-	Invocation string   `yaml:"invocation"`
-	Guidelines []string `yaml:"guidelines"`
-	Personas   []struct {
+	Description string   `yaml:"description"`
+	Changes     *bool    `yaml:"changes"`
+	Invocation  string   `yaml:"invocation"`
+	Guidelines  []string `yaml:"guidelines"`
+	Personas    []struct {
 		Name     string `yaml:"name"`
 		Fallback string `yaml:"fallback"`
 	} `yaml:"personas"`
@@ -127,7 +158,7 @@ type layer struct {
 	types      []*engine.ArtifactType // in declaration order
 	skills     map[string]*engine.Skill
 	personas   []string
-	guidelines []string
+	guidelines map[string]string // name -> its Markdown
 
 	typeFiles, skillFiles map[string]string   // name -> the file declaring it
 	skillProblems         map[string][]string // Skill -> what its file lacks
@@ -143,6 +174,7 @@ func readLayer(fsys fs.FS, label string) (*layer, error) {
 	l := &layer{
 		name:          pf.Name,
 		skills:        map[string]*engine.Skill{},
+		guidelines:    map[string]string{},
 		typeFiles:     map[string]string{},
 		skillFiles:    map[string]string{},
 		skillProblems: map[string][]string{},
@@ -160,14 +192,22 @@ func readLayer(fsys fs.FS, label string) (*layer, error) {
 	if err := l.readSkills(fsys, label); err != nil {
 		return nil, err
 	}
-	for dir, names := range map[string]*[]string{"personas": &l.personas, "guidelines": &l.guidelines} {
-		paths, err := fs.Glob(fsys, dir+"/*.md")
+	paths, err := fs.Glob(fsys, "personas/*.md")
+	if err != nil {
+		return nil, err
+	}
+	for _, p := range paths {
+		l.personas = append(l.personas, strings.TrimSuffix(path.Base(p), ".md"))
+	}
+	if paths, err = fs.Glob(fsys, "guidelines/*.md"); err != nil {
+		return nil, err
+	}
+	for _, p := range paths {
+		data, err := fs.ReadFile(fsys, p)
 		if err != nil {
 			return nil, err
 		}
-		for _, p := range paths {
-			*names = append(*names, strings.TrimSuffix(path.Base(p), ".md"))
-		}
+		l.guidelines[strings.TrimSuffix(path.Base(p), ".md")] = string(data)
 	}
 	return l, nil
 }
@@ -197,8 +237,19 @@ func (l *layer) readTypes(fsys fs.FS, label string) error {
 			Initial:  tf.Initial,
 			Final:    tf.Final,
 			Inbox:    tf.Inbox,
-			Bindings: tf.Bindings,
 			Links:    tf.Links,
+		}
+		for status, b := range tf.Bindings {
+			if t.Bindings == nil {
+				t.Bindings = map[string]string{}
+			}
+			t.Bindings[status] = b.Skill
+			if b.Fresh || b.Isolated {
+				if t.Hints == nil {
+					t.Hints = map[string]engine.Hints{}
+				}
+				t.Hints[status] = engine.Hints{Fresh: b.Fresh, Isolated: b.Isolated}
+			}
 		}
 		for status, cfs := range tf.Readiness {
 			if t.Readiness == nil {
@@ -245,7 +296,8 @@ func (l *layer) readSkills(fsys fs.FS, label string) error {
 		}
 		rel := in(label, p)
 		var sf skillFile
-		if fm, ok := frontmatter(data); ok {
+		fm, prompt, ok := frontmatter(data)
+		if ok {
 			if err := decodeYAML(fm, rel, &sf); err != nil {
 				return err
 			}
@@ -262,7 +314,14 @@ func (l *layer) readSkills(fsys fs.FS, label string) error {
 		default:
 			problems = append(problems, fmt.Sprintf("%s: unknown Invocation Mode %q (want user, agent or bound)", rel, sf.Invocation))
 		}
-		s := &engine.Skill{Name: name, Changes: sf.Changes != nil && *sf.Changes, Invocation: sf.Invocation, Guidelines: sf.Guidelines}
+		s := &engine.Skill{
+			Name:        name,
+			Description: sf.Description,
+			Changes:     sf.Changes != nil && *sf.Changes,
+			Invocation:  sf.Invocation,
+			Guidelines:  sf.Guidelines,
+			Prompt:      string(prompt),
+		}
 		for _, pf := range sf.Personas {
 			s.Personas = append(s.Personas, engine.PersonaRef{Name: pf.Name, Fallback: pf.Fallback})
 		}
@@ -281,6 +340,7 @@ func (l *layer) readSkills(fsys fs.FS, label string) error {
 func merge(base, own *layer) *layer {
 	m := &layer{
 		skills:        maps.Clone(base.skills),
+		guidelines:    maps.Clone(base.guidelines),
 		typeFiles:     maps.Clone(base.typeFiles),
 		skillFiles:    maps.Clone(base.skillFiles),
 		skillProblems: maps.Clone(base.skillProblems),
@@ -301,7 +361,7 @@ func merge(base, own *layer) *layer {
 	maps.Copy(m.skillFiles, own.skillFiles)
 	maps.Copy(m.skillProblems, own.skillProblems)
 	m.personas = union(base.personas, own.personas)
-	m.guidelines = union(base.guidelines, own.guidelines)
+	maps.Copy(m.guidelines, own.guidelines)
 	return m
 }
 
@@ -316,17 +376,21 @@ func union(a, b []string) []string {
 	return u
 }
 
-// frontmatter returns the YAML block a Markdown file starts with, if any.
-func frontmatter(data []byte) ([]byte, bool) {
+// frontmatter returns the YAML block a Markdown file starts with, if any,
+// and the Markdown after it: the whole file when it has none.
+func frontmatter(data []byte) (fm, body []byte, ok bool) {
 	rest, ok := bytes.CutPrefix(data, []byte("---\n"))
 	if !ok {
-		return nil, false
+		return nil, data, false
 	}
-	if bytes.HasPrefix(rest, []byte("---\n")) {
-		return nil, true
+	if body, ok := bytes.CutPrefix(rest, []byte("---\n")); ok {
+		return nil, body, true
 	}
-	fm, _, ok := bytes.Cut(rest, []byte("\n---\n"))
-	return fm, ok
+	fm, body, ok = bytes.Cut(rest, []byte("\n---\n"))
+	if !ok {
+		return nil, data, false
+	}
+	return fm, body, true
 }
 
 // in names the file name of the Playbook labelled label, for messages. A

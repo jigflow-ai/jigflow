@@ -22,16 +22,18 @@ type Playbook struct {
 	Types      []*ArtifactType   // in declaration order
 	Skills     map[string]*Skill // by name
 	Personas   []string          // names of the Personas the project declares
-	Guidelines []string          // names of the Guidelines the project declares
+	Guidelines map[string]string // the Guidelines the project declares: name -> its Markdown
 }
 
 // Skill is a prompt file that tells an agent how to do one piece of work.
 type Skill struct {
-	Name       string
-	Changes    bool   // whether it changes code or Artifacts
-	Invocation string // its Invocation Mode: InvokedByUser, InvokedByAgent or InvokedByBinding
-	Personas   []PersonaRef
-	Guidelines []string // names of the Guidelines it may load
+	Name        string
+	Description string // what it does and when to use it, for the agent choosing it
+	Changes     bool   // whether it changes code or Artifacts
+	Invocation  string // its Invocation Mode: InvokedByUser, InvokedByAgent or InvokedByBinding
+	Personas    []PersonaRef
+	Guidelines  []string // names of the Guidelines it may load
+	Prompt      string   // the Markdown of its SKILL.md, after the frontmatter
 }
 
 // PersonaRef is a Skill naming a Persona for the agent to adopt, with a
@@ -67,10 +69,18 @@ type ArtifactType struct {
 	Final       []string               // Statuses where work on an Artifact ends
 	Inbox       []string               // Statuses agents may create into although they have a Binding
 	Bindings    map[string]string      // Status -> Skill; a Status with no Binding is human work
+	Hints       map[string]Hints       // Status -> how its Binding asks for the Skill to run
 	Links       map[string]string      // Link name -> the Artifact Type it points to
 	Readiness   map[string][]Condition // Status -> what must hold before agent work there may start
 	Transitions []Transition
 	Migrations  map[string]string // an old, undeclared Status -> the Status its Artifacts migrate to
+}
+
+// Hints are how a Binding asks for its Skill to run, which Adapters
+// translate where the coding agent supports it.
+type Hints struct {
+	Fresh    bool // in a fresh session, with a clean context
+	Isolated bool // in an isolated sub-agent
 }
 
 // Condition is a declared condition on the Statuses of Linked Artifacts: the
