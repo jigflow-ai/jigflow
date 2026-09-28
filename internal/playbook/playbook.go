@@ -33,9 +33,16 @@ type typeFile struct {
 	Final       []string          `yaml:"final"`
 	Bindings    map[string]string `yaml:"bindings"`
 	Transitions []struct {
-		From string `yaml:"from"`
-		To   string `yaml:"to"`
+		From    string        `yaml:"from"`
+		To      string        `yaml:"to"`
+		Gates   []commandFile `yaml:"gates"`
+		Actions []commandFile `yaml:"actions"`
 	} `yaml:"transitions"`
+}
+
+type commandFile struct {
+	Name string `yaml:"name"`
+	Cmd  string `yaml:"cmd"`
 }
 
 // Load reads the Playbook of the project rooted at root. Artifact Types are
@@ -77,7 +84,18 @@ func Load(root string) (*engine.Playbook, error) {
 			Bindings: tf.Bindings,
 		}
 		for _, tr := range tf.Transitions {
-			t.Transitions = append(t.Transitions, engine.Transition{From: tr.From, To: tr.To})
+			if err := checkCommands(tr.Gates, "a Gate", tr.From, tr.To); err != nil {
+				return nil, fmt.Errorf("%s: %w", rel, err)
+			}
+			if err := checkCommands(tr.Actions, "an Action", tr.From, tr.To); err != nil {
+				return nil, fmt.Errorf("%s: %w", rel, err)
+			}
+			t.Transitions = append(t.Transitions, engine.Transition{
+				From:    tr.From,
+				To:      tr.To,
+				Gates:   commands(tr.Gates),
+				Actions: commands(tr.Actions),
+			})
 		}
 		pb.Types = append(pb.Types, t)
 	}
@@ -93,6 +111,25 @@ func readYAML(path string, v any) error {
 	dec.KnownFields(true) // a misspelt field is an error, not silently ignored
 	if err := dec.Decode(v); err != nil && !errors.Is(err, io.EOF) {
 		return fmt.Errorf("%s: %w", path, err)
+	}
+	return nil
+}
+
+func commands(cfs []commandFile) []engine.Command {
+	var cs []engine.Command
+	for _, c := range cfs {
+		cs = append(cs, engine.Command{Name: c.Name, Cmd: c.Cmd})
+	}
+	return cs
+}
+
+// checkCommands refuses a Gate or Action that lacks a name (used to report
+// it) or a cmd (what runs).
+func checkCommands(cfs []commandFile, what, from, to string) error {
+	for _, c := range cfs {
+		if c.Name == "" || c.Cmd == "" {
+			return fmt.Errorf("%s on %q → %q needs a name and a cmd", what, from, to)
+		}
 	}
 	return nil
 }

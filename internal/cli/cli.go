@@ -67,7 +67,8 @@ const usage = `Usage: jfl <command> [arguments]
 Commands:
   create <Type> --title <title> [--status <status>]
                           create an Artifact in one of the Type's initial Statuses
-  move <id> <status>      move an Artifact through a declared Transition
+  move <id> <status>      move an Artifact through a declared Transition,
+                          running its Gates before and its Actions after
   next                    say which Skill to run on which Artifact
   version                 print the version
 `
@@ -133,14 +134,28 @@ func cmdMove(e *env, args []string) error {
 	if err != nil {
 		return err
 	}
-	moved, err := engine.Move(pb, a, to)
+	moved, tr, err := engine.Move(pb, a, to)
 	if err != nil {
 		return err
+	}
+	for _, g := range tr.Gates {
+		if out, err := e.shell(g.Cmd, a.ID, a.Status, to); err != nil {
+			return fmt.Errorf("%s: %q → %q refused: Gate %q failed (%s: %v)%s", a.ID, a.Status, to, g.Name, g.Cmd, err, indent(out))
+		}
 	}
 	if err := st.Save(moved); err != nil {
 		return err
 	}
 	fmt.Fprintf(e.stdout, "%s: %s → %s\n", moved.ID, a.Status, moved.Status)
+	// The Transition has happened; a failing Action is reported, stops the
+	// Actions after it, and makes the command fail, but doesn't undo the move.
+	for _, act := range tr.Actions {
+		out, err := e.shell(act.Cmd, a.ID, a.Status, to)
+		if err != nil {
+			return fmt.Errorf("%s: moved to %q, but Action %q failed (%s: %v)%s", moved.ID, moved.Status, act.Name, act.Cmd, err, indent(out))
+		}
+		fmt.Fprintf(e.stdout, "Action %q succeeded%s\n", act.Name, indent(out))
+	}
 	return nil
 }
 

@@ -44,8 +44,16 @@ type ArtifactType struct {
 
 // Transition is a declared move from one Status to another.
 type Transition struct {
-	From string
-	To   string
+	From    string
+	To      string
+	Gates   []Command // must all succeed, in order, for the Transition to happen
+	Actions []Command // run in order after the Transition succeeds
+}
+
+// Command is a user-declared shell command: a Gate or an Action.
+type Command struct {
+	Name string
+	Cmd  string
 }
 
 // Artifact is one unit of workflow state.
@@ -78,22 +86,27 @@ func Create(pb *Playbook, typeName, title, status string, existing []Artifact) (
 
 // Move decides moving an Artifact to the Status to. It is refused unless the
 // Artifact's Type declares a Transition from its current Status to to.
-func Move(pb *Playbook, a Artifact, to string) (Artifact, error) {
+//
+// It returns the moved Artifact and the Transition it takes. The engine
+// performs no I/O: the caller runs the Transition's Gates, saves the moved
+// Artifact only if they all succeed, and then runs its Actions.
+func Move(pb *Playbook, a Artifact, to string) (Artifact, Transition, error) {
 	t := pb.Type(a.Type)
 	if t == nil {
-		return Artifact{}, fmt.Errorf("%s has Artifact Type %q, which the Playbook doesn't declare", a.ID, a.Type)
+		return Artifact{}, Transition{}, fmt.Errorf("%s has Artifact Type %q, which the Playbook doesn't declare", a.ID, a.Type)
 	}
-	if !slices.ContainsFunc(t.Transitions, func(tr Transition) bool { return tr.From == a.Status && tr.To == to }) {
+	i := slices.IndexFunc(t.Transitions, func(tr Transition) bool { return tr.From == a.Status && tr.To == to })
+	if i < 0 {
 		msg := fmt.Sprintf("%s: %q → %q is not a declared Transition.", a.ID, a.Status, to)
 		if out := t.outgoing(a.Status); len(out) > 0 {
 			msg += fmt.Sprintf(" From %q it can move to: %s.", a.Status, strings.Join(out, ", "))
 		} else {
 			msg += fmt.Sprintf(" No Transition is declared from %q.", a.Status)
 		}
-		return Artifact{}, errors.New(msg)
+		return Artifact{}, Transition{}, errors.New(msg)
 	}
 	a.Status = to
-	return a, nil
+	return a, t.Transitions[i], nil
 }
 
 // outgoing returns the Statuses reachable from status in one Transition.
