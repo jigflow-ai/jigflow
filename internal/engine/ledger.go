@@ -30,12 +30,41 @@ type FocusChange struct {
 	Focus   string
 }
 
+// Usage is a Ledger entry: the tokens one message of an agent session
+// used, as the agent's own records say, read by an Adapter and never
+// reported by the agent (ADR 0007).
+type Usage struct {
+	At      time.Time // when the agent's records say the message was sent
+	Session string
+	Agent   string // the coding agent whose records say so, e.g. claude-code
+	Message string // its id in those records, which one message is recorded once under
+	Tokens
+}
+
+// Tokens are the tokens of one or more messages to a model.
+type Tokens struct {
+	Input      int64 // not read from the cache
+	Output     int64
+	CacheRead  int64 // input read from the cache
+	CacheWrite int64 // input written to the cache
+}
+
+func (t *Tokens) add(u Tokens) {
+	t.Input += u.Input
+	t.Output += u.Output
+	t.CacheRead += u.CacheRead
+	t.CacheWrite += u.CacheWrite
+}
+
 // Ledger is the record of time: every Status change and every Focus change,
-// each in the order they happened. Its times come from jfl's own clock,
-// never from the agent (ADR 0007).
+// each in the order they happened, and the tokens agent sessions used
+// where their agent's records expose them. The times of its changes come
+// from jfl's own clock, those of usage from the agent's records, never from
+// the agent itself (ADR 0007).
 type Ledger struct {
 	Statuses []StatusChange
 	Focuses  []FocusChange
+	Usages   []Usage
 }
 
 // LedgerSummary is the Ledger summed per Artifact and per Status.
@@ -45,6 +74,11 @@ type LedgerSummary struct {
 	// Unattributed is the agent session time charged to no Artifact, spent
 	// with nothing in Focus.
 	Unattributed time.Duration
+	// UnattributedTokens are the tokens used with nothing in Focus.
+	UnattributedTokens Tokens
+	// Usage is whether the Ledger records any tokens: where no agent's
+	// records expose them, it records time only.
+	Usage bool
 }
 
 // ArtifactTime is the time one Artifact spent in each Status, and the agent
@@ -53,6 +87,7 @@ type ArtifactTime struct {
 	ID, Type, Title string
 	Statuses        []TimeInStatus // in the Artifact Type's declaration order
 	Agent           time.Duration
+	Tokens          Tokens // used while it was in Focus
 }
 
 // TimeInStatus is the time an Artifact spent in one Status. When it is
@@ -80,6 +115,8 @@ type StatusTime struct {
 // one Focus change to the next and is charged to the Artifact in Focus
 // between them, or to Unattributed; the time after its last Focus change
 // isn't charged, since jfl can't tell whether the session is still running.
+// The tokens of a message are charged to the Artifact in its session's
+// Focus when the message was sent, or to Unattributed.
 func Summarise(pb *Playbook, l Ledger, now time.Time) LedgerSummary {
 	var sum LedgerSummary
 	byID := map[string]*ArtifactTime{}
@@ -167,6 +204,23 @@ func Summarise(pb *Playbook, l Ledger, now time.Time) LedgerSummary {
 		}
 	}
 
+	// Each message's tokens, once, charged to the Focus it was sent in.
+	type message struct{ session, agent, id string }
+	seen := map[message]bool{}
+	for _, u := range l.Usages {
+		sum.Usage = true
+		m := message{u.Session, u.Agent, u.Message}
+		if seen[m] {
+			continue
+		}
+		seen[m] = true
+		if focus := focusAt(sessions[u.Session], u.At); focus == "" {
+			sum.UnattributedTokens.add(u.Tokens)
+		} else {
+			artifact(focus).Tokens.add(u.Tokens)
+		}
+	}
+
 	for _, a := range byID {
 		sum.Artifacts = append(sum.Artifacts, *a)
 	}
@@ -193,6 +247,19 @@ func Summarise(pb *Playbook, l Ledger, now time.Time) LedgerSummary {
 		}
 	}
 	return sum
+}
+
+// focusAt is a session's Focus at the time at, given its Focus changes in
+// the order they happened: none before the first.
+func focusAt(fs []FocusChange, at time.Time) string {
+	focus := ""
+	for _, f := range fs {
+		if f.At.After(at) {
+			break
+		}
+		focus = f.Focus
+	}
+	return focus
 }
 
 // elapsed is the time from start to end, or none when the clocks of the

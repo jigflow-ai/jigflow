@@ -97,6 +97,7 @@ var commands = map[string]func(*env, []string) error{
 	"simulate":  cmdSimulate,
 	"publish":   cmdPublish,
 	"ledger":    cmdLedger,
+	"hook":      cmdHook,
 }
 
 const usage = `Usage: jfl <command> [arguments]
@@ -160,18 +161,28 @@ Commands:
   publish <adapter>       publish the Playbook's Skills, the Guidelines they
                           name and a router Skill built from its Bindings for
                           a coding agent: claude-code, as Claude Code Skills in
-                          .claude/skills, or agents-md, as a section of
-                          AGENTS.md and Skills in .agents/skills; publishing
-                          again replaces and removes only what jfl published
+                          .claude/skills, with the hooks that read its token
+                          usage in .claude/settings.json, or agents-md, as a
+                          section of AGENTS.md and Skills in .agents/skills;
+                          publishing again replaces and removes only what jfl
+                          published
   ledger                  sum the Ledger: the time each Artifact spent in each
                           Status, so far in the one it is in, and the agent
-                          session time charged to it while it was in Focus;
-                          the time every Artifact of a Type spent in each
-                          Status; and agent time with nothing in Focus, which
-                          is unattributed. Every create, Transition, approved
-                          Proposal and migration, and every change of a
-                          session's Focus, adds an entry of its own to the
-                          committed .jigflow/ledger, timed by jfl's clock
+                          session time and tokens charged to it while it was
+                          in Focus; the time every Artifact of a Type spent in
+                          each Status; and agent time and tokens with nothing
+                          in Focus, which are unattributed. Every create,
+                          Transition, approved Proposal and migration, and
+                          every change of a session's Focus, adds an entry of
+                          its own to the committed .jigflow/ledger, timed by
+                          jfl's clock; tokens come only from the agent's own
+                          records, and agents without any record time only
+  hook claude-code        run by the Claude Code hooks jfl publish sets up,
+                          never by an agent session: at SessionStart, give the
+                          session's commands JFL_SESSION; after each turn, and
+                          at the end of a sub-agent or the session, add the
+                          token usage Claude Code's transcripts record to the
+                          Ledger
   mcp                     serve the agent-safe commands as an MCP server over
                           stdio, as an agent session: next, move (never a
                           Human Transition), propose, query, and create into

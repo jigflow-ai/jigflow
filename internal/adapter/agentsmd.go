@@ -50,7 +50,7 @@ func agentsMD(pb *engine.Playbook) []File {
 		fmt.Fprintf(&skills, "- /%s: %sRead `%s/SKILL.md` and follow it when you run it.\n", s.Name, d, dir)
 	}
 	section := fmt.Sprintf(agentsSection, pb.Name, statuses(pb, "####"), skills.String())
-	return append([]File{{Path: "AGENTS.md", Content: section, Section: true}}, files...)
+	return append([]File{{Path: "AGENTS.md", Merge: func(old string) (string, error) { return withSection(old, section), nil }}}, files...)
 }
 
 // agentsSection is the AGENTS.md section: the Playbook's name, what works on

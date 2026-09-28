@@ -9,6 +9,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -91,8 +92,13 @@ type Project struct {
 	t     testing.TB
 	bin   *Binary
 	Dir   string
-	clock string // the time commands read their clock at, or "" for the real one
+	clock string   // the time commands read their clock at, or "" for the real one
+	extra []string // further environment variables, as key=value
 }
+
+// Setenv sets an environment variable for every command run from now on,
+// such as where Claude Code keeps its records.
+func (p *Project) Setenv(key, value string) { p.extra = append(p.extra, key+"="+value) }
 
 // At makes every command run from now on read its clock at the given time,
 // an RFC 3339 timestamp such as "2026-09-28T09:00:00Z", as if that much time
@@ -167,14 +173,28 @@ func (p *Project) env(session string) []string {
 	if p.clock != "" {
 		e = append(e, ClockEnv+"="+p.clock)
 	}
-	return e
+	return append(e, p.extra...)
+}
+
+// RunWithInput executes `jfl args...` with stdin reading input, as the agent
+// session with the given id, or as a person when it is empty: the way a
+// coding agent runs a hook command.
+func (p *Project) RunWithInput(session, input string, args ...string) Result {
+	p.t.Helper()
+	return p.runWith(p.bin.Jfl, session, strings.NewReader(input), args)
 }
 
 func (p *Project) run(exe, session string, args []string) Result {
 	p.t.Helper()
+	return p.runWith(exe, session, nil, args)
+}
+
+func (p *Project) runWith(exe, session string, stdin io.Reader, args []string) Result {
+	p.t.Helper()
 	cmd := exec.Command(exe, args...)
 	cmd.Dir = p.Dir
 	cmd.Env = p.env(session)
+	cmd.Stdin = stdin
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
 	err := cmd.Run()

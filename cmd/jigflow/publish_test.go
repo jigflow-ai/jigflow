@@ -1,9 +1,11 @@
 package main_test
 
 import (
+	"encoding/json"
 	"maps"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -222,7 +224,7 @@ func TestRePublishingRemovesWhatIsNoLongerInThePlaybookButNotWhatAPersonWrote(t 
 	p.Write(".jigflow/guidelines/go-style.md", "Run gofmt.\n")
 	writeSkill(p, "triage", false)
 	p.Write(".claude/skills/mine/SKILL.md", "---\nname: mine\n---\nMy own Skill.\n")
-	p.Write(".claude/settings.json", "{}\n")
+	p.Write(".claude/commands/mine.md", "My own command.\n")
 	p.MustRun("publish", "claude-code")
 
 	if err := os.RemoveAll(filepath.Join(p.Dir, ".jigflow/skills/triage")); err != nil {
@@ -241,7 +243,7 @@ func TestRePublishingRemovesWhatIsNoLongerInThePlaybookButNotWhatAPersonWrote(t 
 			t.Errorf("%s is still there after re-publishing (err %v)", gone, err)
 		}
 	}
-	if p.Read(".claude/skills/mine/SKILL.md") != "---\nname: mine\n---\nMy own Skill.\n" || p.Read(".claude/settings.json") != "{}\n" {
+	if p.Read(".claude/skills/mine/SKILL.md") != "---\nname: mine\n---\nMy own Skill.\n" || p.Read(".claude/commands/mine.md") != "My own command.\n" {
 		t.Errorf("re-publishing touched files a person wrote")
 	}
 }
@@ -336,5 +338,68 @@ func TestPublishingRemovesOnlyFilesWhereItsAdapterPublishes(t *testing.T) {
 	}
 	if p.Read("notes.md") != "Mine.\n" {
 		t.Errorf("publish removed a file outside .claude/skills")
+	}
+}
+
+// hookCommands returns, per hook event, the commands the hooks in a Claude
+// Code settings file run.
+func hookCommands(t *testing.T, settings string) map[string][]string {
+	t.Helper()
+	var s struct {
+		Hooks map[string][]struct {
+			Matcher string `json:"matcher"`
+			Hooks   []struct {
+				Type    string `json:"type"`
+				Command string `json:"command"`
+			} `json:"hooks"`
+		} `json:"hooks"`
+	}
+	if err := json.Unmarshal([]byte(settings), &s); err != nil {
+		t.Fatalf(".claude/settings.json isn't JSON: %v\n%s", err, settings)
+	}
+	out := map[string][]string{}
+	for event, groups := range s.Hooks {
+		for _, g := range groups {
+			for _, h := range g.Hooks {
+				out[event] = append(out[event], h.Type+": "+h.Command)
+			}
+		}
+	}
+	return out
+}
+
+func TestTheClaudeCodeAdapterSetsUpTheHooksThatReadTokenUsageFromClaudeCodesRecords(t *testing.T) {
+	p := published(t)
+	p.MustRun("publish", "claude-code")
+
+	got := hookCommands(t, p.Read(".claude/settings.json"))
+	for _, event := range []string{"SessionStart", "Stop", "SubagentStop", "SessionEnd"} {
+		if !slices.Equal(got[event], []string{"command: jfl hook claude-code"}) {
+			t.Errorf("%s hooks = %q, want jfl hook claude-code", event, got[event])
+		}
+	}
+}
+
+func TestPublishingKeepsThePersonsOwnClaudeCodeSettingsAndHooks(t *testing.T) {
+	p := published(t)
+	p.Write(".claude/settings.json", `{
+  "permissions": {"allow": ["Bash(make test)"]},
+  "hooks": {"Stop": [{"hooks": [{"type": "command", "command": "notify-send done"}]}]}
+}
+`)
+	p.MustRun("publish", "claude-code")
+	p.MustRun("publish", "claude-code")
+
+	settings := p.Read(".claude/settings.json")
+	var s struct {
+		Permissions struct {
+			Allow []string `json:"allow"`
+		} `json:"permissions"`
+	}
+	if err := json.Unmarshal([]byte(settings), &s); err != nil || !slices.Equal(s.Permissions.Allow, []string{"Bash(make test)"}) {
+		t.Errorf("publishing lost the person's permissions (%v):\n%s", err, settings)
+	}
+	if got := hookCommands(t, settings)["Stop"]; !slices.Equal(got, []string{"command: notify-send done", "command: jfl hook claude-code"}) {
+		t.Errorf("Stop hooks = %q, want the person's and jfl's, once", got)
 	}
 }

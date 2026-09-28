@@ -21,9 +21,10 @@ import (
 type File struct {
 	Path    string
 	Content string
-	// Section makes Content a section of the file, between sectionBegin and
-	// sectionEnd, that a publish replaces while keeping the rest.
-	Section bool
+	// Merge makes the file one a person writes too, of which only a part is
+	// jfl's: a publish writes what Merge makes of the file's content, empty
+	// when there is no file yet, in place of Content, keeping the rest.
+	Merge func(old string) (string, error)
 }
 
 // Adapter publishes a Playbook for one coding agent.
@@ -36,7 +37,7 @@ type Adapter struct {
 
 // Adapters are the Adapters JigFlow ships, by name.
 var Adapters = []Adapter{
-	{Name: "claude-code", Agent: "Claude Code", Where: []string{claudeCodeSkills}, render: claudeCode},
+	{Name: ClaudeCode, Agent: "Claude Code", Where: []string{claudeCodeSkills, claudeCodeSettings}, render: claudeCode},
 	{Name: "agents-md", Agent: "agents that read AGENTS.md", Where: []string{"AGENTS.md", agentsSkills}, render: agentsMD},
 }
 
@@ -90,19 +91,22 @@ func (a *Adapter) Publish(root string, pb *engine.Playbook) (Changes, error) {
 	var write []File
 	for _, f := range files {
 		old, err := os.ReadFile(abs(root, f.Path))
+		exists := err == nil
 		if err != nil && !errors.Is(err, os.ErrNotExist) {
 			return ch, err
 		}
-		if f.Section {
-			// Only the section is jfl's; the rest of the file is kept.
-			f.Content = withSection(string(old), f.Content)
+		if f.Merge != nil {
+			// Only a part of the file is jfl's; the rest is kept.
+			if f.Content, err = f.Merge(string(old)); err != nil {
+				return ch, err
+			}
 		}
 		switch {
-		case errors.Is(err, os.ErrNotExist):
+		case !exists:
 			write = append(write, f)
 		case string(old) == f.Content:
 			// Already published, or identical to it: nothing to do.
-		case !f.Section && !slices.Contains(owned, f.Path):
+		case f.Merge == nil && !slices.Contains(owned, f.Path):
 			return ch, fmt.Errorf("%s was not published by jfl, so it isn't replaced; move it away, or rename the Playbook's Skill", f.Path)
 		default:
 			write = append(write, f)
@@ -151,8 +155,8 @@ func (a *Adapter) publishes(rel string) bool {
 // abs is the path on disk of the project-relative, slash-separated rel.
 func abs(root, rel string) string { return filepath.Join(root, filepath.FromSlash(rel)) }
 
-// removeFile removes the published file rel, or only jfl's section of it
-// when it has one, then each directory above it that this leaves empty.
+// removeFile removes the published file rel, or only jfl's section or hooks
+// of it when it has them, then each directory above it that this leaves empty.
 func removeFile(root, rel string) error {
 	data, err := os.ReadFile(abs(root, rel))
 	if errors.Is(err, os.ErrNotExist) {
@@ -161,7 +165,16 @@ func removeFile(root, rel string) error {
 	if err != nil {
 		return err
 	}
-	if rest := withSection(string(data), ""); rest != string(data) && strings.TrimSpace(rest) != "" {
+	if rel == claudeCodeSettings {
+		// Only jfl's hooks are jfl's; the person's settings stay.
+		rest, err := withHooks(string(data), false)
+		if err != nil {
+			return err
+		}
+		if rest != "" {
+			return os.WriteFile(abs(root, rel), []byte(rest), 0o644)
+		}
+	} else if rest := withSection(string(data), ""); rest != string(data) && strings.TrimSpace(rest) != "" {
 		return os.WriteFile(abs(root, rel), []byte(rest), 0o644)
 	}
 	if err := os.Remove(abs(root, rel)); err != nil {

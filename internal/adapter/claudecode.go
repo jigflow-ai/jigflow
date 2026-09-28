@@ -23,9 +23,10 @@ type claudeCodeFrontmatter struct {
 	Context string `yaml:"context,omitempty"`
 }
 
-// claudeCode publishes every Skill as a Claude Code Skill.
+// claudeCode publishes every Skill as a Claude Code Skill, and the hooks
+// through which the Ledger reads token usage from Claude Code's records.
 func claudeCode(pb *engine.Playbook) []File {
-	files := []File{{
+	files := []File{claudeCodeHooks(), {
 		Path:    claudeCodeSkills + "/" + Router + "/SKILL.md",
 		Content: skillMD(claudeCodeFrontmatter{Name: Router, Description: routerDescription}, routerPrompt(pb)),
 	}}

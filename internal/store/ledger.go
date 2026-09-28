@@ -42,8 +42,8 @@ func NewLedger(root string) *Ledger {
 	return &Ledger{dir: filepath.Join(root, LedgerDir), writer: hex.EncodeToString(b)}
 }
 
-// ledgerEntry is the on-disk form of an entry: a Status change or a Focus
-// change.
+// ledgerEntry is the on-disk form of an entry: a Status change, a Focus
+// change, or the usage one collection read from an agent's records.
 type ledgerEntry struct {
 	At time.Time `yaml:"at"`
 	// A Status change.
@@ -55,6 +55,19 @@ type ledgerEntry struct {
 	// A Focus change.
 	Session string `yaml:"session,omitempty"`
 	Focus   string `yaml:"focus,omitempty"`
+	// Usage, with Session.
+	Agent string       `yaml:"agent,omitempty"`
+	Usage []usageEntry `yaml:"usage,omitempty"`
+}
+
+// usageEntry is the on-disk form of one message's usage.
+type usageEntry struct {
+	Message    string    `yaml:"message"`
+	At         time.Time `yaml:"at"`
+	Input      int64     `yaml:"input,omitempty"`
+	Output     int64     `yaml:"output,omitempty"`
+	CacheRead  int64     `yaml:"cache_read,omitempty"`
+	CacheWrite int64     `yaml:"cache_write,omitempty"`
 }
 
 // RecordStatus adds a Status change to the Ledger.
@@ -65,6 +78,23 @@ func (l *Ledger) RecordStatus(c engine.StatusChange) error {
 // RecordFocus adds a Focus change to the Ledger.
 func (l *Ledger) RecordFocus(f engine.FocusChange) error {
 	return l.write(ledgerEntry{At: f.At, Session: f.Session, Focus: f.Focus})
+}
+
+// RecordUsage adds the usage of an agent session's messages, read at the
+// time at from its agent's records, to the Ledger, as one entry. Every
+// message must be of the one session and agent.
+func (l *Ledger) RecordUsage(at time.Time, us []engine.Usage) error {
+	if len(us) == 0 {
+		return nil
+	}
+	e := ledgerEntry{At: at, Session: us[0].Session, Agent: us[0].Agent}
+	for _, u := range us {
+		if u.Session != e.Session || u.Agent != e.Agent {
+			return fmt.Errorf("one Ledger entry records the usage of one session: %s of %s, then %s of %s", e.Session, e.Agent, u.Session, u.Agent)
+		}
+		e.Usage = append(e.Usage, usageEntry{Message: u.Message, At: u.At.UTC(), Input: u.Input, Output: u.Output, CacheRead: u.CacheRead, CacheWrite: u.CacheWrite})
+	}
+	return l.write(e)
 }
 
 func (l *Ledger) write(e ledgerEntry) error {
@@ -128,6 +158,11 @@ func (l *Ledger) Read() (engine.Ledger, error) {
 	})
 	for _, e := range entries {
 		switch {
+		case len(e.Usage) > 0:
+			for _, u := range e.Usage {
+				out.Usages = append(out.Usages, engine.Usage{At: u.At, Session: e.Session, Agent: e.Agent, Message: u.Message,
+					Tokens: engine.Tokens{Input: u.Input, Output: u.Output, CacheRead: u.CacheRead, CacheWrite: u.CacheWrite}})
+			}
 		case e.Artifact != "":
 			out.Statuses = append(out.Statuses, engine.StatusChange{At: e.At, Artifact: e.Artifact, Type: e.Type, Title: e.Title, From: e.From, To: e.To})
 		case e.Session != "":

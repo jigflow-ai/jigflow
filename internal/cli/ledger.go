@@ -66,7 +66,7 @@ func cmdLedger(e *env, args []string) error {
 		return err
 	}
 	sum := engine.Summarise(pb, l, e.now())
-	if len(sum.Artifacts) == 0 && sum.Unattributed == 0 {
+	if len(sum.Artifacts) == 0 && sum.Unattributed == 0 && !sum.Usage {
 		fmt.Fprintln(e.stdout, "the Ledger is empty")
 		return nil
 	}
@@ -91,6 +91,9 @@ func cmdLedger(e *env, args []string) error {
 		if a.Agent > 0 {
 			fmt.Fprintf(w, "    agent time\t%s\n", duration(a.Agent))
 		}
+		if a.Tokens != (engine.Tokens{}) {
+			fmt.Fprintf(w, "    tokens\t%s\n", tokens(a.Tokens))
+		}
 	}
 	if len(sum.Statuses) > 0 {
 		fmt.Fprintln(w, "Time per Status:")
@@ -111,7 +114,17 @@ func cmdLedger(e *env, args []string) error {
 		return err
 	}
 	fmt.Fprintf(e.stdout, "Agent time %s: %s\n", engine.Unattributed, duration(sum.Unattributed))
+	// Only an agent whose records expose tokens has any; the others' work
+	// is recorded as time only.
+	if sum.Usage {
+		fmt.Fprintf(e.stdout, "Tokens %s: %s\n", engine.Unattributed, tokens(sum.UnattributedTokens))
+	}
 	return nil
+}
+
+// tokens writes t as its input, output, cache read and cache write tokens.
+func tokens(t engine.Tokens) string {
+	return fmt.Sprintf("%d input, %d output, %d cache read, %d cache write", t.Input, t.Output, t.CacheRead, t.CacheWrite)
 }
 
 // duration writes d to the minute, as 1h30m, 2h or 45m, or to the second
