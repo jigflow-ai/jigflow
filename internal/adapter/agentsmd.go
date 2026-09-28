@@ -65,6 +65,7 @@ Set JFL_SESSION to one id of your own for the whole session, e.g. ` + "`export J
 ### Commands
 
 - ` + "`jfl next`" + `: the Skill to run and the Artifact to run it on, which becomes your Focus. Start here, and come back here after each piece of work.
+- ` + "`jfl next --autopilot`" + `: one step of autopilot. ` + autopilot + `
 - ` + "`jfl move <id> <status>`" + `: move an Artifact through a declared Transition; its Gates must pass. It claims the Artifact for your session.
 - ` + "`jfl create <Type> --title <title>`" + `: create an Artifact, only into an Inbox.
 - ` + "`jfl propose <file>`" + `: put forward creations and Transitions for a person to approve or reject as one unit.

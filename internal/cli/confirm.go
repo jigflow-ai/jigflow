@@ -17,7 +17,7 @@ var errNoTerminal = errors.New("stdin isn't an interactive terminal")
 // reports whether they answered y or yes. It refuses when stdin isn't an
 // interactive terminal, since then there is nobody to ask (ADR 0003).
 func (e *env) confirm(question string) (bool, error) {
-	if e.stdin == nil || !term.IsTerminal(int(e.stdin.Fd())) {
+	if !e.interactive() {
 		return false, errNoTerminal
 	}
 	fmt.Fprintf(e.stderr, "%s [y/N] ", question)
@@ -30,6 +30,12 @@ func (e *env) confirm(question string) (bool, error) {
 		return true, nil
 	}
 	return false, nil
+}
+
+// interactive reports whether stdin is an interactive terminal: whether
+// someone is there to read and answer.
+func (e *env) interactive() bool {
+	return e.stdin != nil && term.IsTerminal(int(e.stdin.Fd()))
 }
 
 // confirmHuman asks the person at the terminal to confirm the Human

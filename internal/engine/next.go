@@ -13,10 +13,13 @@ type Candidate struct {
 	Skill    string
 }
 
-// Skip is a non-final Artifact that `next` didn't offer, and why.
+// Skip is a non-final Artifact that `next` didn't offer, and why. It is a
+// person's when only a person can move it on: its Status has no Binding, or
+// a pending Proposal waits on them.
 type Skip struct {
 	Artifact Artifact
 	Reason   string
+	Person   bool
 }
 
 // NextResult is what `next` found: the candidates in the order they should
@@ -43,7 +46,7 @@ func Next(pb *Playbook, actor Actor, artifacts []Artifact, proposals []Proposal)
 	for _, a := range declarationOrder(pb, artifacts) {
 		t := pb.Type(a.Type)
 		if t == nil {
-			res.Skipped = append(res.Skipped, Skip{a, fmt.Sprintf("Artifact Type %q isn't declared in the Playbook", a.Type)})
+			res.Skipped = append(res.Skipped, Skip{a, fmt.Sprintf("Artifact Type %q isn't declared in the Playbook", a.Type), false})
 			continue
 		}
 		if slices.Contains(t.Final, a.Status) {
@@ -51,19 +54,19 @@ func Next(pb *Playbook, actor Actor, artifacts []Artifact, proposals []Proposal)
 		}
 		skill := t.Bindings[a.Status]
 		if skill == "" {
-			res.Skipped = append(res.Skipped, Skip{a, fmt.Sprintf("%q has no Binding, so it's human work", a.Status)})
+			res.Skipped = append(res.Skipped, Skip{a, fmt.Sprintf("%q has no Binding, so it's human work", a.Status), true})
 			continue
 		}
 		if a.Claim != "" && a.Claim != actor.Session {
-			res.Skipped = append(res.Skipped, Skip{a, "claimed by agent session " + a.Claim})
+			res.Skipped = append(res.Skipped, Skip{a, "claimed by agent session " + a.Claim, false})
 			continue
 		}
 		if pid, ok := pending[a.ID]; ok {
-			res.Skipped = append(res.Skipped, Skip{a, fmt.Sprintf("waiting on a pending Proposal (%s)", pid)})
+			res.Skipped = append(res.Skipped, Skip{a, fmt.Sprintf("waiting on a pending Proposal (%s)", pid), true})
 			continue
 		}
 		if f := failed(t.Readiness[a.Status], a, artifacts); len(f) > 0 {
-			res.Skipped = append(res.Skipped, Skip{a, "not ready: waiting until " + describe(f)})
+			res.Skipped = append(res.Skipped, Skip{a, "not ready: waiting until " + describe(f), false})
 			continue
 		}
 		res.Candidates = append(res.Candidates, Candidate{a, skill})

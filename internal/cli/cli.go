@@ -92,9 +92,15 @@ Commands:
                           an agent session's move Claims the Artifact, and is
                           refused on one another session claims; entering a
                           Status with no Binding, or a final one, releases it
-  next                    say which Skill to run on which Artifact, preferring
+  next [--autopilot]      say which Skill to run on which Artifact, preferring
                           what the session claims and skipping what others
-                          claim, and make the pick the session's Focus
+                          claim, and make the pick the session's Focus; in an
+                          interactive terminal, show the alternatives too;
+                          --autopilot is one step of an agent session's
+                          autopilot, which stops, saying why and what waits
+                          for a person, when nothing is left for an agent,
+                          its last move was refused, or the Skill it handed
+                          out didn't move the Artifact on
   propose <file>          put forward the creations and Transitions in a
                           Proposal file for a person to approve or reject as
                           one unit; creations may Link to each other by ref
@@ -207,7 +213,18 @@ func cmdMove(e *env, args []string) error {
 	if len(args) != 2 {
 		return fmt.Errorf("%w: jfl move <id> <status>", errUsage)
 	}
-	id, to := args[0], args[1]
+	err := e.move(args[0], args[1])
+	if e.actor.Agent() {
+		// An agent session on autopilot remembers its last move's refusal,
+		// which stops autopilot unless a later move succeeds.
+		if rerr := e.refused(args[0], args[1], err); rerr != nil {
+			return errors.Join(err, rerr)
+		}
+	}
+	return err
+}
+
+func (e *env) move(id, to string) error {
 	pb, st, err := e.load()
 	if err != nil {
 		return err
@@ -268,8 +285,17 @@ func cmdMove(e *env, args []string) error {
 }
 
 func cmdNext(e *env, args []string) error {
-	if len(args) != 0 {
-		return fmt.Errorf("%w: jfl next takes no arguments", errUsage)
+	fs := flag.NewFlagSet("next", flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+	auto := fs.Bool("autopilot", false, "one step of autopilot")
+	if err := fs.Parse(args); err != nil {
+		return fmt.Errorf("%w: %v", errUsage, err)
+	}
+	if fs.NArg() > 0 {
+		return fmt.Errorf("%w: jfl next [--autopilot]", errUsage)
+	}
+	if *auto && !e.actor.Agent() {
+		return fmt.Errorf("autopilot is for agent sessions, and %s isn't set", SessionEnv)
 	}
 	pb, st, err := e.load()
 	if err != nil {
@@ -284,21 +310,25 @@ func cmdNext(e *env, args []string) error {
 		return err
 	}
 	res := engine.Next(pb, e.actor, artifacts, proposals)
-	// The pick becomes an agent session's Focus; with no pick it has none.
-	if e.actor.Agent() {
-		focus := ""
-		if len(res.Candidates) > 0 {
-			focus = res.Candidates[0].Artifact.ID
-		}
-		if err := store.NewSessions(e.dir).SetFocus(e.actor.Session, focus); err != nil {
-			return err
-		}
+	if *auto {
+		return e.autopilot(res, proposals)
+	}
+	if err := e.focus(res); err != nil {
+		return err
 	}
 	if len(res.Candidates) == 0 {
 		fmt.Fprintln(e.stdout, "nothing for an agent to do")
 	} else {
-		top := res.Candidates[0]
-		fmt.Fprintf(e.stdout, "run /%s on %s %q\n", top.Skill, top.Artifact.ID, top.Artifact.Title)
+		e.pick(res.Candidates[0])
+		// In an interactive terminal the other candidates are shown too, so
+		// the person can pick one when they know better.
+		if alts := res.Candidates[1:]; e.interactive() && len(alts) > 0 {
+			fmt.Fprintln(e.stdout, "Alternatives:")
+			for _, c := range alts {
+				fmt.Fprint(e.stdout, "  ")
+				e.pick(c)
+			}
+		}
 	}
 	if len(res.Skipped) > 0 {
 		fmt.Fprintln(e.stdout, "Skipped:")
@@ -307,6 +337,24 @@ func cmdNext(e *env, args []string) error {
 		}
 	}
 	return nil
+}
+
+// focus makes the pick of next an agent session's Focus; with no pick it
+// has none.
+func (e *env) focus(res engine.NextResult) error {
+	if !e.actor.Agent() {
+		return nil
+	}
+	focus := ""
+	if len(res.Candidates) > 0 {
+		focus = res.Candidates[0].Artifact.ID
+	}
+	return store.NewSessions(e.dir).SetFocus(e.actor.Session, focus)
+}
+
+// pick says which Skill to run on which Artifact.
+func (e *env) pick(c engine.Candidate) {
+	fmt.Fprintf(e.stdout, "run /%s on %s %q\n", c.Skill, c.Artifact.ID, c.Artifact.Title)
 }
 
 // unfocus takes an Artifact that is no longer agent work, handed to a

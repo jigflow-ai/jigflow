@@ -25,11 +25,17 @@ func routerPrompt(pb *engine.Playbook) string {
 2. Run that Skill on that Artifact, the way its Binding below says. Move the Artifact on only with `+"`jfl move`"+`, never by editing its frontmatter.
 3. When `+"`jfl next`"+` says there is nothing for an agent to do, stop: what is left is a person's.
 
+`+autopilot+`
+
 What works on each Status of each Artifact Type:
 `, pb.Name)
 	b.WriteString(statuses(pb, "##"))
 	return b.String()
 }
+
+// autopilot tells an agent how to run autopilot, which it drives: jfl runs
+// no agent loop (ADR 0001).
+const autopilot = "When a person asks you to work on your own, run autopilot: run `jfl next --autopilot` instead of `jfl next`, run the Skill it names on that Artifact, and repeat. Stop as soon as it says `autopilot stopped`, and tell the person why it stopped and what is waiting for a person, as it lists them. A refused `jfl move` you can't fix within the Skill, such as a Human Transition, ends the run at the next step."
 
 // statuses lists, under a heading of the given level per Artifact Type,
 // what works on each of its Statuses.

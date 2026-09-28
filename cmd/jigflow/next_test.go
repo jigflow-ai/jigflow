@@ -97,3 +97,26 @@ func firstLine(s string) string {
 	line, _, _ := strings.Cut(s, "\n")
 	return line
 }
+
+func TestNextInAnInteractiveTerminalShowsTheTopPickWithAlternatives(t *testing.T) {
+	p := ticketPlaybook(t)
+	p.MustRun("create", "Ticket", "--title", "First")
+	p.MustRun("create", "Ticket", "--title", "Second")
+	p.MustRun("create", "Ticket", "--title", "Third")
+
+	res := p.StartInTerminal("next").Wait()
+	if res.ExitCode != 0 {
+		t.Fatalf("next in a terminal exited %d:\n%s", res.ExitCode, res.Output)
+	}
+	want := "run /implement on T-1 \"First\"\n" +
+		"Alternatives:\n" +
+		"  run /implement on T-2 \"Second\"\n" +
+		"  run /implement on T-3 \"Third\"\n"
+	if !strings.HasPrefix(res.Output, want) {
+		t.Errorf("next in a terminal =\n%s\nwant it to start with\n%s", res.Output, want)
+	}
+
+	if out := p.MustRun("next").Stdout; strings.Contains(out, "Alternatives") {
+		t.Errorf("next without a terminal should show only the pick:\n%s", out)
+	}
+}
