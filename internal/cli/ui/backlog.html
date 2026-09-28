@@ -1,0 +1,62 @@
+{{define "title"}}Backlog{{end}}
+{{define "content"}}
+<h1>Backlog</h1>
+<div class="attention-grid">
+<section class="panel attention" id="queue">
+  <h2>Waiting for you</h2>
+  {{if .Queue}}
+  <div class="scroll">
+  <table>
+    <thead><tr><th>Id</th><th>Title</th><th>Type</th><th>Status</th></tr></thead>
+    <tbody>
+    {{range .Queue}}
+      <tr><td class="id"><a href="#{{.ID}}">{{.ID}}</a></td><td>{{.Title}}</td><td>{{.Type}}</td><td>{{.Status}}</td></tr>
+    {{end}}
+    </tbody>
+  </table>
+  </div>
+  {{else}}
+  <p class="empty">Nothing waits for you: every unfinished Artifact is agent work.</p>
+  {{end}}
+</section>
+<section class="panel attention" id="proposals">
+  <h2>Pending Proposals</h2>
+  {{range .Proposals}}
+  <div class="proposal" id="{{.ID}}">
+    <div><strong>{{.ID}}</strong> {{.Summary}} <span class="muted small">from {{.By}}</span></div>
+    <ol class="items">{{range .Items}}<li>{{.}}</li>{{end}}</ol>
+  </div>
+  {{else}}
+  <p class="empty">No pending Proposals.</p>
+  {{end}}
+  <p class="muted small">Approve or reject with <code>jfl approve</code> or <code>jfl reject</code> in a terminal.</p>
+</section>
+</div>
+{{range .Types}}
+<section class="panel" id="type-{{.Name}}">
+  <h3>{{.Name}}</h3>
+  {{if .Artifacts}}
+  <div class="scroll">
+  <table>
+    <thead><tr><th>Id</th><th>Title</th><th>Status</th><th>Waits on</th><th>Claim</th><th>Links</th></tr></thead>
+    <tbody>
+    {{range .Artifacts}}
+      <tr id="{{.ID}}">
+        <td class="id">{{.ID}}</td>
+        <td>{{.Title}}</td>
+        <td>{{.Status}}</td>
+        <td>{{template "work" .Work}}{{with .Note}}<div class="muted small">{{.}}</div>{{end}}</td>
+        <td>{{with .Claim}}agent session {{.}}{{else}}<span class="muted">none</span>{{end}}</td>
+        <td>{{range .Links}}<div class="small">{{.Name}} {{range .IDs}}<a href="#{{.}}">{{.}}</a> {{end}}</div>{{end}}</td>
+      </tr>
+    {{end}}
+    </tbody>
+  </table>
+  </div>
+  {{else}}
+  <p class="empty">No {{.Name}} yet.</p>
+  {{end}}
+</section>
+{{end}}
+{{end}}
+{{define "work"}}<span class="pill {{if eq . "agent work"}}agent{{else if eq . "human work"}}human{{else}}finished{{end}}">{{.}}</span>{{end}}

@@ -43,7 +43,7 @@ type NextResult struct {
 func Next(pb *Playbook, actor Actor, artifacts []Artifact, proposals []Proposal) NextResult {
 	var res NextResult
 	pending := touched(proposals)
-	for _, a := range declarationOrder(pb, artifacts) {
+	for _, a := range InOrder(pb, artifacts) {
 		t := pb.Type(a.Type)
 		if t == nil {
 			res.Skipped = append(res.Skipped, Skip{a, fmt.Sprintf("Artifact Type %q isn't declared in the Playbook", a.Type), false})
@@ -86,7 +86,9 @@ func mine(a Artifact, actor Actor) int {
 	return 0
 }
 
-func declarationOrder(pb *Playbook, artifacts []Artifact) []Artifact {
+// InOrder returns the Artifacts in declaration order: by Artifact Type in
+// Playbook order, then by the number in their id.
+func InOrder(pb *Playbook, artifacts []Artifact) []Artifact {
 	typeRank := func(name string) int {
 		i := slices.IndexFunc(pb.Types, func(t *ArtifactType) bool { return t.Name == name })
 		if i < 0 {

@@ -95,7 +95,7 @@ An external executable, written in any language, through which the CLI reads and
 _Avoid_: Integration, plugin, sync
 
 **Dashboard**:
-The local web view of a project's Artifacts and Ledger, and the preferred place to perform Human Transitions.
+The local web view of a project's Artifacts, human queue, pending Proposals, Ledger and Status machines, served only on the developer's machine, and the preferred place to perform Human Transitions.
 _Avoid_: UI, console, admin panel
 
 ### Agent guidance

@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{template "title" .}} · JigFlow</title>
+<style>
+:root {
+  --bg: #fafaf9; --panel: #ffffff; --text: #1c1917; --muted: #78716c; --line: #e7e5e4;
+  --accent: #2563eb; --accent-soft: #dbeafe; --ok: #15803d; --ok-soft: #dcfce7;
+  --bad: #b91c1c; --bad-soft: #fee2e2; --warn: #a16207; --warn-soft: #fef9c3;
+  color-scheme: light dark;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0c0a09; --panel: #1c1917; --text: #f5f5f4; --muted: #a8a29e; --line: #292524;
+    --accent: #60a5fa; --accent-soft: #1e3a8a55; --ok: #4ade80; --ok-soft: #14532d55;
+    --bad: #f87171; --bad-soft: #7f1d1d55; --warn: #facc15; --warn-soft: #713f1255;
+  }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+header { border-bottom: 1px solid var(--line); background: var(--panel); }
+header .bar { max-width: 1180px; margin: 0 auto; padding: 12px 16px; display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 20px; }
+header .name { font-weight: 600; }
+header .name span { color: var(--muted); font-weight: 400; }
+nav { display: flex; gap: 4px; }
+nav a { color: var(--muted); text-decoration: none; padding: 4px 10px; border-radius: 7px; }
+nav a:hover { color: var(--accent); }
+nav a[aria-current="page"] { color: var(--accent); background: var(--accent-soft); }
+main { max-width: 1180px; margin: 0 auto; padding: 24px 16px 64px; }
+h1 { font-size: 22px; margin: 0 0 16px; }
+h2 { font-size: 13px; margin: 0 0 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+h3 { font-size: 16px; margin: 0 0 10px; }
+p { margin: 0 0 10px; }
+a { color: var(--accent); }
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 18px; margin-bottom: 18px; }
+.panel.attention { border-color: var(--warn); box-shadow: inset 4px 0 0 var(--warn); }
+.panel.problem { border-color: var(--bad); background: var(--bad-soft); color: var(--bad); white-space: pre-wrap; }
+.attention-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr)); gap: 18px; }
+.scroll { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 14px; }
+th { text-align: left; color: var(--muted); font-weight: 500; font-size: 12px; padding: 4px 8px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+td { padding: 7px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+tr:last-child td { border-bottom: none; }
+td.id { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; white-space: nowrap; }
+td.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+tr:target td { background: var(--accent-soft); }
+.pill { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 12px; background: var(--line); white-space: nowrap; }
+.pill.agent { background: var(--accent-soft); color: var(--accent); }
+.pill.human { background: var(--warn-soft); color: var(--warn); }
+.pill.finished { background: var(--ok-soft); color: var(--ok); }
+.muted { color: var(--muted); }
+.small { font-size: 13px; }
+.empty { color: var(--muted); font-size: 14px; margin: 0; }
+ul.plain { list-style: none; padding: 0; margin: 0; }
+ol.items { margin: 6px 0 0; padding-left: 22px; font-size: 14px; }
+.proposal { border: 1px dashed var(--warn); border-radius: 8px; padding: 10px 12px; margin-bottom: 10px; }
+.proposal:last-child { margin-bottom: 0; }
+code { font-size: 12.5px; background: var(--line); padding: 0 4px; border-radius: 4px; }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 13px; color: var(--muted); margin: 0 0 12px; }
+.diagram { overflow-x: auto; margin-bottom: 14px; }
+.diagram svg { display: block; max-width: none; }
+.diagram .node rect { fill: var(--panel); stroke: var(--muted); stroke-width: 1.2; }
+.diagram .node.agent rect { fill: var(--accent-soft); stroke: var(--accent); }
+.diagram .node.human rect { fill: var(--warn-soft); stroke: var(--warn); }
+.diagram .node.final rect { fill: var(--ok-soft); stroke: var(--ok); stroke-width: 2.4; }
+.diagram .node.initial rect { stroke-width: 2.4; }
+.diagram .node text { fill: var(--text); font: 13px system-ui, sans-serif; }
+.diagram .node text.skill { fill: var(--muted); font-size: 11px; }
+.diagram .edge path { fill: none; stroke: var(--muted); stroke-width: 1.4; }
+.diagram .edge.human path { stroke: var(--warn); stroke-dasharray: 5 4; stroke-width: 1.8; }
+.diagram marker path { fill: var(--muted); }
+.diagram marker.human path { fill: var(--warn); }
+</style>
+</head>
+<body>
+<header>
+  <div class="bar">
+    <div class="name">JigFlow <span>{{.Playbook}}</span></div>
+    <nav>
+      <a href="/"{{if eq .Page "backlog"}} aria-current="page"{{end}}>Backlog</a>
+      <a href="/workflows"{{if eq .Page "workflows"}} aria-current="page"{{end}}>Workflows</a>
+      <a href="/ledger"{{if eq .Page "ledger"}} aria-current="page"{{end}}>Ledger</a>
+    </nav>
+  </div>
+</header>
+<main>
+{{template "content" .}}
+</main>
+</body>
+</html>

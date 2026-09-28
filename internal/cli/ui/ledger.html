@@ -1,0 +1,50 @@
+{{define "title"}}Ledger{{end}}
+{{define "content"}}
+<h1>Ledger</h1>
+{{if .Empty}}
+<p class="panel empty">The Ledger is empty: nothing has been created, moved or worked on through jfl yet.</p>
+{{else}}
+<section class="panel" id="per-artifact">
+  <h2>Time per Artifact</h2>
+  <div class="scroll">
+  <table>
+    <thead><tr><th>Id</th><th>Title</th><th>Time in each Status</th><th>Agent time</th>{{if .Usage}}<th>Tokens</th>{{end}}</tr></thead>
+    <tbody>
+    {{range .Artifacts}}
+      <tr id="{{.ID}}">
+        <td class="id">{{.ID}}{{with .Type}}<div class="muted small">{{.}}</div>{{end}}</td>
+        <td>{{.Title}}</td>
+        <td>{{range .Statuses}}<div class="small">{{.Status}} {{duration .Time}}{{if .Now}} <span class="muted">so far</span>{{end}}</div>{{end}}</td>
+        <td class="num">{{if .Agent}}{{duration .Agent}}{{else}}<span class="muted">none</span>{{end}}</td>
+        {{if $.Usage}}<td class="small">{{tokens .Tokens}}</td>{{end}}
+      </tr>
+    {{end}}
+    </tbody>
+  </table>
+  </div>
+</section>
+<section class="panel" id="per-status">
+  <h2>Time per Status</h2>
+  {{if .Statuses}}
+  <div class="scroll">
+  <table>
+    <thead><tr><th>Type</th><th>Status</th><th>Time</th></tr></thead>
+    <tbody>
+    {{range .Statuses}}
+      <tr><td>{{.Type}}</td><td>{{.Status}}</td><td>{{duration .Time}} over {{if eq .Artifacts 1}}1 Artifact{{else}}{{.Artifacts}} Artifacts{{end}}{{if .Now}}, {{.Now}} there now{{end}}</td></tr>
+    {{end}}
+    </tbody>
+  </table>
+  </div>
+  {{else}}
+  <p class="empty">No time in any Status yet.</p>
+  {{end}}
+</section>
+<section class="panel" id="unattributed">
+  <h2>Unattributed</h2>
+  <p>Agent time {{duration .Unattributed}}, with no Artifact in Focus.</p>
+  {{if .Usage}}<p>Tokens {{tokens .UnattributedTokens}}.</p>{{end}}
+</section>
+{{end}}
+<p class="muted small">Times come from jfl's own clock and tokens only from the agent's own records, never from the agent. Time after an agent session's last Focus change isn't charged yet.</p>
+{{end}}

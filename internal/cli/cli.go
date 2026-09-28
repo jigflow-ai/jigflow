@@ -98,6 +98,7 @@ var commands = map[string]func(*env, []string) error{
 	"publish":   cmdPublish,
 	"ledger":    cmdLedger,
 	"hook":      cmdHook,
+	"ui":        cmdUI,
 }
 
 const usage = `Usage: jfl <command> [arguments]
@@ -188,6 +189,12 @@ Commands:
                           Human Transition), propose, query, and create into
                           an Inbox; never approve or reject. The session is
                           JFL_SESSION, or a fresh one for the server's life
+  ui [--addr <host:port>] serve the Dashboard on this machine, at 127.0.0.1:7457
+                          unless --addr names another loopback address, until
+                          interrupted: the Artifacts of each Type with their
+                          Status, Claim and Links and who they wait on, the
+                          human queue and pending Proposals first, the Ledger
+                          summed, and each Type's Status machine drawn
   version                 print the version
 
 Environment:

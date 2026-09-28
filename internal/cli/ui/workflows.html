@@ -1,0 +1,46 @@
+{{define "title"}}Workflows{{end}}
+{{define "content"}}
+<h1>Workflows</h1>
+<p class="legend">
+  <span><span class="pill agent">agent work</span> a Status with a Binding, and its Skill</span>
+  <span><span class="pill human">human work</span> a Status with no Binding</span>
+  <span><span class="pill finished">final</span></span>
+  <span>thick border: initial</span>
+  <span>dashed arrow: Human Transition</span>
+</p>
+{{range $i, $t := .Types}}
+<section class="panel" id="workflow-{{.Name}}">
+  <h3>{{.Name}}{{with .Store}} <span class="muted small">kept in {{.}}</span>{{end}}</h3>
+  {{with .Diagram}}
+  <div class="diagram">
+  <svg xmlns="http://www.w3.org/2000/svg" width="{{.Width}}" height="{{.Height}}" viewBox="0 0 {{.Width}} {{.Height}}" role="img" aria-label="Status machine of {{$t.Name}}">
+    <defs>
+      <marker id="arrow-{{$i}}" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z"/></marker>
+      <marker id="arrow-human-{{$i}}" class="human" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z"/></marker>
+    </defs>
+    {{range .Edges}}
+    <g class="edge{{if .Human}} human{{end}}"><title>{{.From}} → {{.To}}{{if .Human}}: Human Transition{{end}}</title><path d="{{.Path}}" marker-end="url(#arrow-{{if .Human}}human-{{end}}{{$i}})"/></g>
+    {{end}}
+    {{range .Nodes}}
+    <g class="node {{.Class}}"><rect x="{{.X}}" y="{{.Y}}" width="{{.W}}" height="{{.H}}" rx="9"/><text x="{{.TextX}}" y="{{.TextY}}" text-anchor="middle">{{.Status}}</text>{{if .Skill}}<text class="skill" x="{{.TextX}}" y="{{.SkillY}}" text-anchor="middle">/{{.Skill}}</text>{{end}}</g>
+    {{end}}
+  </svg>
+  </div>
+  {{end}}
+  <div class="attention-grid">
+    <div class="scroll">
+    <table>
+      <thead><tr><th>Status</th><th>What happens there</th></tr></thead>
+      <tbody>{{range .Statuses}}<tr><td>{{.Name}}</td><td class="small">{{range $j, $m := .Marks}}{{if $j}}; {{end}}{{$m}}{{end}}</td></tr>{{end}}</tbody>
+    </table>
+    </div>
+    <div class="scroll">
+    <table>
+      <thead><tr><th>Transition</th><th>What controls it</th></tr></thead>
+      <tbody>{{range .Transitions}}<tr><td>{{.Name}}</td><td class="small">{{range $j, $m := .Marks}}{{if $j}}; {{end}}{{$m}}{{else}}<span class="muted">nothing</span>{{end}}</td></tr>{{end}}</tbody>
+    </table>
+    </div>
+  </div>
+</section>
+{{end}}
+{{end}}

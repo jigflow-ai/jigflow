@@ -284,6 +284,28 @@ func (p *Playbook) AgentWork(a Artifact) bool {
 	return t != nil && t.agentWork(a.Status)
 }
 
+// Work is who an Artifact waits on.
+type Work string
+
+// Who an Artifact waits on.
+const (
+	ForAgent Work = "agent work" // its Status has a Binding: an agent's next may hand it out
+	ForHuman Work = "human work" // its Status has no Binding: only a person moves it on
+	Finished Work = "finished"   // it is in a final Status
+)
+
+// WorkOf says who a waits on: an agent, a person, or nobody, being finished.
+func (p *Playbook) WorkOf(a Artifact) Work {
+	t := p.Type(a.Type)
+	switch {
+	case t != nil && slices.Contains(t.Final, a.Status):
+		return Finished
+	case t != nil && t.agentWork(a.Status):
+		return ForAgent
+	}
+	return ForHuman
+}
+
 // agentWork reports whether an Artifact in status is work an agent may hold.
 func (t *ArtifactType) agentWork(status string) bool {
 	return t.Bindings[status] != "" && !slices.Contains(t.Final, status)
