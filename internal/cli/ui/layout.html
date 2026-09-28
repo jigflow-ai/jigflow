@@ -59,6 +59,21 @@ ol.items { margin: 6px 0 0; padding-left: 22px; font-size: 14px; }
 .proposal:last-child { margin-bottom: 0; }
 code { font-size: 12.5px; background: var(--line); padding: 0 4px; border-radius: 4px; }
 .legend { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 13px; color: var(--muted); margin: 0 0 12px; }
+.panel.outcome.done { border-color: var(--ok); box-shadow: inset 4px 0 0 var(--ok); }
+.panel.outcome.refused { border-color: var(--bad); box-shadow: inset 4px 0 0 var(--bad); }
+.panel.outcome pre { margin: 0 0 8px; white-space: pre-wrap; font: 13px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; }
+.panel.outcome.refused pre:first-of-type { color: var(--bad); }
+.note { margin-bottom: 14px; }
+button { font: inherit; font-size: 13px; padding: 3px 10px; border-radius: 7px; border: 1px solid var(--line); background: var(--panel); color: var(--text); cursor: pointer; }
+button:hover { border-color: var(--accent); color: var(--accent); }
+button.approve { background: var(--ok); border-color: var(--ok); color: var(--panel); }
+button.approve:hover { color: var(--panel); filter: brightness(1.1); }
+form.move, form.reject { display: inline-block; margin: 0 4px 4px 0; }
+form.reject { margin-top: 8px; }
+.proposal form + form.reject { margin-left: 4px; }
+.edit { display: flex; flex-wrap: wrap; gap: 4px 12px; margin: 4px 0 8px; font-size: 13px; color: var(--muted); }
+.edit input, .edit select { font: inherit; color: var(--text); background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 2px 6px; max-width: 100%; }
+.edit input[type="text"] { min-width: 8em; }
 .diagram { overflow-x: auto; margin-bottom: 14px; }
 .diagram svg { display: block; max-width: none; }
 .diagram .node rect { fill: var(--panel); stroke: var(--muted); stroke-width: 1.2; }

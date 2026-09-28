@@ -36,6 +36,7 @@ type diagramNode struct {
 type diagramEdge struct {
 	From, To string
 	Human    bool
+	Only     string // where only the Human Transition may be made, if the Playbook says
 	Path     string // the SVG path data
 }
 
@@ -178,7 +179,7 @@ func layout(t *engine.ArtifactType) diagram {
 			x1, x2 := a.X, b.X+b.W
 			path = fmt.Sprintf("M %d %d C %d %d %d %d %d %d", x1, midA, x1-colGap/2, midA, x2+colGap/2, midB, x2, midB)
 		}
-		d.Edges = append(d.Edges, diagramEdge{From: tr.From, To: tr.To, Human: tr.Human, Path: path})
+		d.Edges = append(d.Edges, diagramEdge{From: tr.From, To: tr.To, Human: tr.Human, Only: onlyIn(tr), Path: path})
 	}
 	return d
 }

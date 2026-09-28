@@ -125,11 +125,40 @@ type typeFile struct {
 	Transitions []struct {
 		From    string          `yaml:"from"`
 		To      string          `yaml:"to"`
-		Human   bool            `yaml:"human"`
+		Human   humanFile       `yaml:"human"`
 		Guards  []conditionFile `yaml:"guards"`
 		Gates   []commandFile   `yaml:"gates"`
 		Actions []commandFile   `yaml:"actions"`
 	} `yaml:"transitions"`
+}
+
+// humanFile says whether a Transition is a Human Transition: true, or
+// dashboard when the Playbook requires making it in the Dashboard.
+//
+//	human: true
+//	human: dashboard
+type humanFile int
+
+const (
+	humanNo humanFile = iota
+	humanYes
+	humanDashboard
+)
+
+func (h *humanFile) UnmarshalYAML(n *yaml.Node) error {
+	if n.Kind == yaml.ScalarNode && n.Value == "dashboard" {
+		*h = humanDashboard
+		return nil
+	}
+	var b bool
+	if err := n.Decode(&b); err != nil {
+		return fmt.Errorf("line %d: human wants true, false or dashboard, not %q", n.Line, n.Value)
+	}
+	*h = humanNo
+	if b {
+		*h = humanYes
+	}
+	return nil
 }
 
 // bindingFile is a Binding: the name of its Skill, or a mapping that also
@@ -349,12 +378,13 @@ func (l *layer) readTypes(fsys fs.FS, label string) error {
 				return fmt.Errorf("%s: %w", rel, err)
 			}
 			t.Transitions = append(t.Transitions, engine.Transition{
-				From:    tr.From,
-				To:      tr.To,
-				Human:   tr.Human,
-				Guards:  conditions(tr.Guards),
-				Gates:   commands(tr.Gates),
-				Actions: commands(tr.Actions),
+				From:      tr.From,
+				To:        tr.To,
+				Human:     tr.Human != humanNo,
+				Dashboard: tr.Human == humanDashboard,
+				Guards:    conditions(tr.Guards),
+				Gates:     commands(tr.Gates),
+				Actions:   commands(tr.Actions),
 			})
 		}
 		l.types = append(l.types, t)

@@ -4,6 +4,8 @@ import (
 	"bufio"
 	"io"
 	"net/http"
+	"net/http/cookiejar"
+	"net/url"
 	"os"
 	"os/exec"
 	"strings"
@@ -12,21 +14,39 @@ import (
 )
 
 // UI is a running Dashboard (Seam C): `jfl ui` started in the project folder
-// on a free loopback port, reached over HTTP.
+// on a free loopback port, reached over HTTP, either from the browser of the
+// person who started it or by any other program on this machine.
 type UI struct {
 	t   testing.TB
 	cmd *exec.Cmd
-	// URL is where the Dashboard says it serves, e.g. http://127.0.0.1:41234/.
+	// URL is where the Dashboard serves, e.g. http://127.0.0.1:41234/.
 	URL string
+	// Link is the link jfl ui printed for the person who started it to
+	// open, e.g. http://127.0.0.1:41234/?key=…, or URL when it printed none.
+	Link    string
+	browser *http.Client
 }
 
-// StartUI starts `jfl ui` as a person, on a port the system picks, and
-// waits until it says where it serves. It is stopped when the test ends.
+// StartUI starts `jfl ui` as a person, on a port the system picks, waits
+// until it says where it serves, and opens the link it printed in the
+// person's browser. It is stopped when the test ends.
 func (p *Project) StartUI() *UI {
+	p.t.Helper()
+	return p.startUI("")
+}
+
+// StartUIInSession starts `jfl ui` as the agent session with the given id,
+// the way an agent would start it, and opens the link it printed.
+func (p *Project) StartUIInSession(session string) *UI {
+	p.t.Helper()
+	return p.startUI(session)
+}
+
+func (p *Project) startUI(session string) *UI {
 	p.t.Helper()
 	cmd := exec.Command(p.bin.Jfl, "ui", "--addr", "127.0.0.1:0")
 	cmd.Dir = p.Dir
-	cmd.Env = p.env("")
+	cmd.Env = p.env(session)
 	out, err := cmd.StdoutPipe()
 	if err != nil {
 		p.t.Fatal(err)
@@ -36,7 +56,11 @@ func (p *Project) StartUI() *UI {
 	if err := cmd.Start(); err != nil {
 		p.t.Fatal(err)
 	}
-	u := &UI{t: p.t, cmd: cmd}
+	jar, err := cookiejar.New(nil)
+	if err != nil {
+		p.t.Fatal(err)
+	}
+	u := &UI{t: p.t, cmd: cmd, browser: &http.Client{Jar: jar}}
 	p.t.Cleanup(u.Stop)
 
 	line := make(chan string, 1)
@@ -52,9 +76,17 @@ func (p *Project) StartUI() *UI {
 			_ = cmd.Wait()
 			p.t.Fatalf("jfl ui didn't say where it serves: %q\nstderr: %s", l, stderr.String())
 		}
-		u.URL = strings.TrimSpace(l[i:])
+		u.Link, _, _ = strings.Cut(strings.TrimSpace(l[i:]), " ")
+		link, err := url.Parse(u.Link)
+		if err != nil {
+			p.t.Fatalf("jfl ui printed %q, which isn't a link: %v", u.Link, err)
+		}
+		u.URL = (&url.URL{Scheme: link.Scheme, Host: link.Host, Path: "/"}).String()
 	case <-time.After(10 * time.Second):
 		p.t.Fatalf("jfl ui didn't start within 10s\nstderr: %s", stderr.String())
+	}
+	if page := u.Get(strings.TrimPrefix(u.Link, strings.TrimSuffix(u.URL, "/"))); page.Status != http.StatusOK {
+		p.t.Fatalf("opening %s: status %d", u.Link, page.Status)
 	}
 	return u
 }
@@ -83,16 +115,56 @@ type Page struct {
 	HTML   string
 }
 
-// Get requests the path, e.g. "/ledger", and returns the response.
+// Get requests the path, e.g. "/ledger", from the person's browser.
 func (u *UI) Get(path string) Page {
 	u.t.Helper()
-	return u.Do(mustRequest(u.t, http.MethodGet, strings.TrimSuffix(u.URL, "/")+path))
+	return u.Do(mustRequest(u.t, http.MethodGet, u.url(path), nil))
 }
 
-// Do sends the request to the Dashboard and returns the response.
+// Post submits a form to the path, e.g. "/proposals/P-1/approve", from the
+// person's browser, which says the Dashboard's page sent it, and returns
+// the page it answers with.
+func (u *UI) Post(path string, form url.Values) Page {
+	u.t.Helper()
+	req := mustRequest(u.t, http.MethodPost, u.url(path), strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("Origin", strings.TrimSuffix(u.URL, "/"))
+	return u.Do(req)
+}
+
+// Do sends the request from the person's browser, with what the Dashboard
+// gave it when it opened the link, and returns the response.
 func (u *UI) Do(req *http.Request) Page {
 	u.t.Helper()
-	resp, err := http.DefaultClient.Do(req)
+	return u.send(u.browser, req)
+}
+
+// Curl sends the request as any other program on this machine, such as an
+// agent's curl, which knows where the Dashboard serves but never opened the
+// link printed in the person's terminal.
+func (u *UI) Curl(req *http.Request) Page {
+	u.t.Helper()
+	return u.send(http.DefaultClient, req)
+}
+
+// NewRequest builds a request for the path, e.g. "/", with the form as its
+// body when it isn't nil.
+func (u *UI) NewRequest(method, path string, form url.Values) *http.Request {
+	u.t.Helper()
+	var body io.Reader
+	if form != nil {
+		body = strings.NewReader(form.Encode())
+	}
+	req := mustRequest(u.t, method, u.url(path), body)
+	if form != nil {
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	}
+	return req
+}
+
+func (u *UI) send(c *http.Client, req *http.Request) Page {
+	u.t.Helper()
+	resp, err := c.Do(req)
 	if err != nil {
 		u.t.Fatalf("%s %s: %v", req.Method, req.URL, err)
 	}
@@ -104,9 +176,11 @@ func (u *UI) Do(req *http.Request) Page {
 	return Page{Status: resp.StatusCode, HTML: string(body)}
 }
 
-func mustRequest(t testing.TB, method, url string) *http.Request {
+func (u *UI) url(path string) string { return strings.TrimSuffix(u.URL, "/") + path }
+
+func mustRequest(t testing.TB, method, url string, body io.Reader) *http.Request {
 	t.Helper()
-	req, err := http.NewRequest(method, url, nil)
+	req, err := http.NewRequest(method, url, body)
 	if err != nil {
 		t.Fatal(err)
 	}

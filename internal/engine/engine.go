@@ -126,12 +126,13 @@ type Condition struct {
 
 // Transition is a declared move from one Status to another.
 type Transition struct {
-	From    string
-	To      string
-	Human   bool        // a Human Transition: only a person may make it
-	Guards  []Condition // must all hold at the moment of the move
-	Gates   []Command   // must all succeed, in order, for the Transition to happen
-	Actions []Command   // run in order after the Transition succeeds
+	From      string
+	To        string
+	Human     bool        // a Human Transition: only a person may make it
+	Dashboard bool        // a Human Transition made only in the Dashboard, never in a terminal (ADR 0017)
+	Guards    []Condition // must all hold at the moment of the move
+	Gates     []Command   // must all succeed, in order, for the Transition to happen
+	Actions   []Command   // run in order after the Transition succeeds
 }
 
 // Actor is who asks the engine for a move: an agent session, identified by

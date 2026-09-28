@@ -69,7 +69,7 @@ A user-declared command run after a Transition succeeds (e.g. commit, open a bra
 _Avoid_: Hook, effect, callback
 
 **Human Transition**:
-A Transition that only a human may perform; the agent can propose it but never make it. Creating an Artifact directly into a Status that has a Binding also counts as a Human Transition, unless that Status is an Inbox. It guards against accidents, not against a determined agent.
+A Transition that only a human may perform; the agent can propose it but never make it. Creating an Artifact directly into a Status that has a Binding also counts as a Human Transition, unless that Status is an Inbox. A Playbook may require one to be made in the Dashboard. It guards against accidents, not against a determined agent.
 _Avoid_: Approval step, manual step
 
 **Focus**:
@@ -95,7 +95,7 @@ An external executable, written in any language, through which the CLI reads and
 _Avoid_: Integration, plugin, sync
 
 **Dashboard**:
-The local web view of a project's Artifacts, human queue, pending Proposals, Ledger and Status machines, served only on the developer's machine, and the preferred place to perform Human Transitions.
+The local web view of a project's Artifacts, human queue, pending Proposals, Ledger and Status machines, served only on the developer's machine, and the preferred place to approve or reject Proposals and perform Human Transitions. It never edits an Artifact's body.
 _Avoid_: UI, console, admin panel
 
 ### Agent guidance

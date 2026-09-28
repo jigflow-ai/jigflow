@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"cmp"
 	"context"
+	"crypto/rand"
 	"embed"
 	"errors"
 	"flag"
@@ -17,6 +18,7 @@ import (
 	"os/signal"
 	"slices"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -66,7 +68,16 @@ func cmdUI(e *env, args []string) error {
 	if err != nil {
 		return err
 	}
-	srv := &http.Server{Handler: e.dashboard(), ReadHeaderTimeout: 10 * time.Second}
+	d := &dashboard{e: e}
+	_, port, _ := net.SplitHostPort(ln.Addr().String())
+	d.cookie = "jfl-dashboard-" + port
+	if !e.actor.Agent() {
+		// Only the person who started jfl ui sees this terminal, and so the
+		// link that lets their browser act: an agent in another terminal
+		// can read the Dashboard, but not approve (ADR 0003).
+		d.key = rand.Text()
+	}
+	srv := &http.Server{Handler: d.handler(), ReadHeaderTimeout: 10 * time.Second}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	go func() {
@@ -75,7 +86,12 @@ func cmdUI(e *env, args []string) error {
 		defer cancel()
 		_ = srv.Shutdown(shut)
 	}()
-	fmt.Fprintf(e.stdout, "Dashboard at http://%s/\n", ln.Addr())
+	if d.key != "" {
+		fmt.Fprintf(e.stdout, "Dashboard at http://%s/?key=%s\n", ln.Addr(), d.key)
+		fmt.Fprintln(e.stdout, "Open this link in your browser to approve Proposals and make Human Transitions there; it is yours alone, until jfl ui stops.")
+	} else {
+		fmt.Fprintf(e.stdout, "Dashboard at http://%s/ (to look only: agent session %s started it)\n", ln.Addr(), e.actor.Session)
+	}
 	if err := srv.Serve(ln); !errors.Is(err, http.ErrServerClosed) {
 		return err
 	}
@@ -84,17 +100,54 @@ func cmdUI(e *env, args []string) error {
 
 // dashboard is the Dashboard's HTTP interface. Every page reads the
 // Playbook and the Stores afresh, so it shows what jfl last wrote.
-func (e *env) dashboard() http.Handler {
+type dashboard struct {
+	e *env
+	// key is the secret in the link jfl ui printed in the terminal of the
+	// person who started it; empty when an agent session started it, and
+	// nobody may act through it.
+	key string
+	// cookie names the cookie in which the person's browser keeps the key
+	// once it opened the link; one per port, so the Dashboards of two
+	// projects don't share it.
+	cookie string
+	// mu lets one decision at a time change the project.
+	mu sync.Mutex
+}
+
+func (d *dashboard) handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /{$}", func(w http.ResponseWriter, r *http.Request) {
-		e.render(w, "backlog", e.backlogView)
+		if r.URL.Query().Has("key") {
+			d.open(w, r)
+			return
+		}
+		d.e.render(w, http.StatusOK, "backlog", d.backlogView(r, nil))
 	})
 	mux.HandleFunc("GET /workflows", func(w http.ResponseWriter, r *http.Request) {
-		e.render(w, "workflows", e.workflowsView)
+		d.e.render(w, http.StatusOK, "workflows", d.e.workflowsView)
 	})
 	mux.HandleFunc("GET /ledger", func(w http.ResponseWriter, r *http.Request) {
-		e.render(w, "ledger", e.ledgerView)
+		d.e.render(w, http.StatusOK, "ledger", d.e.ledgerView)
 	})
+	mux.HandleFunc("POST /proposals/{id}/approve", d.act(func(c *env, r *http.Request) error {
+		return c.approve(r.PathValue("id"), func(pb *engine.Playbook, p *engine.Proposal) error {
+			return editItems(pb, p, r.PostForm)
+		})
+	}))
+	mux.HandleFunc("POST /artifacts/{id}/move", d.act(func(c *env, r *http.Request) error {
+		return c.move(r.PathValue("id"), r.PostForm.Get("to"))
+	}))
+	mux.HandleFunc("POST /proposals/{id}/reject", d.act(func(c *env, r *http.Request) error {
+		return c.reject(r.PathValue("id"))
+	}))
+	// A page elsewhere may post a form here through the person's browser,
+	// which carries the key: browsers say where a request comes from, and
+	// only the Dashboard's own pages may act.
+	cop := http.NewCrossOriginProtection()
+	cop.SetDenyHandler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		d.e.refuse(w, http.StatusForbidden, errors.New("only the Dashboard's own pages may act on it, not a page elsewhere"))
+	}))
+	protected := cop.Handler(mux)
 	// A web page elsewhere can point a name of its own at 127.0.0.1 and
 	// reach the Dashboard through the browser under that name: only
 	// requests addressed to this machine by a loopback name are answered.
@@ -107,7 +160,7 @@ func (e *env) dashboard() http.Handler {
 			http.Error(w, "the Dashboard answers only requests addressed to this machine, such as 127.0.0.1 or localhost", http.StatusForbidden)
 			return
 		}
-		mux.ServeHTTP(w, r)
+		protected.ServeHTTP(w, r)
 	})
 }
 
@@ -121,21 +174,30 @@ func loopback(host string) bool {
 	return ip != nil && ip.IsLoopback()
 }
 
-// render writes the page built by view inside the layout.
-func (e *env) render(w http.ResponseWriter, page string, view func() (any, error)) {
-	status := http.StatusOK
+// render writes the page built by view inside the layout, with the status
+// given, or why view failed.
+func (e *env) render(w http.ResponseWriter, status int, page string, view func() (any, error)) {
 	data, err := view()
 	if err != nil {
 		// A Connector failing is a problem with the tracker, which the
 		// person must tell apart from the Playbook or the state being wrong.
-		p := problem{chrome: chrome{Page: page}, Problem: err.Error()}
 		status = http.StatusInternalServerError
 		if _, ok := errors.AsType[*store.ConnectorError](err); ok {
-			p.Problem = "tracker problem, not a workflow refusal: " + p.Problem
+			err = fmt.Errorf("tracker problem, not a workflow refusal: %w", err)
 			status = http.StatusBadGateway
 		}
-		page, data = "problem", p
+		page, data = "problem", problem{chrome: chrome{Page: page}, Problem: err.Error()}
 	}
+	writePage(w, status, page, data)
+}
+
+// refuse writes the page that says why the request can't be served.
+func (e *env) refuse(w http.ResponseWriter, status int, why error) {
+	writePage(w, status, "problem", problem{Problem: why.Error()})
+}
+
+// writePage writes the page, rendered with data, with the status given.
+func writePage(w http.ResponseWriter, status int, page string, data any) {
 	var buf bytes.Buffer
 	if err := uiPages[page].Execute(&buf, data); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -155,6 +217,9 @@ type problem struct {
 // backlog is the Dashboard's main page: the Artifacts of each Type.
 type backlog struct {
 	chrome
+	Outcome   *outcome      // what the person's last decision did, if they just made one
+	CanAct    bool          // whether the person viewing it may decide here
+	Cannot    string        // why not, when they may not
 	Queue     []artifactRow // human work: what only a person moves on
 	Proposals []pendingProposal
 	Types     []typeArtifacts
@@ -163,7 +228,32 @@ type backlog struct {
 // pendingProposal is a Proposal waiting for a person's decision.
 type pendingProposal struct {
 	ID, By, Summary string
-	Items           []string
+	Approve         string // what approving it does, e.g. "Approve all 4 changes"
+	Items           []proposalItem
+}
+
+// proposalItem is an item of a pending Proposal, and, for a creation, the
+// fields a person may edit before approving.
+type proposalItem struct {
+	N        int // its number in the Proposal, from 1
+	Text     string
+	Create   bool
+	Type     string // the Artifact Type of a creation
+	Title    string
+	Statuses []option    // the Statuses it may be created in
+	Links    []linkField // the Links its Type declares
+}
+
+// option is one choice of a select.
+type option struct {
+	Value    string
+	Selected bool
+}
+
+// linkField is a Link of a proposed creation, as a person edits it: the ids
+// or refs it points to, separated by commas.
+type linkField struct {
+	Name, IDs string
 }
 
 // chrome is what every page shows around its content: the Playbook's name
@@ -183,7 +273,8 @@ type artifactRow struct {
 	engine.Artifact
 	Work  engine.Work
 	Links []link
-	Note  string // why next doesn't hand out agent work, if it doesn't
+	Note  string   // why next doesn't hand out agent work, if it doesn't
+	Moves []string // the Statuses its Human Transitions lead to
 }
 
 // link is one named Link of an Artifact and the Artifacts it points to.
@@ -192,18 +283,41 @@ type link struct {
 	IDs  []string
 }
 
-func (e *env) backlogView() (any, error) {
+// backlogView builds the backlog as the person making the request sees it,
+// with the outcome of the decision they just made, if any.
+func (d *dashboard) backlogView(r *http.Request, done *outcome) func() (any, error) {
+	return func() (any, error) {
+		v, err := d.e.backlog()
+		if err != nil && done != nil {
+			// The decision was made, or refused, all the same.
+			said := strings.TrimSpace(done.Problem + "\n" + done.Said)
+			return nil, fmt.Errorf("%s\n\nThe backlog can't be shown now: %w", said, err)
+		}
+		if err != nil {
+			return nil, err
+		}
+		v.Outcome = done
+		if err := d.mayAct(r); err != nil {
+			v.Cannot = err.Error()
+		} else {
+			v.CanAct = true
+		}
+		return v, nil
+	}
+}
+
+func (e *env) backlog() (backlog, error) {
 	pb, st, err := e.load()
 	if err != nil {
-		return nil, err
+		return backlog{}, err
 	}
 	all, err := st.List()
 	if err != nil {
-		return nil, err
+		return backlog{}, err
 	}
 	proposals, err := store.NewProposals(e.dir).List()
 	if err != nil {
-		return nil, err
+		return backlog{}, err
 	}
 	// Why next skips agent work, as a person sees it: a Claim is shown as
 	// such, so only the other reasons are notes.
@@ -221,6 +335,11 @@ func (e *env) backlogView() (any, error) {
 				continue
 			}
 			r := artifactRow{Artifact: a, Work: pb.WorkOf(a)}
+			for _, tr := range t.Transitions {
+				if tr.Human && tr.From == a.Status {
+					r.Moves = append(r.Moves, tr.To)
+				}
+			}
 			for _, name := range slices.Sorted(maps.Keys(a.Links)) {
 				r.Links = append(r.Links, link{name, a.Links[name]})
 			}
@@ -242,8 +361,12 @@ func (e *env) backlogView() (any, error) {
 		if p.By != "" {
 			pp.By = "agent session " + p.By
 		}
-		for _, it := range p.Items {
-			pp.Items = append(pp.Items, it.String())
+		pp.Approve = "Approve"
+		if len(p.Items) > 1 {
+			pp.Approve = "Approve all " + plural(len(p.Items), "change")
+		}
+		for i, it := range p.Items {
+			pp.Items = append(pp.Items, itemView(pb, i, it))
 		}
 		v.Proposals = append(v.Proposals, pp)
 	}

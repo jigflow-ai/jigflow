@@ -1,0 +1,173 @@
+package cli
+
+import (
+	"bytes"
+	"crypto/subtle"
+	"errors"
+	"fmt"
+	"maps"
+	"net/http"
+	"net/url"
+	"slices"
+	"strconv"
+	"strings"
+
+	"github.com/jigflow-ai/jigflow/internal/engine"
+	"github.com/jigflow-ai/jigflow/internal/store"
+)
+
+// The Dashboard is where a person approves or rejects Proposals and makes
+// Human Transitions, out of band: an agent in a terminal can't click in the
+// person's browser (ADR 0003). Each decision runs the command a person
+// would run in a terminal, with the click as its confirmation.
+
+// outcome is what a decision made in the Dashboard did, as jfl would say it
+// in a terminal.
+type outcome struct {
+	Refused bool
+	Said    string // what the command reported
+	Problem string // why it was refused or failed, if it was
+}
+
+// open is the person opening the link jfl ui printed: their browser keeps
+// its key, and may act from then on.
+func (d *dashboard) open(w http.ResponseWriter, r *http.Request) {
+	if d.key != "" && subtle.ConstantTimeCompare([]byte(r.URL.Query().Get("key")), []byte(d.key)) == 1 {
+		http.SetCookie(w, &http.Cookie{Name: d.cookie, Value: d.key, Path: "/", HttpOnly: true, SameSite: http.SameSiteStrictMode})
+	}
+	// Out of the address bar, and the browser's history.
+	http.Redirect(w, r, "/", http.StatusSeeOther)
+}
+
+// mayAct says why the request may not make a decision, or nil when it may:
+// only the browser that opened the link jfl ui printed may.
+func (d *dashboard) mayAct(r *http.Request) error {
+	if d.key == "" {
+		return fmt.Errorf("agent session %s started this Dashboard, so it is only to look at: approve Proposals and make Human Transitions in a Dashboard you start yourself with jfl ui", d.e.actor.Session)
+	}
+	c, err := r.Cookie(d.cookie)
+	if err != nil || subtle.ConstantTimeCompare([]byte(c.Value), []byte(d.key)) != 1 {
+		return errors.New("to approve Proposals and make Human Transitions here, open the link jfl ui printed in the terminal where you started it")
+	}
+	return nil
+}
+
+// act handles a decision: when the request may make it, it runs do as the
+// person, one decision at a time, and shows the backlog with what it did.
+func (d *dashboard) act(do func(c *env, r *http.Request) error) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if err := d.mayAct(r); err != nil {
+			d.e.refuse(w, http.StatusForbidden, err)
+			return
+		}
+		r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
+		if err := r.ParseForm(); err != nil {
+			d.e.refuse(w, http.StatusBadRequest, err)
+			return
+		}
+		d.mu.Lock()
+		defer d.mu.Unlock()
+		var out bytes.Buffer
+		err := do(d.e.clickedBy(&out), r)
+		o := &outcome{Said: out.String()}
+		status := http.StatusOK
+		if err != nil {
+			o.Refused, o.Problem, status = true, err.Error(), http.StatusConflict
+			if _, ok := errors.AsType[*store.ConnectorError](err); ok {
+				o.Problem = "tracker problem, not a workflow refusal: " + o.Problem
+				status = http.StatusBadGateway
+			}
+		}
+		d.e.render(w, status, "backlog", d.backlogView(r, o))
+	}
+}
+
+// clickedBy is the env of a command a person runs by clicking in the
+// Dashboard: theirs, confirmed by the click, reporting to out. Commands are
+// served concurrently, so it has a Ledger handle of its own.
+func (e *env) clickedBy(out *bytes.Buffer) *env {
+	c := *e
+	c.actor = engine.Actor{}
+	c.stdin = nil
+	c.stdout, c.stderr = out, out
+	c.led = nil
+	c.clicked = true
+	return &c
+}
+
+// itemView is the i-th item of a pending Proposal as the Dashboard shows it.
+func itemView(pb *engine.Playbook, i int, it engine.ProposalItem) proposalItem {
+	v := proposalItem{N: i + 1, Text: it.String()}
+	t := pb.Type(it.Create)
+	if t == nil {
+		return v
+	}
+	v.Create, v.Type, v.Title = true, t.Name, it.Title
+	status := startStatus(it.Status, t.Initial)
+	for _, s := range t.Initial {
+		v.Statuses = append(v.Statuses, option{s, s == status})
+	}
+	for _, name := range slices.Sorted(maps.Keys(t.Links)) {
+		v.Links = append(v.Links, linkField{name, strings.Join(it.Links[name], ", ")})
+	}
+	return v
+}
+
+// startStatus returns status, or the first of the Type's initial Statuses a
+// creation that names none starts in.
+func startStatus(status string, initial []string) string {
+	if status == "" && len(initial) > 0 {
+		return initial[0]
+	}
+	return status
+}
+
+// editItems applies a person's edits, posted from the Dashboard, to the
+// creations of p: their title, the Status they start in, and their Links.
+// A field the form doesn't carry is left as it is.
+func editItems(pb *engine.Playbook, p *engine.Proposal, form url.Values) error {
+	for i := range p.Items {
+		it := &p.Items[i]
+		if it.Create == "" {
+			continue
+		}
+		field := func(name string) (string, bool) {
+			key := "item-" + strconv.Itoa(i+1) + "-" + name
+			return strings.TrimSpace(form.Get(key)), form.Has(key)
+		}
+		if title, ok := field("title"); ok {
+			if title == "" {
+				return fmt.Errorf("item %d (%s): a %s needs a title", i+1, it, it.Create)
+			}
+			it.Title = title
+		}
+		t := pb.Type(it.Create)
+		if t == nil {
+			continue
+		}
+		if status, ok := field("status"); ok && status != startStatus(it.Status, t.Initial) {
+			it.Status = status
+		}
+		links := maps.Clone(it.Links)
+		for _, name := range slices.Sorted(maps.Keys(t.Links)) {
+			ids, ok := field("link-" + name)
+			if !ok {
+				continue
+			}
+			split := strings.FieldsFunc(ids, func(r rune) bool { return r == ',' || r == ' ' })
+			if links == nil {
+				links = map[string][]string{}
+			}
+			if len(split) == 0 {
+				delete(links, name)
+			} else {
+				links[name] = split
+			}
+		}
+		if len(links) == 0 {
+			links = nil
+		}
+		it.Links = links
+	}
+	return nil
+}

@@ -1,16 +1,25 @@
 {{define "title"}}Backlog{{end}}
 {{define "content"}}
 <h1>Backlog</h1>
+{{with .Outcome}}
+<section class="panel outcome {{if .Refused}}refused{{else}}done{{end}}" id="outcome">
+  <h2>{{if .Refused}}Not done{{else}}Done{{end}}</h2>
+  {{with .Problem}}<pre>{{.}}</pre>{{end}}
+  {{with .Said}}<pre>{{.}}</pre>{{end}}
+</section>
+{{end}}
+{{if not .CanAct}}<p class="muted small note">{{.Cannot}}.</p>{{end}}
+{{$act := .CanAct}}
 <div class="attention-grid">
 <section class="panel attention" id="queue">
   <h2>Waiting for you</h2>
   {{if .Queue}}
   <div class="scroll">
   <table>
-    <thead><tr><th>Id</th><th>Title</th><th>Type</th><th>Status</th></tr></thead>
+    <thead><tr><th>Id</th><th>Title</th><th>Type</th><th>Status</th>{{if $act}}<th>Human Transitions</th>{{end}}</tr></thead>
     <tbody>
     {{range .Queue}}
-      <tr><td class="id"><a href="#{{.ID}}">{{.ID}}</a></td><td>{{.Title}}</td><td>{{.Type}}</td><td>{{.Status}}</td></tr>
+      <tr><td class="id"><a href="#{{.ID}}">{{.ID}}</a></td><td>{{.Title}}</td><td>{{.Type}}</td><td>{{.Status}}</td>{{if $act}}<td>{{template "moves" .}}</td>{{end}}</tr>
     {{end}}
     </tbody>
   </table>
@@ -24,12 +33,31 @@
   {{range .Proposals}}
   <div class="proposal" id="{{.ID}}">
     <div><strong>{{.ID}}</strong> {{.Summary}} <span class="muted small">from {{.By}}</span></div>
-    <ol class="items">{{range .Items}}<li>{{.}}</li>{{end}}</ol>
+    {{if $act}}
+    <form method="post" action="/proposals/{{.ID}}/approve">
+      <ol class="items">
+      {{range .Items}}
+        <li>{{.Text}}{{if .Create}}
+          <div class="edit">
+            <label>Title <input type="text" name="item-{{.N}}-title" value="{{.Title}}" required></label>
+            <label>in <select name="item-{{.N}}-status">{{range .Statuses}}<option value="{{.Value}}"{{if .Selected}} selected{{end}}>{{.Value}}</option>{{end}}</select></label>
+            {{$n := .N}}{{range .Links}}<label>{{.Name}} <input type="text" name="item-{{$n}}-link-{{.Name}}" value="{{.IDs}}" placeholder="ids or refs"></label>{{end}}
+          </div>
+        {{end}}</li>
+      {{end}}
+      </ol>
+      <button type="submit" class="approve">{{.Approve}}</button>
+    </form>
+    <form method="post" action="/proposals/{{.ID}}/reject" class="reject">
+      <button type="submit">Reject</button>
+    </form>
+    {{else}}
+    <ol class="items">{{range .Items}}<li>{{.Text}}</li>{{end}}</ol>
+    {{end}}
   </div>
   {{else}}
   <p class="empty">No pending Proposals.</p>
   {{end}}
-  <p class="muted small">Approve or reject with <code>jfl approve</code> or <code>jfl reject</code> in a terminal.</p>
 </section>
 </div>
 {{range .Types}}
@@ -38,7 +66,7 @@
   {{if .Artifacts}}
   <div class="scroll">
   <table>
-    <thead><tr><th>Id</th><th>Title</th><th>Status</th><th>Waits on</th><th>Claim</th><th>Links</th></tr></thead>
+    <thead><tr><th>Id</th><th>Title</th><th>Status</th><th>Waits on</th><th>Claim</th><th>Links</th>{{if $act}}<th>Human Transitions</th>{{end}}</tr></thead>
     <tbody>
     {{range .Artifacts}}
       <tr id="{{.ID}}">
@@ -48,6 +76,7 @@
         <td>{{template "work" .Work}}{{with .Note}}<div class="muted small">{{.}}</div>{{end}}</td>
         <td>{{with .Claim}}agent session {{.}}{{else}}<span class="muted">none</span>{{end}}</td>
         <td>{{range .Links}}<div class="small">{{.Name}} {{range .IDs}}<a href="#{{.}}">{{.}}</a> {{end}}</div>{{end}}</td>
+        {{if $act}}<td>{{template "moves" .}}</td>{{end}}
       </tr>
     {{end}}
     </tbody>
@@ -59,4 +88,5 @@
 </section>
 {{end}}
 {{end}}
+{{define "moves"}}{{$id := .ID}}{{range .Moves}}<form method="post" action="/artifacts/{{$id}}/move" class="move"><input type="hidden" name="to" value="{{.}}"><button type="submit">→ {{.}}</button></form>{{end}}{{end}}
 {{define "work"}}<span class="pill {{if eq . "agent work"}}agent{{else if eq . "human work"}}human{{else}}finished{{end}}">{{.}}</span>{{end}}

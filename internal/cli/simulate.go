@@ -68,7 +68,7 @@ func atStatus(t *engine.ArtifactType, status string) []string {
 func onTransition(tr engine.Transition) []string {
 	marks := []string{"→ " + tr.To}
 	if tr.Human {
-		marks = append(marks, "Human Transition")
+		marks = append(marks, "Human Transition"+prefixed(", ", onlyIn(tr)))
 	}
 	if len(tr.Guards) > 0 {
 		marks = append(marks, "Guards: "+conditions(tr.Guards))
@@ -98,4 +98,21 @@ func commandList(cmds []engine.Command) string {
 		s[i] = fmt.Sprintf("%s (%s)", c.Name, c.Cmd)
 	}
 	return strings.Join(s, ", ")
+}
+
+// onlyIn says where the Human Transition tr may only be made, when the
+// Playbook requires the Dashboard for it.
+func onlyIn(tr engine.Transition) string {
+	if tr.Dashboard {
+		return "in the Dashboard only"
+	}
+	return ""
+}
+
+// prefixed returns s after prefix, or nothing when s is empty.
+func prefixed(prefix, s string) string {
+	if s == "" {
+		return ""
+	}
+	return prefix + s
 }

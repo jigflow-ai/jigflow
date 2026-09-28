@@ -1,10 +1,10 @@
 package cli
 
 import (
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 
 	"github.com/jigflow-ai/jigflow/internal/engine"
 	"github.com/jigflow-ai/jigflow/internal/store"
@@ -70,7 +70,13 @@ func cmdApprove(e *env, args []string) error {
 	if len(args) != 1 {
 		return fmt.Errorf("%w: jfl approve <proposal>", errUsage)
 	}
-	id := args[0]
+	return e.approve(args[0], nil)
+}
+
+// approve applies every change of the pending Proposal id, or none. A
+// person's edits to its items, made in the Dashboard, are applied to it
+// first when edit isn't nil; the Proposal is kept as approved, with them.
+func (e *env) approve(id string, edit func(pb *engine.Playbook, p *engine.Proposal) error) error {
 	if e.actor.Agent() {
 		return fmt.Errorf("Only a human can approve %s.", id)
 	}
@@ -85,6 +91,17 @@ func cmdApprove(e *env, args []string) error {
 	}
 	if p.Status != engine.Pending {
 		return fmt.Errorf("%s isn't pending: it was %s", p.ID, p.Status)
+	}
+	if edit != nil {
+		before := slices.Clone(p.Items)
+		if err := edit(pb, &p); err != nil {
+			return fmt.Errorf("%s: not approved: %w", p.ID, err)
+		}
+		for i, it := range p.Items {
+			if it.String() != before[i].String() {
+				fmt.Fprintf(e.stdout, "item %d edited: %s\n", i+1, it)
+			}
+		}
 	}
 	notApplied := func(err error) error {
 		return fmt.Errorf("%s was not applied at all (all or nothing): %w", p.ID, err)
@@ -124,19 +141,15 @@ func cmdApprove(e *env, args []string) error {
 		return err
 	}
 
-	by := "a person"
-	if p.By != "" {
-		by = "agent session " + p.By
+	// A Transition the Playbook requires the Dashboard for is approved
+	// there only, or a Proposal would be a way around it.
+	for _, c := range changes {
+		if c.Transition.Dashboard && !e.clicked {
+			return notApplied(fmt.Errorf("item %d (%s): %s and approve %s there", c.Item+1, p.Items[c.Item], dashboardOnly(c.Artifact.ID, c.Transition), p.ID))
+		}
 	}
-	ok, err := e.confirm(fmt.Sprintf("%s from %s: %s\n%sApprove all %s as one unit?", p.ID, by, p.Summary, listItems(p), plural(len(p.Items), "change")))
-	if errors.Is(err, errNoTerminal) {
-		return fmt.Errorf("approving %s needs confirming in an interactive terminal, but stdin isn't one", p.ID)
-	}
-	if err != nil {
-		return fmt.Errorf("%s: not approved: %v", p.ID, err)
-	}
-	if !ok {
-		return fmt.Errorf("%s: not approved: the approval wasn't confirmed", p.ID)
+	if err := e.confirmApproval(p); err != nil {
+		return err
 	}
 
 	// Every Gate of every Transition must pass before anything is saved.
@@ -216,7 +229,11 @@ func cmdReject(e *env, args []string) error {
 	if len(args) != 1 {
 		return fmt.Errorf("%w: jfl reject <proposal>", errUsage)
 	}
-	id := args[0]
+	return e.reject(args[0])
+}
+
+// reject drops the pending Proposal id, changing nothing.
+func (e *env) reject(id string) error {
 	if e.actor.Agent() {
 		return fmt.Errorf("Only a human can reject %s.", id)
 	}

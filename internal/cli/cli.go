@@ -44,6 +44,10 @@ type env struct {
 	getenv         func(string) string
 	now            func() time.Time // the CLI's clock, which the Ledger records
 	led            *store.Ledger
+	// clicked is set when the command is a person's click in the
+	// Dashboard, which confirms a Human Transition or an approval as a
+	// terminal's y would (ADR 0003).
+	clicked bool
 }
 
 // Run executes one command in the project rooted at dir and returns the
@@ -114,7 +118,9 @@ Commands:
   move <id> <status>      move an Artifact through a declared Transition,
                           running its Gates before and its Actions after;
                           a Human Transition asks a person to confirm it in
-                          an interactive terminal and is refused to agents;
+                          an interactive terminal and is refused to agents,
+                          and one the Playbook marks human: dashboard is made
+                          only in the Dashboard (jfl ui);
                           a body edited outside jfl is re-validated, and a
                           Status or frontmatter changed outside jfl is refused;
                           an agent session's move Claims the Artifact, and is
@@ -141,8 +147,10 @@ Commands:
                           Status
   approve <proposal>      apply every change in a pending Proposal, or none;
                           only a person may, confirming it in an interactive
-                          terminal, and its items may then make Human
-                          Transitions and create into Statuses with a Binding
+                          terminal or in the Dashboard, and its items may then
+                          make Human Transitions and create into Statuses
+                          with a Binding; one making a Transition the Playbook
+                          requires the Dashboard for is approved only there
   reject <proposal>       drop a pending Proposal, changing nothing; only a
                           person may
   check                   validate the Playbook, merged over the Base Playbook
@@ -194,7 +202,12 @@ Commands:
                           interrupted: the Artifacts of each Type with their
                           Status, Claim and Links and who they wait on, the
                           human queue and pending Proposals first, the Ledger
-                          summed, and each Type's Status machine drawn
+                          summed, and each Type's Status machine drawn. The
+                          browser that opens the link it prints may approve
+                          or reject Proposals, editing their creations first,
+                          and make Human Transitions; a Dashboard an agent
+                          session starts is only to look at. It never edits
+                          an Artifact's body
   version                 print the version
 
 Environment:
@@ -332,7 +345,7 @@ func (e *env) move(id, to string) error {
 		return err
 	}
 	if tr.Human {
-		if err := e.confirmHuman(a, to); err != nil {
+		if err := e.confirmHuman(a, tr); err != nil {
 			return err
 		}
 	}

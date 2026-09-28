@@ -39,8 +39,17 @@ func (e *env) interactive() bool {
 }
 
 // confirmHuman asks the person at the terminal to confirm the Human
-// Transition of a to the Status to.
-func (e *env) confirmHuman(a engine.Artifact, to string) error {
+// Transition tr of a. In the Dashboard, the person's click is the
+// confirmation; one the Playbook requires the Dashboard for is refused
+// anywhere else.
+func (e *env) confirmHuman(a engine.Artifact, tr engine.Transition) error {
+	if e.clicked {
+		return nil
+	}
+	to := tr.To
+	if tr.Dashboard {
+		return fmt.Errorf("%s and make it there", dashboardOnly(a.ID, tr))
+	}
 	ok, err := e.confirm(fmt.Sprintf("%s %q: %q → %q is a Human Transition. Make it?", a.ID, a.Title, a.Status, to))
 	if errors.Is(err, errNoTerminal) {
 		return fmt.Errorf("%s: %q → %q is a Human Transition and needs confirming in an interactive terminal, but stdin isn't one", a.ID, a.Status, to)
@@ -52,4 +61,33 @@ func (e *env) confirmHuman(a engine.Artifact, to string) error {
 		return fmt.Errorf("%s: not moved: the Human Transition wasn't confirmed", a.ID)
 	}
 	return nil
+}
+
+// confirmApproval asks the person at the terminal to confirm approving p.
+// In the Dashboard, the person's click is the confirmation.
+func (e *env) confirmApproval(p engine.Proposal) error {
+	if e.clicked {
+		return nil
+	}
+	by := "a person"
+	if p.By != "" {
+		by = "agent session " + p.By
+	}
+	ok, err := e.confirm(fmt.Sprintf("%s from %s: %s\n%sApprove all %s as one unit?", p.ID, by, p.Summary, listItems(p), plural(len(p.Items), "change")))
+	if errors.Is(err, errNoTerminal) {
+		return fmt.Errorf("approving %s needs confirming in an interactive terminal, but stdin isn't one", p.ID)
+	}
+	if err != nil {
+		return fmt.Errorf("%s: not approved: %v", p.ID, err)
+	}
+	if !ok {
+		return fmt.Errorf("%s: not approved: the approval wasn't confirmed", p.ID)
+	}
+	return nil
+}
+
+// dashboardOnly says that the Transition tr of the Artifact id is one the
+// Playbook requires making in the Dashboard.
+func dashboardOnly(id string, tr engine.Transition) string {
+	return fmt.Sprintf("%s: %q → %q is a Human Transition the Playbook requires making in the Dashboard: run jfl ui", id, tr.From, tr.To)
 }
