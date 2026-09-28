@@ -27,7 +27,7 @@ type Proposal struct {
 }
 
 // ProposalItem is one change in a Proposal: the creation of an Artifact of
-// the Type Create, the Transition of the Artifact Move to the Status To, or
+// the Type Create, with values for its fields, the Transition of the Artifact Move to the Status To, or
 // a change to the Playbook (ADR 0004): giving the Gates named Gate the
 // command Cmd, or adding the Guideline named Guideline, whose Markdown is
 // Text.
@@ -40,6 +40,7 @@ type ProposalItem struct {
 	Ref    string
 	Title  string
 	Status string              // empty means the Type's first initial Status
+	Fields map[string]string   // field -> its value
 	Links  map[string][]string // Link name -> ids or refs
 	Move   string              // an id or a ref
 	To     string
@@ -60,6 +61,13 @@ func (it ProposalItem) String() string {
 		s := fmt.Sprintf("create %s %q", it.Create, it.Title)
 		if it.Status != "" {
 			s += " in " + it.Status
+		}
+		var fields []string
+		for _, name := range slices.Sorted(maps.Keys(it.Fields)) {
+			fields = append(fields, name+" "+it.Fields[name])
+		}
+		if len(fields) > 0 {
+			s += " (" + strings.Join(fields, ", ") + ")"
 		}
 		for _, name := range slices.Sorted(maps.Keys(it.Links)) {
 			s += fmt.Sprintf(", %s %s", name, strings.Join(it.Links[name], ", "))
@@ -180,7 +188,7 @@ func Approve(pb *Playbook, p Proposal, all []Artifact) ([]Change, error) {
 			if len(links) == 0 {
 				links = nil
 			}
-			a, err := Create(pb, Actor{}, it.Create, it.Title, it.Status, nil, links, all)
+			a, err := Create(pb, Actor{}, it.Create, it.Title, it.Status, it.Fields, links, all)
 			if err != nil {
 				return fail(err)
 			}
@@ -209,7 +217,7 @@ func Approve(pb *Playbook, p Proposal, all []Artifact) ([]Change, error) {
 }
 
 // itemKinds says what a Proposal item may be.
-const itemKinds = "an item either creates (create, title), moves (move, to), gives a Gate its command (gate, cmd) or adds a Guideline (guideline, text)"
+const itemKinds = "an item either creates (create, title, and optionally status, fields and links), moves (move, to), gives a Gate its command (gate, cmd) or adds a Guideline (guideline, text)"
 
 // touched returns, for every Artifact an item of a pending Proposal moves, the
 // id of that Proposal. Creations touch nothing yet: their Artifacts don't

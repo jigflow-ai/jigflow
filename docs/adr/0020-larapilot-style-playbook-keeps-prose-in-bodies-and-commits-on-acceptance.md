@@ -1,0 +1,19 @@
+# The Larapilot-style Playbook keeps prose in bodies, and commits a Task when a person accepts its review
+
+The Larapilot-style Playbook (ADR 0009) is built into the binary as `builtin: larapilot`, replacing the placeholder `minimal`. Its four Artifact Types run one loop: a person creates a PRD in `inception` (a product not built yet) or `adopt` (a codebase that exists), where the Skill of that name writes it; a person approves it; `spec` proposes its Requirements; `plan` proposes, per Requirement, Stories broken into Tasks; `implement` and `review` work each Task; and a person accepts the review, which commits the Task. Six generic Personas ship with it (product-owner, architect, engineer, tester, reviewer, security-reviewer), and a general `conventions` Guideline that the one `jfl init` proposes overrides (ADR 0019). Its Gates are `tests` and `lint`, declared by name only.
+
+An Artifact's fields take one of a list of declared values and only jfl writes them, while its body is prose anyone edits. So a Requirement's MoSCoW priority is a field (`priority: [must, should, could, wont]`), but a PRD's Journeys and quality targets, and a Requirement's "Done means", are sections of their bodies that the Skills write and check. They are PRD "fields" in the sense ADR 0009 meant: parts of the PRD, not Artifact Types of their own. To give a proposed Requirement its priority, a Proposal's creations may now carry `fields`, as `jfl create --field` does. Bodies aren't carried by a Proposal: the Skill that proposed the creations writes them once the person approves, having first written the drafts where the person reads them while deciding (the PRD's Requirements section).
+
+A Task in `in-review` is the `review` Skill's; it moves the Task back to `in-progress` or on to `reviewed`, which has no Binding, so a passing review waits in the person's queue instead of being handed to `review` again. `reviewed → done` is the Human Transition, and its Action commits everything in the working tree as one commit, `<id>: <title>`: the Task's change, its Artifact file and the Ledger. Actions now see the Artifact's title as `JFL_TITLE` for this. Stories and Requirements have no Guard tying them to their Tasks' Statuses, since Guards follow only outgoing Links; a person accepts a Story, and marks a Requirement done, having checked its "Done means".
+
+## Considered Options
+
+- Free-text fields for Journeys and quality targets: rejected, since fields have no command to change them after creation and only jfl may write them, while these are prose a person revises in their editor.
+- Carrying bodies in Proposals: rejected for now, since every Store, the Connector protocol and the Dashboard's per-item edits would need to carry them.
+- Keeping `review` bound to the Status the Human Transition leaves: rejected, since `next` would hand the Task to `review` again and autopilot would stop on it as not moved on.
+- Committing in `implement`: rejected, since a commit before review is not one commit per Task once review sends it back.
+
+## Consequences
+
+- The `commit` Action assumes the project is a git repository with an identity to commit as; a project that isn't overrides the Task Type.
+- `git add --all` commits whatever else is in the working tree; the loop assumes one Task is worked at a time in one working tree.

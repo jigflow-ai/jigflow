@@ -1,0 +1,22 @@
+# A Requirement of a PRD, prioritised with MoSCoW. Its body says what it
+# asks for and, under "Done means", how a person can tell it is met.
+name: Requirement
+prefix: REQ
+fields:
+  priority: [must, should, could, wont]
+links:
+  part_of: PRD
+statuses: [specified, planned, done, dropped]
+initial: [specified]
+final: [done, dropped]
+bindings:
+  specified: plan
+transitions:
+  - from: specified
+    to: planned
+    guards:
+      - {kind: has-incoming, link: implements, min: 1}
+  - {from: specified, to: dropped, human: true}
+  - {from: planned, to: specified, human: true}
+  # A person checks what "Done means" says once its Stories are done.
+  - {from: planned, to: done, human: true}

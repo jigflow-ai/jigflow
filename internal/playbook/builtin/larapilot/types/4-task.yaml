@@ -1,0 +1,33 @@
+# A Task: one change to the code, small enough to review on its own. An
+# agent reviews it, and a person accepts the review, which commits the Task
+# as one commit.
+name: Task
+prefix: T
+links:
+  part_of: Story
+  blocked_by: Task
+statuses: [ready, in-progress, in-review, reviewed, done]
+initial: [ready]
+final: [done]
+bindings:
+  ready: {skill: implement, fresh: true}
+  in-progress: implement
+  in-review: {skill: review, fresh: true}
+readiness:
+  ready:
+    - {kind: linked-all-in, link: blocked_by, statuses: [done]}
+transitions:
+  - {from: ready, to: in-progress}
+  - from: in-progress
+    to: in-review
+    gates:
+      - {name: tests}
+      - {name: lint}
+  - {from: in-review, to: in-progress}
+  - {from: in-review, to: reviewed}
+  - {from: reviewed, to: in-progress, human: true}
+  - from: reviewed
+    to: done
+    human: true
+    actions:
+      - {name: commit, cmd: 'git add --all && git commit --quiet --message "$JFL_ARTIFACT: $JFL_TITLE"'}

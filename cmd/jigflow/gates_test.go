@@ -191,13 +191,13 @@ func TestAGateNeedsANameAndAnActionANameAndACommand(t *testing.T) {
 
 func TestGatesAndActionsKnowWhichArtifactAndTransitionTheyRunFor(t *testing.T) {
 	p := gatedPlaybook(t, `      - name: tests
-        cmd: echo "gate $JFL_ARTIFACT $JFL_FROM $JFL_TO" >> ran.log
+        cmd: echo "gate $JFL_ARTIFACT $JFL_TITLE $JFL_FROM $JFL_TO" >> ran.log
 `, `      - name: commit
-        cmd: echo "action $JFL_ARTIFACT $JFL_FROM $JFL_TO" >> ran.log
+        cmd: echo "action $JFL_ARTIFACT $JFL_TITLE $JFL_FROM $JFL_TO" >> ran.log
 `)
 
 	p.MustRun("move", "T-1", "in-review")
-	want := "gate T-1 in-progress in-review\naction T-1 in-progress in-review\n"
+	want := "gate T-1 Add login page in-progress in-review\naction T-1 Add login page in-progress in-review\n"
 	if got := p.Read("ran.log"); got != want {
 		t.Errorf("commands saw %q, want %q", got, want)
 	}

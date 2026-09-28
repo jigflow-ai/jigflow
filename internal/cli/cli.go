@@ -158,7 +158,8 @@ Commands:
                           out didn't move the Artifact on
   propose <file>          put forward the creations and Transitions in a
                           Proposal file for a person to approve or reject as
-                          one unit; creations may Link to each other by ref;
+                          one unit; creations may give the Type's fields
+                          values and Link to each other by ref;
                           an item may change the Playbook instead, giving a
                           Gate its command or adding a Guideline
   query [--type <Type>] [--status <status>]
@@ -381,7 +382,7 @@ func (e *env) move(id, to string) error {
 		if g.Cmd == "" {
 			return fmt.Errorf("%s: %q → %q refused: %s", a.ID, a.Status, to, noCommand(g))
 		}
-		if out, err := e.shell(g.Cmd, a.ID, a.Status, to); err != nil {
+		if out, err := e.shell(g.Cmd, a, a.Status, to); err != nil {
 			return fmt.Errorf("%s: %q → %q refused: Gate %q failed (%s: %v)%s", a.ID, a.Status, to, g.Name, g.Cmd, err, indent(out))
 		}
 	}
@@ -403,7 +404,7 @@ func (e *env) move(id, to string) error {
 	// The Transition has happened; a failing Action is reported, stops the
 	// Actions after it, and makes the command fail, but doesn't undo the move.
 	for _, act := range tr.Actions {
-		out, err := e.shell(act.Cmd, a.ID, a.Status, to)
+		out, err := e.shell(act.Cmd, a, a.Status, to)
 		if err != nil {
 			return fmt.Errorf("%s: moved to %q, but Action %q failed (%s: %v)%s", moved.ID, moved.Status, act.Name, act.Cmd, err, indent(out))
 		}

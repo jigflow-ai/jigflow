@@ -1,0 +1,11 @@
+# A Story: a slice of a Requirement someone can use, with its acceptance
+# criteria in its body. Its Tasks do the work; a person accepts it.
+name: Story
+prefix: ST
+links:
+  implements: Requirement
+statuses: [planned, accepted]
+initial: [planned]
+final: [accepted]
+transitions:
+  - {from: planned, to: accepted, human: true}

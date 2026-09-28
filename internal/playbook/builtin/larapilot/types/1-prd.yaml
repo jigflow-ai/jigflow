@@ -1,0 +1,25 @@
+# A PRD: what the product is for, who uses it, the Journeys they take and
+# the quality targets it must meet. A person creates it in inception, for a
+# product not built yet, or in adopt, for a codebase that exists. Journeys
+# and quality targets are sections of its body, not Artifact Types.
+name: PRD
+prefix: PRD
+statuses: [inception, adopt, in-review, approved, specified]
+initial: [inception, adopt]
+final: [specified]
+bindings:
+  inception: inception
+  adopt: adopt
+  approved: spec
+transitions:
+  - {from: inception, to: in-review}
+  - {from: adopt, to: in-review}
+  - {from: in-review, to: inception, human: true}
+  - {from: in-review, to: adopt, human: true}
+  - {from: in-review, to: approved, human: true}
+  - from: approved
+    to: specified
+    guards:
+      - {kind: has-incoming, link: part_of, min: 1}
+  # The PRD changed: specify it again.
+  - {from: specified, to: approved, human: true}

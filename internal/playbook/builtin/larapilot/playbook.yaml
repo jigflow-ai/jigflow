@@ -1,0 +1,10 @@
+# The Larapilot-style Playbook: a heavy-spec way of working, in any
+# language. A PRD, for a product not built yet (inception) or a codebase
+# that exists (adopt), is specified as Requirements, each Requirement is
+# planned as Stories broken into Tasks, and every Task is implemented,
+# reviewed and committed on its own.
+#
+# Its Gates, tests and lint, are declared by name only: the project's
+# Playbook file gives them its commands, which jfl init proposes from the
+# toolchain (ADR 0019).
+name: larapilot

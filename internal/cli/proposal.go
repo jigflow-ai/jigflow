@@ -159,7 +159,7 @@ func (e *env) approve(id string, edit func(pb *engine.Playbook, p *engine.Propos
 			if g.Cmd == "" {
 				return notApplied(fmt.Errorf("item %d (%s): %s", c.Item+1, p.Items[c.Item], noCommand(g)))
 			}
-			if out, err := e.shell(g.Cmd, c.Artifact.ID, c.From, c.Artifact.Status); err != nil {
+			if out, err := e.shell(g.Cmd, c.Artifact, c.From, c.Artifact.Status); err != nil {
 				return notApplied(fmt.Errorf("item %d (%s): Gate %q failed (%s: %v)%s", c.Item+1, p.Items[c.Item], g.Name, g.Cmd, err, indent(out)))
 			}
 		}
@@ -235,7 +235,7 @@ func (e *env) approve(id string, edit func(pb *engine.Playbook, p *engine.Propos
 	// Actions after it, and makes the command fail, but undoes nothing.
 	for _, c := range changes {
 		for _, act := range c.Transition.Actions {
-			out, err := e.shell(act.Cmd, c.Artifact.ID, c.From, c.Artifact.Status)
+			out, err := e.shell(act.Cmd, c.Artifact, c.From, c.Artifact.Status)
 			if err != nil {
 				return fmt.Errorf("%s: approved, but Action %q of %s failed (%s: %v)%s", p.ID, act.Name, c.Artifact.ID, act.Cmd, err, indent(out))
 			}

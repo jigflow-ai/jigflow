@@ -46,6 +46,7 @@ type itemFile struct {
 	Ref    string              `yaml:"ref,omitempty"`
 	Title  string              `yaml:"title,omitempty"`
 	Status string              `yaml:"status,omitempty"`
+	Fields map[string]string   `yaml:"fields,omitempty"`
 	Links  map[string][]string `yaml:"links,omitempty"`
 	Move   string              `yaml:"move,omitempty"`
 	To     string              `yaml:"to,omitempty"`
@@ -61,7 +62,7 @@ type itemFile struct {
 //
 //	summary: break S-1 into tickets
 //	items:
-//	  - {create: Ticket, ref: table, title: Reset-token table, links: {part_of: [S-1]}}
+//	  - {create: Ticket, ref: table, title: Reset-token table, fields: {category: enhancement}, links: {part_of: [S-1]}}
 //	  - {create: Ticket, title: Reset endpoint, links: {blocked_by: [table]}}
 //	  - {move: S-1, to: ticketed}
 //

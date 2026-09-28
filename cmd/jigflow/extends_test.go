@@ -159,7 +159,7 @@ func TestOnlyASingleExtendsIsSupported(t *testing.T) {
 	const onlyOne = "a Playbook extends a single Base Playbook"
 	for name, c := range map[string]struct{ playbook, want string }{
 		"a list of Base Playbooks": {"extends: [{path: base}, {path: other}]\n", onlyOne},
-		"two sources in one":       {"extends: {path: base, builtin: minimal}\n", "extends names one of builtin, path or git"},
+		"two sources in one":       {"extends: {path: base, builtin: larapilot}\n", "extends names one of builtin, path or git"},
 		"no source":                {"extends: {}\n", "extends names one of builtin, path or git"},
 		"a misspelt source":        {"extends: {pth: base}\n", "pth"},
 	} {
@@ -189,13 +189,13 @@ func TestABasePlaybookThatItselfExtendsAnotherIsRefused(t *testing.T) {
 
 func TestAPlaybookCanExtendABasePlaybookBuiltIntoTheBinary(t *testing.T) {
 	p := bin.NewProject(t)
-	p.Write(".jigflow/playbook.yaml", "name: mine\nextends: {builtin: minimal}\n")
+	p.Write(".jigflow/playbook.yaml", "name: mine\nextends: {builtin: larapilot}\n")
 
 	if r := p.MustRun("check"); firstLine(r.Stdout) != `Playbook "mine": no problems` {
 		t.Errorf("check = %q, want mine to have no problems", firstLine(r.Stdout))
 	}
 	p.MustRun("create", "Task", "--title", "Reset-token table")
-	if got := firstLine(p.MustRun("next").Stdout); got != `run /work on T-1 "Reset-token table"` {
+	if got := firstLine(p.MustRun("next").Stdout); got != `run /implement on T-1 "Reset-token table"` {
 		t.Errorf("next = %q, want the built-in Base Playbook's Binding", got)
 	}
 }
@@ -205,7 +205,7 @@ func TestExtendingAnUnknownBuiltInPlaybookIsRefused(t *testing.T) {
 	p.Write(".jigflow/playbook.yaml", "name: mine\nextends: {builtin: larapilot-ish}\n")
 
 	r := p.Run("check")
-	if want := `.jigflow/playbook.yaml: no Playbook "larapilot-ish" is built in (built in: minimal)`; r.ExitCode != 1 || !strings.Contains(r.Stderr, want) {
+	if want := `.jigflow/playbook.yaml: no Playbook "larapilot-ish" is built in (built in: larapilot)`; r.ExitCode != 1 || !strings.Contains(r.Stderr, want) {
 		t.Errorf("check: exit %d, stderr %q; want exit 1 and %q", r.ExitCode, r.Stderr, want)
 	}
 }
