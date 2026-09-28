@@ -84,8 +84,13 @@ Commands:
                           a Human Transition asks a person to confirm it in
                           an interactive terminal and is refused to agents;
                           a body edited outside jfl is re-validated, and a
-                          Status or frontmatter changed outside jfl is refused
-  next                    say which Skill to run on which Artifact
+                          Status or frontmatter changed outside jfl is refused;
+                          an agent session's move Claims the Artifact, and is
+                          refused on one another session claims; entering a
+                          Status with no Binding, or a final one, releases it
+  next                    say which Skill to run on which Artifact, preferring
+                          what the session claims and skipping what others
+                          claim, and make the pick the session's Focus
   propose <file>          put forward the creations and Transitions in a
                           Proposal file for a person to approve or reject as
                           one unit; creations may Link to each other by ref
@@ -200,6 +205,9 @@ func cmdMove(e *env, args []string) error {
 	if err := st.Save(moved); err != nil {
 		return err
 	}
+	if err := e.unfocus(pb, moved); err != nil {
+		return err
+	}
 	fmt.Fprintf(e.stdout, "%s: %s → %s\n", moved.ID, a.Status, moved.Status)
 	// The Transition has happened; a failing Action is reported, stops the
 	// Actions after it, and makes the command fail, but doesn't undo the move.
@@ -229,7 +237,17 @@ func cmdNext(e *env, args []string) error {
 	if err != nil {
 		return err
 	}
-	res := engine.Next(pb, artifacts, proposals)
+	res := engine.Next(pb, e.actor, artifacts, proposals)
+	// The pick becomes an agent session's Focus; with no pick it has none.
+	if e.actor.Agent() {
+		focus := ""
+		if len(res.Candidates) > 0 {
+			focus = res.Candidates[0].Artifact.ID
+		}
+		if err := store.NewSessions(e.dir).SetFocus(e.actor.Session, focus); err != nil {
+			return err
+		}
+	}
 	if len(res.Candidates) == 0 {
 		fmt.Fprintln(e.stdout, "nothing for an agent to do")
 	} else {
@@ -243,6 +261,15 @@ func cmdNext(e *env, args []string) error {
 		}
 	}
 	return nil
+}
+
+// unfocus takes an Artifact that is no longer agent work, handed to a
+// person or finished, out of every session's Focus.
+func (e *env) unfocus(pb *engine.Playbook, a engine.Artifact) error {
+	if pb.AgentWork(a) {
+		return nil
+	}
+	return store.NewSessions(e.dir).Unfocus(a.ID)
 }
 
 // linkFlag collects repeated --link <link>=<id> flags.

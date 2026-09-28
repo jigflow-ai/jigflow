@@ -26,14 +26,18 @@ type NextResult struct {
 	Skipped    []Skip
 }
 
-// Next computes which Skill to run on which Artifact. Artifacts are
+// Next computes which Skill to run on which Artifact for actor. Artifacts are
 // considered in declaration order: by Artifact Type in Playbook order, then
 // by the number in their id. Final Artifacts are left out silently; an
-// Artifact whose Status has no Binding is skipped as human work, one that an
+// Artifact whose Status has no Binding is skipped as human work, one another
+// agent session has claimed is skipped as that session's work, one that an
 // item of a pending Proposal moves is skipped until a person decides on it,
 // and one whose Status's Readiness fails is skipped as not ready. Guards play
 // no part: they are checked only at the moment of a Transition.
-func Next(pb *Playbook, artifacts []Artifact, proposals []Proposal) NextResult {
+//
+// The Artifacts the session already claims are offered first, then the rest
+// in declaration order.
+func Next(pb *Playbook, actor Actor, artifacts []Artifact, proposals []Proposal) NextResult {
 	var res NextResult
 	pending := touched(proposals)
 	for _, a := range declarationOrder(pb, artifacts) {
@@ -50,6 +54,10 @@ func Next(pb *Playbook, artifacts []Artifact, proposals []Proposal) NextResult {
 			res.Skipped = append(res.Skipped, Skip{a, fmt.Sprintf("%q has no Binding, so it's human work", a.Status)})
 			continue
 		}
+		if a.Claim != "" && a.Claim != actor.Session {
+			res.Skipped = append(res.Skipped, Skip{a, "claimed by agent session " + a.Claim})
+			continue
+		}
 		if pid, ok := pending[a.ID]; ok {
 			res.Skipped = append(res.Skipped, Skip{a, fmt.Sprintf("waiting on a pending Proposal (%s)", pid)})
 			continue
@@ -60,7 +68,19 @@ func Next(pb *Playbook, artifacts []Artifact, proposals []Proposal) NextResult {
 		}
 		res.Candidates = append(res.Candidates, Candidate{a, skill})
 	}
+	// Work the session already claims comes first, in declaration order.
+	slices.SortStableFunc(res.Candidates, func(x, y Candidate) int {
+		return cmp.Compare(mine(y.Artifact, actor), mine(x.Artifact, actor))
+	})
 	return res
+}
+
+// mine is 1 when actor is the agent session that claims a, and 0 otherwise.
+func mine(a Artifact, actor Actor) int {
+	if actor.Agent() && a.Claim == actor.Session {
+		return 1
+	}
+	return 0
 }
 
 func declarationOrder(pb *Playbook, artifacts []Artifact) []Artifact {

@@ -87,6 +87,7 @@ type Artifact struct {
 	Status string
 	Title  string
 	Links  map[string][]string // Link name -> ids of the linked Artifacts
+	Claim  string              // the agent session that owns the work on it; empty for none
 }
 
 // Create decides a new Artifact of the named Type on behalf of actor. An
@@ -136,10 +137,15 @@ func Create(pb *Playbook, actor Actor, typeName, title, status string, links map
 
 // Move decides moving an Artifact to the Status to on behalf of actor. It is
 // refused unless the Artifact's Type declares a Transition from its current
-// Status to to, an agent isn't attempting a Human Transition, the Readiness
-// of its current Status holds (for an agent), and every Guard on the
-// Transition holds. all is every Artifact in the Store, so Links can be
-// followed.
+// Status to to, an agent isn't attempting a Human Transition or moving an
+// Artifact another session has claimed, the Readiness of its current Status
+// holds (for an agent), and every Guard on the Transition holds. all is every
+// Artifact in the Store, so Links can be followed.
+//
+// An agent's Transition Claims the Artifact for its session; a person isn't
+// held to Claims and doesn't take one. Entering a Status with no Binding, or
+// a final Status, releases the Claim, so work handed back to a person, or
+// finished, can be picked up by any session.
 //
 // Readiness says when agent work in a Status may start, so an agent can't
 // move out of a Status that isn't ready; a person isn't held to it.
@@ -169,6 +175,9 @@ func Move(pb *Playbook, actor Actor, a Artifact, to string, all []Artifact) (Art
 	if tr.Human && actor.Agent() {
 		return Artifact{}, Transition{}, fmt.Errorf("%s: %q → %q is a Human Transition. An agent can only propose it.", a.ID, a.Status, to)
 	}
+	if actor.Agent() && a.Claim != "" && a.Claim != actor.Session {
+		return Artifact{}, Transition{}, fmt.Errorf("%s is claimed by agent session %s.", a.ID, a.Claim)
+	}
 	if f := failed(t.Readiness[a.Status], a, all); len(f) > 0 && actor.Agent() {
 		return Artifact{}, Transition{}, fmt.Errorf("%s: not ready. Readiness of %q needs %s", a.ID, a.Status, describe(f))
 	}
@@ -176,7 +185,25 @@ func Move(pb *Playbook, actor Actor, a Artifact, to string, all []Artifact) (Art
 		return Artifact{}, Transition{}, fmt.Errorf("%s: %q → %q refused: a Guard needs %s", a.ID, a.Status, to, describe(f))
 	}
 	a.Status = to
+	if actor.Agent() {
+		a.Claim = actor.Session
+	}
+	if !t.agentWork(to) {
+		a.Claim = ""
+	}
 	return a, tr, nil
+}
+
+// AgentWork reports whether a is work an agent may hold: its Status has a
+// Binding and isn't final. Otherwise it is in no session's Claim or Focus.
+func (p *Playbook) AgentWork(a Artifact) bool {
+	t := p.Type(a.Type)
+	return t != nil && t.agentWork(a.Status)
+}
+
+// agentWork reports whether an Artifact in status is work an agent may hold.
+func (t *ArtifactType) agentWork(status string) bool {
+	return t.Bindings[status] != "" && !slices.Contains(t.Final, status)
 }
 
 // outgoing returns the Statuses reachable from status in one Transition.

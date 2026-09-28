@@ -7,7 +7,8 @@
 //
 // The last frontmatter line is a content hash of what the Store wrote, so
 // edits made outside the CLI can be detected: bodies are free to edit, but
-// only the CLI may change Statuses and frontmatter (ADR 0002).
+// only the CLI may change Statuses and frontmatter (ADR 0002). An Artifact's
+// Claim is a frontmatter field, so it is shared through git.
 package store
 
 import (
@@ -47,6 +48,7 @@ type frontmatter struct {
 	Status string              `yaml:"status"`
 	Title  string              `yaml:"title"`
 	Links  map[string][]string `yaml:"links,omitempty"`
+	Claim  string              `yaml:"claim,omitempty"`
 	// Hash is the content hash the Store wrote, always the last line of
 	// the block; see contentHash.
 	Hash string `yaml:"hash,omitempty"`
@@ -100,7 +102,7 @@ func (f *File) Save(a engine.Artifact) error {
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return err
 	}
-	fm, err := yaml.Marshal(frontmatter{ID: a.ID, Type: a.Type, Status: a.Status, Title: a.Title, Links: a.Links})
+	fm, err := yaml.Marshal(frontmatter{ID: a.ID, Type: a.Type, Status: a.Status, Title: a.Title, Links: a.Links, Claim: a.Claim})
 	if err != nil {
 		return err
 	}
@@ -216,7 +218,7 @@ func (f *File) parse(path string) (file, error) {
 		unhashed = fmText[:i]
 	}
 	return file{
-		artifact: engine.Artifact{ID: fm.ID, Type: fm.Type, Status: fm.Status, Title: fm.Title, Links: fm.Links},
+		artifact: engine.Artifact{ID: fm.ID, Type: fm.Type, Status: fm.Status, Title: fm.Title, Links: fm.Links, Claim: fm.Claim},
 		body:     body,
 		fm:       unhashed,
 		hash:     fm.Hash,

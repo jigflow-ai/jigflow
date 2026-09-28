@@ -154,6 +154,9 @@ func cmdApprove(e *env, args []string) error {
 		if err := st.Save(c.Artifact); err != nil {
 			return err
 		}
+		if err := e.unfocus(pb, c.Artifact); err != nil {
+			return err
+		}
 	}
 	p.Status = engine.Approved
 	if err := ps.Save(p); err != nil {
