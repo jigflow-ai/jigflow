@@ -2,7 +2,7 @@
 
 An Artifact Type can keep its Artifacts in an outside tracker (GitHub Issues, Linear, …) instead of files in the repository. `jfl` stays the only writer (ADR 0002) and reaches the tracker through a **Connector**: an external executable, in any language, that speaks the JSON protocol below over stdin and stdout (ADR 0008).
 
-This document is for people writing a Connector, and for people setting one up in a project. The GitHub Issues Connector, `jfl-connector-github`, ships alongside jfl as the reference one; [github-connector.md](github-connector.md) describes its settings and how it maps Artifacts to issues.
+This document is for people writing a Connector, and for people setting one up in a project. Two reference Connectors ship alongside jfl: `jfl-connector-github` for GitHub Issues, described in [github-connector.md](github-connector.md), and `jfl-connector-linear` for Linear, described in [linear-connector.md](linear-connector.md), each with its settings and how it maps Artifacts to issues.
 
 ## Setting up a Connector
 

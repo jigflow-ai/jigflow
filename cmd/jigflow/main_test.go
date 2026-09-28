@@ -21,6 +21,10 @@ var fakeConnector string
 // alongside jfl.
 var githubConnector string
 
+// linearConnector is the path of the Linear Connector, shipped alongside
+// jfl.
+var linearConnector string
+
 func TestMain(m *testing.M) {
 	var err error
 	bin, err = clitest.Build("github.com/jigflow-ai/jigflow/cmd/jigflow")
@@ -34,6 +38,11 @@ func TestMain(m *testing.M) {
 		os.Exit(1)
 	}
 	if githubConnector, err = bin.BuildHelper("github.com/jigflow-ai/jigflow/cmd/jfl-connector-github", "jfl-connector-github"); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		bin.Cleanup()
+		os.Exit(1)
+	}
+	if linearConnector, err = bin.BuildHelper("github.com/jigflow-ai/jigflow/cmd/jfl-connector-linear", "jfl-connector-linear"); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		bin.Cleanup()
 		os.Exit(1)
