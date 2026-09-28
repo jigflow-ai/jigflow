@@ -40,7 +40,7 @@ func check(pb *engine.Playbook, typeFiles, skillFiles, connectorFiles map[string
 	}
 	for _, name := range slices.Sorted(maps.Keys(pb.Skills)) {
 		for _, ref := range pb.Skills[name].Personas {
-			if !slices.Contains(pb.Personas, ref.Name) && strings.TrimSpace(ref.Fallback) == "" {
+			if _, ok := pb.Personas[ref.Name]; !ok && strings.TrimSpace(ref.Fallback) == "" {
 				problems = append(problems, fmt.Sprintf("%s: Persona %q doesn't exist and has no fallback description", skillFiles[name], ref.Name))
 			}
 		}

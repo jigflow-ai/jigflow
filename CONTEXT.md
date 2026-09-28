@@ -117,9 +117,9 @@ A rule file in the Playbook that Skills reference and load only when needed; the
 _Avoid_: Runtime pack, rules, convention file
 
 **Persona**:
-A named point of view a Skill asks the agent to adopt; it is not a separate agent and has no memory of its own. A Persona is itself an Artifact: the agent may propose one on demand, but it becomes usable only through a Human Transition.
+A named point of view a Skill asks the agent to adopt; it is not a separate agent and has no memory of its own. A Persona proposed on demand is itself an Artifact of the built-in Persona Type (proposed, active, retired): the agent may propose one, but it becomes usable only through a Human Transition. Those the Playbook or the Persona Library ship are usable as they are. Adapters publish only the usable ones.
 _Avoid_: Role, agent, character
 
 **Persona Library**:
-A user-level collection of Personas reused across projects; a project Persona with the same name overrides a library one.
+A user-level collection of Personas reused across projects; a project Persona with the same name, one the Playbook ships or a Persona Artifact a person has activated or retired, overrides a library one.
 _Avoid_: Persona registry, persona pack

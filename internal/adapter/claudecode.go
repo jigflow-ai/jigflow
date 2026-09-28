@@ -23,13 +23,17 @@ type claudeCodeFrontmatter struct {
 	Context string `yaml:"context,omitempty"`
 }
 
-// claudeCode publishes every Skill as a Claude Code Skill, and the hooks
-// through which the Ledger reads token usage from Claude Code's records.
-func claudeCode(pb *engine.Playbook) []File {
+// claudeCode publishes every Skill as a Claude Code Skill, with the active
+// Personas it names, the router Skill with every active Persona, and the
+// hooks through which the Ledger reads token usage from Claude Code's
+// records.
+func claudeCode(pb *engine.Playbook, personas map[string]string) []File {
+	router := claudeCodeSkills + "/" + Router
 	files := []File{claudeCodeHooks(), {
-		Path:    claudeCodeSkills + "/" + Router + "/SKILL.md",
-		Content: skillMD(claudeCodeFrontmatter{Name: Router, Description: routerDescription}, routerPrompt(pb)),
+		Path:    router + "/SKILL.md",
+		Content: skillMD(claudeCodeFrontmatter{Name: Router, Description: routerDescription}, routerPrompt(pb)+"\n## Personas\n\n"+personasGuide(personas, "")),
 	}}
+	files = append(files, personaFiles(personas, router)...)
 	for _, name := range slices.Sorted(maps.Keys(pb.Skills)) {
 		s := pb.Skills[name]
 		bs := bindingsOf(pb, s.Name)
@@ -45,8 +49,9 @@ func claudeCode(pb *engine.Playbook) []File {
 			fm.Context = "fork"
 		}
 		dir := claudeCodeSkills + "/" + s.Name
-		body := advice(bs, forked) + s.Prompt + guidelinesSection(s)
+		body := advice(bs, forked) + s.Prompt + personasSection(s, personas) + guidelinesSection(s)
 		files = append(files, File{Path: dir + "/SKILL.md", Content: skillMD(fm, body)})
+		files = append(files, skillPersonaFiles(s, personas, dir)...)
 		files = append(files, guidelineFiles(pb, s, dir)...)
 	}
 	return files

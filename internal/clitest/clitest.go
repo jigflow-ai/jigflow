@@ -97,7 +97,7 @@ type Project struct {
 }
 
 // Setenv sets an environment variable for every command run from now on,
-// such as where Claude Code keeps its records.
+// such as where Claude Code keeps its records; a later value wins.
 func (p *Project) Setenv(key, value string) { p.extra = append(p.extra, key+"="+value) }
 
 // At makes every command run from now on read its clock at the given time,
@@ -105,10 +105,14 @@ func (p *Project) Setenv(key, value string) { p.extra = append(p.extra, key+"="+
 // had passed.
 func (p *Project) At(clock string) { p.clock = clock }
 
-// NewProject creates an empty temporary project folder.
+// NewProject creates an empty temporary project folder. Its commands see
+// an empty user configuration directory, so the Persona Library of the
+// person running the tests never reaches them.
 func (b *Binary) NewProject(t testing.TB) *Project {
 	t.Helper()
-	return &Project{t: t, bin: b, Dir: t.TempDir()}
+	p := &Project{t: t, bin: b, Dir: t.TempDir()}
+	p.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	return p
 }
 
 // Write creates a file (and its parent directories) relative to the project root.

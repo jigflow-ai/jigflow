@@ -95,6 +95,19 @@ func (f *File) Get(id string) (engine.Artifact, error) {
 	return a, err
 }
 
+// Body returns the body of the Artifact with the given id: the Markdown
+// after its frontmatter, which people and agents may edit.
+func (f *File) Body(id string) (string, error) {
+	if !validID(id) {
+		return "", fmt.Errorf("%q: %w", id, ErrNotFound)
+	}
+	_, body, err := f.read(f.path(id))
+	if errors.Is(err, os.ErrNotExist) {
+		return "", fmt.Errorf("%s: %w", id, ErrNotFound)
+	}
+	return body, err
+}
+
 // Create writes a new Artifact's file, with the id it was given.
 func (f *File) Create(a engine.Artifact, _ engine.Actor) (engine.Artifact, error) {
 	return a, f.Save(a)

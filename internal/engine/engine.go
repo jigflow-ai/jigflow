@@ -21,7 +21,7 @@ type Playbook struct {
 	Name       string
 	Types      []*ArtifactType       // in declaration order
 	Skills     map[string]*Skill     // by name
-	Personas   []string              // names of the Personas the project declares
+	Personas   map[string]string     // the Personas the Playbook ships: name -> its Markdown
 	Guidelines map[string]string     // the Guidelines the project declares: name -> its Markdown
 	Connectors map[string]*Connector // the project's Connectors, by name
 }
@@ -179,6 +179,11 @@ func Create(pb *Playbook, actor Actor, typeName, title, status string, fields ma
 	}
 	if strings.TrimSpace(title) == "" {
 		return Artifact{}, fmt.Errorf("a %s needs a title", t.Name)
+	}
+	if t.Name == PersonaType {
+		if err := checkPersonaName(title, existing); err != nil {
+			return Artifact{}, err
+		}
 	}
 	if status == "" && len(t.Initial) > 0 {
 		status = t.Initial[0]

@@ -7,8 +7,8 @@ import (
 	"github.com/jigflow-ai/jigflow/internal/adapter"
 )
 
-// cmdPublish publishes the Playbook's Skills and Guidelines through an
-// Adapter, in the format its coding agent expects.
+// cmdPublish publishes the Playbook's Skills, Guidelines and active
+// Personas through an Adapter, in the format its coding agent expects.
 func cmdPublish(e *env, args []string) error {
 	if len(args) != 1 {
 		return fmt.Errorf("%w: jfl publish <adapter> (%s)", errUsage, adapterNames())
@@ -21,7 +21,11 @@ func cmdPublish(e *env, args []string) error {
 	if err != nil {
 		return err
 	}
-	ch, err := a.Publish(e.dir, pb)
+	personas, err := e.activePersonas(pb)
+	if err != nil {
+		return err
+	}
+	ch, err := a.Publish(e.dir, pb, personas)
 	if err != nil {
 		return err
 	}

@@ -13,6 +13,13 @@ import (
 // directory each holding its SKILL.md, for the agent to read when told to.
 const agentsSkills = ".agents/skills"
 
+// agentsPersonas is where the AGENTS.md fallback publishes every active
+// Persona, one Markdown file each: personas/ under agentsDir.
+const (
+	agentsDir      = ".agents"
+	agentsPersonas = agentsDir + "/personas"
+)
+
 // agentsFrontmatter is the frontmatter of a SKILL.md an agent without an
 // Adapter of its own reads.
 type agentsFrontmatter struct {
@@ -25,15 +32,16 @@ type agentsFrontmatter struct {
 // rules, and every Skill as a file it says when to read. Such an agent
 // can't be told how to start a Skill, so Invocation Modes and every Binding
 // hint are advice.
-func agentsMD(pb *engine.Playbook) []File {
-	var files []File
+func agentsMD(pb *engine.Playbook, personas map[string]string) []File {
+	files := personaFiles(personas, agentsDir)
 	var skills strings.Builder
 	for _, name := range slices.Sorted(maps.Keys(pb.Skills)) {
 		s := pb.Skills[name]
 		bs := bindingsOf(pb, s.Name)
 		dir := agentsSkills + "/" + s.Name
 		fm := agentsFrontmatter{Name: s.Name, Description: description(s, bs)}
-		files = append(files, File{Path: dir + "/SKILL.md", Content: skillMD(fm, advice(bs, false)+s.Prompt+guidelinesSection(s))})
+		files = append(files, File{Path: dir + "/SKILL.md", Content: skillMD(fm, advice(bs, false)+s.Prompt+personasSection(s, personas)+guidelinesSection(s))})
+		files = append(files, skillPersonaFiles(s, personas, dir)...)
 		files = append(files, guidelineFiles(pb, s, dir)...)
 
 		if s.Invocation == engine.InvokedByUser {
@@ -49,7 +57,7 @@ func agentsMD(pb *engine.Playbook) []File {
 		}
 		fmt.Fprintf(&skills, "- /%s: %sRead `%s/SKILL.md` and follow it when you run it.\n", s.Name, d, dir)
 	}
-	section := fmt.Sprintf(agentsSection, pb.Name, statuses(pb, "####"), skills.String())
+	section := fmt.Sprintf(agentsSection, pb.Name, statuses(pb, "####"), skills.String()) + "\n### Personas\n\n" + personasGuide(personas, agentsDir+"/")
 	return append([]File{{Path: "AGENTS.md", Merge: func(old string) (string, error) { return withSection(old, section), nil }}}, files...)
 }
 

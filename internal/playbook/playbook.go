@@ -4,7 +4,7 @@
 //	.jigflow/playbook.yaml       the Playbook file
 //	.jigflow/types/*.yaml        one file per Artifact Type
 //	.jigflow/skills/*/SKILL.md   one directory per Skill, named after it
-//	.jigflow/personas/*.md       one file per Persona, named after it
+//	.jigflow/personas/*.md       one file per Persona the Playbook ships, named after it
 //	.jigflow/guidelines/*.md     one file per Guideline, named after it
 //	.jigflow/migrations/*.yaml   Playbook Migrations, one or more per file
 //
@@ -12,6 +12,13 @@
 // in a directory of its own, whose parts the Playbook overrides by name. It
 // also holds the project's Connectors and their settings, which Artifact
 // Types that keep their Artifacts in a tracker name as their Store.
+//
+// Every Playbook also has the built-in Persona Artifact Type (see
+// engine.PersonaArtifactType), declared after its own Types, whose name
+// and prefix no Type of the Playbook may take. The Personas a Playbook
+// ships are usable as they are, like those of the user's Persona Library
+// (see Library): the person wrote them; a Persona an agent proposes is an
+// Artifact, usable once a person activates it (ADR 0018).
 //
 // A Playbook that fails any check doesn't load: Load reports every problem
 // at once, so `jfl check` and every other command print the same list.
@@ -237,10 +244,13 @@ func Load(root string) (*engine.Playbook, error) {
 		l = merge(base, own)
 	}
 	pb := &engine.Playbook{Name: own.name, Types: l.types, Skills: l.skills, Personas: l.personas, Guidelines: l.guidelines, Connectors: l.connectors}
-	problems, err := readMigrations(fsys, Dir, pb)
+	problems := builtinTypeProblems(pb, l.typeFiles)
+	pb.Types = append(pb.Types, engine.PersonaArtifactType())
+	migrationProblems, err := readMigrations(fsys, Dir, pb)
 	if err != nil {
 		return nil, err
 	}
+	problems = append(problems, migrationProblems...)
 	for _, name := range slices.Sorted(maps.Keys(l.skills)) {
 		problems = append(problems, l.skillProblems[name]...)
 	}
@@ -248,6 +258,26 @@ func Load(root string) (*engine.Playbook, error) {
 		return nil, &Invalid{Problems: problems}
 	}
 	return pb, nil
+}
+
+// builtinTypeProblems reports Artifact Types a Playbook declares that
+// would clash with the built-in Persona Type, by name or by prefix, and
+// drops them from pb, so that the built-in one is the only Persona Type.
+func builtinTypeProblems(pb *engine.Playbook, typeFiles map[string]string) []string {
+	var problems []string
+	persona := engine.PersonaArtifactType()
+	pb.Types = slices.DeleteFunc(pb.Types, func(t *engine.ArtifactType) bool {
+		switch {
+		case t.Name == persona.Name:
+			problems = append(problems, fmt.Sprintf("%s: Artifact Type %q is built in; a Playbook can't declare it", typeFiles[t.Name], t.Name))
+		case t.Prefix == persona.Prefix:
+			problems = append(problems, fmt.Sprintf("%s: prefix %q is the built-in %s Type's", typeFiles[t.Name], t.Prefix, persona.Name))
+		default:
+			return false
+		}
+		return true
+	})
+	return problems
 }
 
 // layer is one Playbook as read from its files, before it is merged with
@@ -258,7 +288,7 @@ type layer struct {
 	extends    *baseRef
 	types      []*engine.ArtifactType // in declaration order
 	skills     map[string]*engine.Skill
-	personas   []string
+	personas   map[string]string // name -> its Markdown
 	guidelines map[string]string // name -> its Markdown
 	connectors map[string]*engine.Connector
 
@@ -276,6 +306,7 @@ func readLayer(fsys fs.FS, label string) (*layer, error) {
 	l := &layer{
 		name:           pf.Name,
 		skills:         map[string]*engine.Skill{},
+		personas:       map[string]string{},
 		guidelines:     map[string]string{},
 		connectors:     map[string]*engine.Connector{},
 		typeFiles:      map[string]string{},
@@ -300,24 +331,29 @@ func readLayer(fsys fs.FS, label string) (*layer, error) {
 	if err := l.readSkills(fsys, label); err != nil {
 		return nil, err
 	}
-	paths, err := fs.Glob(fsys, "personas/*.md")
+	if err := readMarkdown(fsys, "personas", l.personas); err != nil {
+		return nil, err
+	}
+	if err := readMarkdown(fsys, "guidelines", l.guidelines); err != nil {
+		return nil, err
+	}
+	return l, nil
+}
+
+// readMarkdown reads each Markdown file in dir into into, by its name.
+func readMarkdown(fsys fs.FS, dir string, into map[string]string) error {
+	paths, err := fs.Glob(fsys, path.Join(dir, "*.md"))
 	if err != nil {
-		return nil, err
-	}
-	for _, p := range paths {
-		l.personas = append(l.personas, strings.TrimSuffix(path.Base(p), ".md"))
-	}
-	if paths, err = fs.Glob(fsys, "guidelines/*.md"); err != nil {
-		return nil, err
+		return err
 	}
 	for _, p := range paths {
 		data, err := fs.ReadFile(fsys, p)
 		if err != nil {
-			return nil, err
+			return err
 		}
-		l.guidelines[strings.TrimSuffix(path.Base(p), ".md")] = string(data)
+		into[strings.TrimSuffix(path.Base(p), ".md")] = string(data)
 	}
-	return l, nil
+	return nil
 }
 
 func (l *layer) readTypes(fsys fs.FS, label string) error {
@@ -454,6 +490,7 @@ func (l *layer) readSkills(fsys fs.FS, label string) error {
 func merge(base, own *layer) *layer {
 	m := &layer{
 		skills:         maps.Clone(base.skills),
+		personas:       maps.Clone(base.personas),
 		guidelines:     maps.Clone(base.guidelines),
 		connectors:     maps.Clone(base.connectors),
 		typeFiles:      maps.Clone(base.typeFiles),
@@ -476,7 +513,7 @@ func merge(base, own *layer) *layer {
 	maps.Copy(m.skills, own.skills)
 	maps.Copy(m.skillFiles, own.skillFiles)
 	maps.Copy(m.skillProblems, own.skillProblems)
-	m.personas = union(base.personas, own.personas)
+	maps.Copy(m.personas, own.personas)
 	maps.Copy(m.guidelines, own.guidelines)
 	maps.Copy(m.connectors, own.connectors)
 	maps.Copy(m.connectorFiles, own.connectorFiles)
@@ -512,17 +549,6 @@ func connector(name string, cf connectorFile) *engine.Connector {
 		c.Types[typeName] = m
 	}
 	return c
-}
-
-// union is the names in a and then those in b, each once.
-func union(a, b []string) []string {
-	u := slices.Clone(a)
-	for _, n := range b {
-		if !slices.Contains(u, n) {
-			u = append(u, n)
-		}
-	}
-	return u
 }
 
 // frontmatter returns the YAML block a Markdown file starts with, if any,

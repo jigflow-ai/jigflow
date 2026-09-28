@@ -114,7 +114,11 @@ Commands:
                           with values for its fields and Links to other
                           Artifacts, in the Type's Store: a file, or an item
                           of the tracker its Connector reaches, which gives
-                          it its id; an agent's carries the AI-generated marker
+                          it its id; an agent's carries the AI-generated marker.
+                          Every Playbook has the built-in Persona Type: its
+                          title is the Persona's name and its body describes
+                          it; anyone may create one into proposed, and only a
+                          person moves it to active or retired
   move <id> <status>      move an Artifact through a declared Transition,
                           running its Gates before and its Actions after;
                           a Human Transition asks a person to confirm it in
@@ -167,14 +171,20 @@ Commands:
                           Skill, Readiness, Guards, Gates, Actions and Human
                           Transitions along it; writes no state and runs no
                           Gates or Actions
-  publish <adapter>       publish the Playbook's Skills, the Guidelines they
-                          name and a router Skill built from its Bindings for
-                          a coding agent: claude-code, as Claude Code Skills in
+  publish <adapter>       publish the Playbook's Skills, the Guidelines and
+                          Personas they name, every active Persona and a
+                          router Skill built from its Bindings for a coding
+                          agent: claude-code, as Claude Code Skills in
                           .claude/skills, with the hooks that read its token
                           usage in .claude/settings.json, or agents-md, as a
-                          section of AGENTS.md and Skills in .agents/skills;
-                          publishing again replaces and removes only what jfl
-                          published
+                          section of AGENTS.md, Skills in .agents/skills and
+                          Personas in .agents/personas; publishing again
+                          replaces and removes only what jfl published.
+                          Active Personas are those of the Persona Library
+                          ($XDG_CONFIG_HOME/jigflow/personas, or
+                          ~/.config/jigflow/personas) and of the Playbook,
+                          and the active Persona Artifacts; the project's,
+                          active or retired, override the Library's by name
   ledger                  sum the Ledger: the time each Artifact spent in each
                           Status, so far in the one it is in, and the agent
                           session time and tokens charged to it while it was
@@ -213,6 +223,8 @@ Commands:
 Environment:
   JFL_SESSION             the agent session's id, set by Adapters; without it
                           the command is a person's
+  XDG_CONFIG_HOME         where the user's Persona Library is, under
+                          jigflow/personas (default ~/.config)
 
 Exit status:
   0 done, 1 refused or failed, 2 malformed command line, 3 a Connector failed:

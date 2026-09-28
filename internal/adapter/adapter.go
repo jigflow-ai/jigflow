@@ -1,6 +1,7 @@
-// Package adapter publishes a Playbook's Skills and Guidelines in the format
-// a particular coding agent expects. An Adapter renders the files; Publish
-// writes them into the project and keeps track of which files it owns.
+// Package adapter publishes a Playbook's Skills, Guidelines and active
+// Personas in the format a particular coding agent expects. An Adapter
+// renders the files; Publish writes them into the project and keeps track
+// of which files it owns.
 package adapter
 
 import (
@@ -32,13 +33,13 @@ type Adapter struct {
 	Name   string   // how `jfl publish` names it
 	Agent  string   // the coding agent it publishes for, for messages
 	Where  []string // the files and directories it publishes into
-	render func(*engine.Playbook) []File
+	render func(pb *engine.Playbook, personas map[string]string) []File
 }
 
 // Adapters are the Adapters JigFlow ships, by name.
 var Adapters = []Adapter{
 	{Name: ClaudeCode, Agent: "Claude Code", Where: []string{claudeCodeSkills, claudeCodeSettings}, render: claudeCode},
-	{Name: "agents-md", Agent: "agents that read AGENTS.md", Where: []string{"AGENTS.md", agentsSkills}, render: agentsMD},
+	{Name: "agents-md", Agent: "agents that read AGENTS.md", Where: []string{"AGENTS.md", agentsSkills, agentsPersonas}, render: agentsMD},
 }
 
 // Find returns the Adapter with the given name, or nil.
@@ -67,10 +68,11 @@ type Changes struct {
 	Removed []string // files it published before that the Playbook no longer has
 }
 
-// Publish writes the files a renders from pb into the project rooted at
-// root, and removes the ones it published before that pb no longer has.
-// It refuses, changing nothing, to overwrite a file it didn't publish.
-func (a *Adapter) Publish(root string, pb *engine.Playbook) (Changes, error) {
+// Publish writes the files a renders from pb and the active personas (name
+// -> the Markdown describing it) into the project rooted at root, and
+// removes the ones it published before that it no longer renders. It
+// refuses, changing nothing, to overwrite a file it didn't publish.
+func (a *Adapter) Publish(root string, pb *engine.Playbook, personas map[string]string) (Changes, error) {
 	var ch Changes
 	if pb.Skills[Router] != nil {
 		return ch, fmt.Errorf("Skill %q takes the name of the router Skill jfl publishes; rename it", Router)
@@ -87,7 +89,7 @@ func (a *Adapter) Publish(root string, pb *engine.Playbook) (Changes, error) {
 			return ch, fmt.Errorf("%s lists %s, which the %s Adapter doesn't publish; remove it from the list", Manifest, p, a.Name)
 		}
 	}
-	files := a.render(pb)
+	files := a.render(pb, personas)
 	var write []File
 	for _, f := range files {
 		old, err := os.ReadFile(abs(root, f.Path))
