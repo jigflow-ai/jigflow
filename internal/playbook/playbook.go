@@ -1,10 +1,14 @@
 // Package playbook loads a project's Playbook from disk: a small Playbook
 // file plus one YAML file per Artifact Type.
 //
-//	.jigflow/playbook.yaml      the Playbook file
-//	.jigflow/types/*.yaml       one file per Artifact Type
-//	.jigflow/skills/*/SKILL.md  one directory per Skill, named after it
-//	.jigflow/personas/*.md      one file per Persona, named after it
+//	.jigflow/playbook.yaml       the Playbook file
+//	.jigflow/types/*.yaml        one file per Artifact Type
+//	.jigflow/skills/*/SKILL.md   one directory per Skill, named after it
+//	.jigflow/personas/*.md       one file per Persona, named after it
+//	.jigflow/guidelines/*.md     one file per Guideline, named after it
+//
+// The Playbook file may extend a single Base Playbook, laid out the same way
+// in a directory of its own, whose parts the Playbook overrides by name.
 //
 // A Playbook that fails any check doesn't load: Load reports every problem
 // at once, so `jfl check` and every other command print the same list.
@@ -15,7 +19,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
+	"maps"
 	"os"
+	"path"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -28,7 +35,8 @@ import (
 const Dir = ".jigflow"
 
 type playbookFile struct {
-	Name string `yaml:"name"`
+	Name    string    `yaml:"name"`
+	Extends yaml.Node `yaml:"extends"` // the Base Playbook; see parseBaseRef
 }
 
 type typeFile struct {
@@ -54,8 +62,9 @@ type typeFile struct {
 // skillFile is the frontmatter of a SKILL.md. Changes is a pointer so a
 // Skill that doesn't say whether it changes anything can be told apart.
 type skillFile struct {
-	Changes    *bool  `yaml:"changes"`
-	Invocation string `yaml:"invocation"`
+	Changes    *bool    `yaml:"changes"`
+	Invocation string   `yaml:"invocation"`
+	Guidelines []string `yaml:"guidelines"`
 	Personas   []struct {
 		Name     string `yaml:"name"`
 		Fallback string `yaml:"fallback"`
@@ -74,36 +83,107 @@ type commandFile struct {
 	Cmd  string `yaml:"cmd"`
 }
 
-// Load reads the Playbook of the project rooted at root. Artifact Types are
-// declared in the lexical order of their file names.
+// Load reads the Playbook of the project rooted at root, merged over its
+// Base Playbook when it extends one. Artifact Types are declared in the
+// lexical order of their file names, a Base Playbook's first.
 func Load(root string) (*engine.Playbook, error) {
-	dir := filepath.Join(root, Dir)
-	var pf playbookFile
-	if err := readYAML(filepath.Join(dir, "playbook.yaml"), &pf); err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			return nil, fmt.Errorf("no Playbook found: %s is missing", filepath.Join(Dir, "playbook.yaml"))
-		}
-		return nil, err
+	own, err := readLayer(os.DirFS(filepath.Join(root, Dir)), Dir)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, fmt.Errorf("no Playbook found: %s is missing", path.Join(Dir, "playbook.yaml"))
 	}
-	pb := &engine.Playbook{Name: pf.Name, Skills: map[string]*engine.Skill{}}
-
-	paths, err := filepath.Glob(filepath.Join(dir, "types", "*.yaml"))
 	if err != nil {
 		return nil, err
 	}
-	slices.Sort(paths)
-	files := map[string]string{} // Artifact Type -> its file, for messages
-	for _, path := range paths {
-		var tf typeFile
-		if err := readYAML(path, &tf); err != nil {
+	l := own
+	if own.extends != nil {
+		base, err := resolveBase(root, own.extends)
+		if err != nil {
+			return nil, fmt.Errorf("%s: %w", path.Join(Dir, "playbook.yaml"), err)
+		}
+		l = merge(base, own)
+	}
+	pb := &engine.Playbook{Name: own.name, Types: l.types, Skills: l.skills, Personas: l.personas, Guidelines: l.guidelines}
+	var problems []string
+	for _, name := range slices.Sorted(maps.Keys(l.skills)) {
+		problems = append(problems, l.skillProblems[name]...)
+	}
+	if problems = append(problems, check(pb, l.typeFiles, l.skillFiles)...); len(problems) > 0 {
+		return nil, &Invalid{Problems: problems}
+	}
+	return pb, nil
+}
+
+// layer is one Playbook as read from its files, before it is merged with
+// the Playbook extending it. Every file is named by label, the directory
+// the Playbook's author knows it by, for messages.
+type layer struct {
+	name       string
+	extends    *baseRef
+	types      []*engine.ArtifactType // in declaration order
+	skills     map[string]*engine.Skill
+	personas   []string
+	guidelines []string
+
+	typeFiles, skillFiles map[string]string   // name -> the file declaring it
+	skillProblems         map[string][]string // Skill -> what its file lacks
+}
+
+// readLayer reads the Playbook held in fsys. A missing playbook.yaml is an
+// error wrapping os.ErrNotExist.
+func readLayer(fsys fs.FS, label string) (*layer, error) {
+	var pf playbookFile
+	if err := readYAML(fsys, label, "playbook.yaml", &pf); err != nil {
+		return nil, err
+	}
+	l := &layer{
+		name:          pf.Name,
+		skills:        map[string]*engine.Skill{},
+		typeFiles:     map[string]string{},
+		skillFiles:    map[string]string{},
+		skillProblems: map[string][]string{},
+	}
+	if !pf.Extends.IsZero() {
+		ref, err := parseBaseRef(&pf.Extends)
+		if err != nil {
+			return nil, fmt.Errorf("%s: %w", in(label, "playbook.yaml"), err)
+		}
+		l.extends = ref
+	}
+	if err := l.readTypes(fsys, label); err != nil {
+		return nil, err
+	}
+	if err := l.readSkills(fsys, label); err != nil {
+		return nil, err
+	}
+	for dir, names := range map[string]*[]string{"personas": &l.personas, "guidelines": &l.guidelines} {
+		paths, err := fs.Glob(fsys, dir+"/*.md")
+		if err != nil {
 			return nil, err
 		}
-		rel, _ := filepath.Rel(root, path)
-		if tf.Name == "" || tf.Prefix == "" {
-			return nil, fmt.Errorf("%s: an Artifact Type needs a name and a prefix", rel)
+		for _, p := range paths {
+			*names = append(*names, strings.TrimSuffix(path.Base(p), ".md"))
 		}
-		if pb.Type(tf.Name) != nil {
-			return nil, fmt.Errorf("%s: Artifact Type %q is declared twice", rel, tf.Name)
+	}
+	return l, nil
+}
+
+func (l *layer) readTypes(fsys fs.FS, label string) error {
+	paths, err := fs.Glob(fsys, "types/*.yaml")
+	if err != nil {
+		return err
+	}
+	slices.Sort(paths)
+	for _, p := range paths {
+		var tf typeFile
+		if err := readYAML(fsys, label, p, &tf); err != nil {
+			return err
+		}
+		rel := in(label, p)
+		if tf.Name == "" || tf.Prefix == "" {
+			return fmt.Errorf("%s: an Artifact Type needs a name and a prefix", rel)
+		}
+		if l.typeFiles[tf.Name] != "" {
+			return fmt.Errorf("%s: Artifact Type %q is declared twice", rel, tf.Name)
 		}
 		t := &engine.ArtifactType{
 			Name:     tf.Name,
@@ -123,10 +203,10 @@ func Load(root string) (*engine.Playbook, error) {
 		}
 		for _, tr := range tf.Transitions {
 			if err := checkCommands(tr.Gates, "a Gate", tr.From, tr.To); err != nil {
-				return nil, fmt.Errorf("%s: %w", rel, err)
+				return fmt.Errorf("%s: %w", rel, err)
 			}
 			if err := checkCommands(tr.Actions, "an Action", tr.From, tr.To); err != nil {
-				return nil, fmt.Errorf("%s: %w", rel, err)
+				return fmt.Errorf("%s: %w", rel, err)
 			}
 			t.Transitions = append(t.Transitions, engine.Transition{
 				From:    tr.From,
@@ -137,50 +217,36 @@ func Load(root string) (*engine.Playbook, error) {
 				Actions: commands(tr.Actions),
 			})
 		}
-		pb.Types = append(pb.Types, t)
-		files[t.Name] = rel
+		l.types = append(l.types, t)
+		l.typeFiles[t.Name] = rel
 	}
-	skillFiles, problems, err := loadSkills(root, pb)
-	if err != nil {
-		return nil, err
-	}
-	personas, err := filepath.Glob(filepath.Join(dir, "personas", "*.md"))
-	if err != nil {
-		return nil, err
-	}
-	for _, path := range personas {
-		pb.Personas = append(pb.Personas, strings.TrimSuffix(filepath.Base(path), ".md"))
-	}
-	if problems = append(problems, check(pb, files, skillFiles)...); len(problems) > 0 {
-		return nil, &Invalid{Problems: problems}
-	}
-	return pb, nil
+	return nil
 }
 
-// loadSkills reads every Skill: a directory under skills/ holding a SKILL.md
-// whose YAML frontmatter declares whether it changes code or Artifacts and
-// its Invocation Mode. It returns each Skill's file, for messages, and the
-// problems of Skills that don't.
-func loadSkills(root string, pb *engine.Playbook) (map[string]string, []string, error) {
-	paths, err := filepath.Glob(filepath.Join(root, Dir, "skills", "*", "SKILL.md"))
+// readSkills reads every Skill: a directory under skills/ holding a
+// SKILL.md whose YAML frontmatter declares whether it changes code or
+// Artifacts and its Invocation Mode. The problems of a Skill that doesn't
+// are kept with it, so a Skill overriding it drops them.
+func (l *layer) readSkills(fsys fs.FS, label string) error {
+	paths, err := fs.Glob(fsys, "skills/*/SKILL.md")
 	if err != nil {
-		return nil, nil, err
+		return err
 	}
-	files := map[string]string{}
 	slices.Sort(paths)
-	var problems []string
-	for _, path := range paths {
-		data, err := os.ReadFile(path)
+	for _, p := range paths {
+		data, err := fs.ReadFile(fsys, p)
 		if err != nil {
-			return nil, nil, err
+			return err
 		}
+		rel := in(label, p)
 		var sf skillFile
 		if fm, ok := frontmatter(data); ok {
-			if err := decodeYAML(fm, path, &sf); err != nil {
-				return nil, nil, err
+			if err := decodeYAML(fm, rel, &sf); err != nil {
+				return err
 			}
 		}
-		rel, _ := filepath.Rel(root, path)
+		name := path.Base(path.Dir(p))
+		var problems []string
 		if sf.Changes == nil {
 			problems = append(problems, rel+": a Skill must declare changes: true or false")
 		}
@@ -191,15 +257,58 @@ func loadSkills(root string, pb *engine.Playbook) (map[string]string, []string, 
 		default:
 			problems = append(problems, fmt.Sprintf("%s: unknown Invocation Mode %q (want user, agent or bound)", rel, sf.Invocation))
 		}
-		name := filepath.Base(filepath.Dir(path))
-		s := &engine.Skill{Name: name, Changes: sf.Changes != nil && *sf.Changes, Invocation: sf.Invocation}
+		s := &engine.Skill{Name: name, Changes: sf.Changes != nil && *sf.Changes, Invocation: sf.Invocation, Guidelines: sf.Guidelines}
 		for _, pf := range sf.Personas {
 			s.Personas = append(s.Personas, engine.PersonaRef{Name: pf.Name, Fallback: pf.Fallback})
 		}
-		pb.Skills[name] = s
-		files[name] = rel
+		l.skills[name] = s
+		l.skillFiles[name] = rel
+		l.skillProblems[name] = problems
 	}
-	return files, problems, nil
+	return nil
+}
+
+// merge lays the extending Playbook own over its Base Playbook: an Artifact
+// Type, Skill, Persona or Guideline own declares replaces the base's one of
+// the same name, and everything else the base declares is kept. A replaced
+// Artifact Type keeps the base's place in the declaration order; own's other
+// Types follow the base's.
+func merge(base, own *layer) *layer {
+	m := &layer{
+		skills:        maps.Clone(base.skills),
+		typeFiles:     maps.Clone(base.typeFiles),
+		skillFiles:    maps.Clone(base.skillFiles),
+		skillProblems: maps.Clone(base.skillProblems),
+	}
+	for _, t := range base.types {
+		if o := slices.IndexFunc(own.types, func(o *engine.ArtifactType) bool { return o.Name == t.Name }); o >= 0 {
+			t = own.types[o]
+		}
+		m.types = append(m.types, t)
+	}
+	for _, t := range own.types {
+		if !slices.ContainsFunc(base.types, func(b *engine.ArtifactType) bool { return b.Name == t.Name }) {
+			m.types = append(m.types, t)
+		}
+	}
+	maps.Copy(m.typeFiles, own.typeFiles)
+	maps.Copy(m.skills, own.skills)
+	maps.Copy(m.skillFiles, own.skillFiles)
+	maps.Copy(m.skillProblems, own.skillProblems)
+	m.personas = union(base.personas, own.personas)
+	m.guidelines = union(base.guidelines, own.guidelines)
+	return m
+}
+
+// union is the names in a and then those in b, each once.
+func union(a, b []string) []string {
+	u := slices.Clone(a)
+	for _, n := range b {
+		if !slices.Contains(u, n) {
+			u = append(u, n)
+		}
+	}
+	return u
 }
 
 // frontmatter returns the YAML block a Markdown file starts with, if any.
@@ -215,19 +324,26 @@ func frontmatter(data []byte) ([]byte, bool) {
 	return fm, ok
 }
 
-func readYAML(path string, v any) error {
-	data, err := os.ReadFile(path)
+// in names the file name of the Playbook labelled label, for messages. A
+// label may be a URL, which path.Join would mangle.
+func in(label, name string) string {
+	return strings.TrimSuffix(label, "/") + "/" + name
+}
+
+// readYAML decodes the file name in fsys, reporting it as label/name.
+func readYAML(fsys fs.FS, label, name string, v any) error {
+	data, err := fs.ReadFile(fsys, name)
 	if err != nil {
 		return err
 	}
-	return decodeYAML(data, path, v)
+	return decodeYAML(data, in(label, name), v)
 }
 
-func decodeYAML(data []byte, path string, v any) error {
+func decodeYAML(data []byte, file string, v any) error {
 	dec := yaml.NewDecoder(bytes.NewReader(data))
 	dec.KnownFields(true) // a misspelt field is an error, not silently ignored
 	if err := dec.Decode(v); err != nil && !errors.Is(err, io.EOF) {
-		return fmt.Errorf("%s: %w", path, err)
+		return fmt.Errorf("%s: %w", file, err)
 	}
 	return nil
 }

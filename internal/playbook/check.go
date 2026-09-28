@@ -25,10 +25,11 @@ func (e *Invalid) Error() string {
 
 // check validates a loaded Playbook as a whole, the way `jfl check` reports
 // it: Personas that Skills name but that neither exist nor have a fallback
-// description; and, per Artifact Type, Statuses no initial Status reaches,
-// Statuses with no way out that aren't final, Inboxes from which a Skill
-// that changes code or Artifacts is reachable without a Human Transition,
-// undeclared Links, and Bindings to missing Skills. typeFiles and skillFiles
+// description, and Guidelines that Skills name but that don't exist; and,
+// per Artifact Type, Statuses no initial Status reaches, Statuses with no
+// way out that aren't final, Inboxes from which a Skill that changes code or
+// Artifacts is reachable without a Human Transition, undeclared Links, and
+// Bindings to missing Skills. typeFiles and skillFiles
 // map each Artifact Type and Skill to the file declaring it, for messages.
 func check(pb *engine.Playbook, typeFiles, skillFiles map[string]string) []string {
 	var problems []string
@@ -36,6 +37,11 @@ func check(pb *engine.Playbook, typeFiles, skillFiles map[string]string) []strin
 		for _, ref := range pb.Skills[name].Personas {
 			if !slices.Contains(pb.Personas, ref.Name) && strings.TrimSpace(ref.Fallback) == "" {
 				problems = append(problems, fmt.Sprintf("%s: Persona %q doesn't exist and has no fallback description", skillFiles[name], ref.Name))
+			}
+		}
+		for _, g := range pb.Skills[name].Guidelines {
+			if !slices.Contains(pb.Guidelines, g) {
+				problems = append(problems, fmt.Sprintf("%s: Guideline %q doesn't exist", skillFiles[name], g))
 			}
 		}
 	}

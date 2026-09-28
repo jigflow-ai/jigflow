@@ -101,8 +101,9 @@ Commands:
                           Transitions and create into Statuses with a Binding
   reject <proposal>       drop a pending Proposal, changing nothing; only a
                           person may
-  check                   validate the Playbook, listing every problem; every
-                          other command refuses to run while there are any
+  check                   validate the Playbook, merged over the Base Playbook
+                          it extends, listing every problem; every other
+                          command refuses to run while there are any
   version                 print the version
 
 Environment:

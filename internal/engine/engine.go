@@ -18,10 +18,11 @@ import (
 
 // Playbook is the complete declared way of working for a project.
 type Playbook struct {
-	Name     string
-	Types    []*ArtifactType   // in declaration order
-	Skills   map[string]*Skill // by name
-	Personas []string          // names of the Personas the project declares
+	Name       string
+	Types      []*ArtifactType   // in declaration order
+	Skills     map[string]*Skill // by name
+	Personas   []string          // names of the Personas the project declares
+	Guidelines []string          // names of the Guidelines the project declares
 }
 
 // Skill is a prompt file that tells an agent how to do one piece of work.
@@ -30,6 +31,7 @@ type Skill struct {
 	Changes    bool   // whether it changes code or Artifacts
 	Invocation string // its Invocation Mode: InvokedByUser, InvokedByAgent or InvokedByBinding
 	Personas   []PersonaRef
+	Guidelines []string // names of the Guidelines it may load
 }
 
 // PersonaRef is a Skill naming a Persona for the agent to adopt, with a

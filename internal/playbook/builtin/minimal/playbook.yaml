@@ -1,0 +1,3 @@
+# A placeholder built-in Base Playbook: the smallest Playbook that passes
+# `jfl check`. The shipped Playbooks replace it.
+name: minimal
