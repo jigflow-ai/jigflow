@@ -49,6 +49,9 @@ func cmdMigrate(e *env, args []string) error {
 		if err := st.Save(m.Artifact); err != nil {
 			return err
 		}
+		if err := e.recordStatus(m.Artifact, m.From); err != nil {
+			return err
+		}
 		if err := e.unfocus(pb, m.Artifact); err != nil {
 			return err
 		}

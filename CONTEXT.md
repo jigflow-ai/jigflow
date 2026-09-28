@@ -87,7 +87,7 @@ _Avoid_: Lock, assignment, reservation
 ### Visibility
 
 **Ledger**:
-The committed record of time spent, and tokens where the agent exposes them, charged to the Artifact in Focus.
+The committed record of the time each Artifact spends in each Status, and of agent session time, and tokens where the agent exposes them, charged to the Artifact in Focus or to unattributed.
 _Avoid_: Usage log, metrics, telemetry
 
 **Connector**:

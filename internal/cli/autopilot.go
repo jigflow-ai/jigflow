@@ -49,7 +49,7 @@ func (e *env) stop(res engine.NextResult, proposals []engine.Proposal, reason st
 	if err := sessions.SetAutopilot(e.actor.Session, nil); err != nil {
 		return err
 	}
-	if err := sessions.SetFocus(e.actor.Session, ""); err != nil {
+	if err := e.setFocus(e.actor.Session, ""); err != nil {
 		return err
 	}
 	fmt.Fprintf(e.stdout, "autopilot stopped: %s\n", reason)

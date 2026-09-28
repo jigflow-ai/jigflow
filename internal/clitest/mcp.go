@@ -34,7 +34,7 @@ func (p *Project) StartMCP(session string) *MCP {
 	p.t.Helper()
 	cmd := exec.Command(p.bin.Jfl, "mcp")
 	cmd.Dir = p.Dir
-	cmd.Env = env(session)
+	cmd.Env = p.env(session)
 	in, err := cmd.StdinPipe()
 	if err != nil {
 		p.t.Fatal(err)

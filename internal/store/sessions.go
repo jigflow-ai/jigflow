@@ -46,8 +46,10 @@ type sessionFile struct {
 }
 
 // SetFocus records id as the agent session's Focus; an empty id clears it.
-func (s *Sessions) SetFocus(session, id string) error {
-	return s.update(session, func(sf *sessionFile) { sf.Focus = id })
+// It returns the Focus the session had.
+func (s *Sessions) SetFocus(session, id string) (was string, err error) {
+	err = s.update(session, func(sf *sessionFile) { was, sf.Focus = sf.Focus, id })
+	return was, err
 }
 
 // Autopilot returns the step the agent session's autopilot run last handed
@@ -110,15 +112,17 @@ func (s *Sessions) update(session string, change func(*sessionFile)) error {
 
 func (s *Sessions) path(session string) string { return filepath.Join(s.dir, session+".yaml") }
 
-// Unfocus clears the Focus of every session whose Focus is the Artifact id.
-func (s *Sessions) Unfocus(id string) error {
+// Unfocus clears the Focus of every session whose Focus is the Artifact id,
+// and returns those sessions.
+func (s *Sessions) Unfocus(id string) ([]string, error) {
 	entries, err := os.ReadDir(s.dir)
 	if errors.Is(err, os.ErrNotExist) {
-		return nil
+		return nil, nil
 	}
 	if err != nil {
-		return err
+		return nil, err
 	}
+	var cleared []string
 	for _, e := range entries {
 		session, ok := strings.CutSuffix(e.Name(), ".yaml")
 		if !ok || e.IsDir() {
@@ -126,13 +130,14 @@ func (s *Sessions) Unfocus(id string) error {
 		}
 		sf, err := s.read(session)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		if sf.Focus == id {
-			if err := s.SetFocus(session, ""); err != nil {
-				return err
+			if _, err := s.SetFocus(session, ""); err != nil {
+				return nil, err
 			}
+			cleared = append(cleared, session)
 		}
 	}
-	return nil
+	return cleared, nil
 }

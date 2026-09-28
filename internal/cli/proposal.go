@@ -179,6 +179,9 @@ func cmdApprove(e *env, args []string) error {
 		} else if err := st.Save(c.Artifact); err != nil {
 			return err
 		}
+		if err := e.recordStatus(c.Artifact, c.From); err != nil {
+			return err
+		}
 		if err := e.unfocus(pb, c.Artifact); err != nil {
 			return err
 		}

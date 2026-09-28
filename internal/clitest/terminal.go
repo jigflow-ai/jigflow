@@ -54,7 +54,7 @@ func (p *Project) startInTerminal(session string, args []string) *Terminal {
 	p.t.Helper()
 	cmd := exec.Command(p.bin.Jfl, args...)
 	cmd.Dir = p.Dir
-	cmd.Env = env(session)
+	cmd.Env = p.env(session)
 	f, err := pty.Start(cmd)
 	if err != nil {
 		p.t.Fatalf("starting jfl %v in a pseudo-terminal: %v", args, err)

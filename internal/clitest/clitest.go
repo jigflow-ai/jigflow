@@ -24,8 +24,15 @@ type Binary struct {
 	Jfl     string // path to the `jfl` alias
 }
 
+// ClockEnv is the environment variable through which the tests set the time
+// the CLI reads its clock at, as an RFC 3339 timestamp. Only the binary
+// Build compiles reads it: a shipped jfl has no such variable, so no agent
+// can set the time the Ledger records (ADR 0007).
+const ClockEnv = "JFL_TEST_CLOCK"
+
 // Build compiles the given main package (e.g. "github.com/jigflow-ai/jigflow/cmd/jigflow")
 // with CGO disabled into a fresh temporary directory and links `jfl` to it.
+// The binary reads its clock from ClockEnv when a test sets it.
 // Call Cleanup on the result when done.
 func Build(pkg string) (*Binary, error) {
 	dir, err := os.MkdirTemp("", "jigflow-bin-")
@@ -41,7 +48,7 @@ func Build(pkg string) (*Binary, error) {
 		Jigflow: filepath.Join(dir, "jigflow"+exe),
 		Jfl:     filepath.Join(dir, "jfl"+exe),
 	}
-	cmd := exec.Command("go", "build", "-trimpath", "-o", b.Jigflow, pkg)
+	cmd := exec.Command("go", "build", "-trimpath", "-ldflags", "-X github.com/jigflow-ai/jigflow/internal/cli.clockEnv="+ClockEnv, "-o", b.Jigflow, pkg)
 	cmd.Env = append(os.Environ(), "CGO_ENABLED=0")
 	if out, err := cmd.CombinedOutput(); err != nil {
 		b.Cleanup()
@@ -81,10 +88,16 @@ type Result struct {
 
 // Project is a temporary project folder the CLI runs in.
 type Project struct {
-	t   testing.TB
-	bin *Binary
-	Dir string
+	t     testing.TB
+	bin   *Binary
+	Dir   string
+	clock string // the time commands read their clock at, or "" for the real one
 }
+
+// At makes every command run from now on read its clock at the given time,
+// an RFC 3339 timestamp such as "2026-09-28T09:00:00Z", as if that much time
+// had passed.
+func (p *Project) At(clock string) { p.clock = clock }
 
 // NewProject creates an empty temporary project folder.
 func (b *Binary) NewProject(t testing.TB) *Project {
@@ -138,17 +151,21 @@ func (p *Project) RunAs(exe string, args ...string) Result {
 	return p.run(exe, "", args)
 }
 
-// env is the test process's environment without a session id, plus the given
-// one when it isn't empty, so tests don't depend on how `go test` was started.
-func env(session string) []string {
+// env is the test process's environment without a session id or clock, plus
+// the given session id when it isn't empty and the project's clock when it
+// is set, so tests don't depend on how `go test` was started.
+func (p *Project) env(session string) []string {
 	var e []string
 	for _, kv := range os.Environ() {
-		if !strings.HasPrefix(kv, SessionEnv+"=") {
+		if !strings.HasPrefix(kv, SessionEnv+"=") && !strings.HasPrefix(kv, ClockEnv+"=") {
 			e = append(e, kv)
 		}
 	}
 	if session != "" {
 		e = append(e, SessionEnv+"="+session)
+	}
+	if p.clock != "" {
+		e = append(e, ClockEnv+"="+p.clock)
 	}
 	return e
 }
@@ -157,7 +174,7 @@ func (p *Project) run(exe, session string, args []string) Result {
 	p.t.Helper()
 	cmd := exec.Command(exe, args...)
 	cmd.Dir = p.Dir
-	cmd.Env = env(session)
+	cmd.Env = p.env(session)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
 	err := cmd.Run()

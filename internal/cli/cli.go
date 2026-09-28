@@ -11,6 +11,7 @@ import (
 	"os"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/jigflow-ai/jigflow/internal/engine"
 	"github.com/jigflow-ai/jigflow/internal/playbook"
@@ -40,12 +41,21 @@ type env struct {
 	actor          engine.Actor
 	stdin          *os.File
 	stdout, stderr io.Writer
+	getenv         func(string) string
+	now            func() time.Time // the CLI's clock, which the Ledger records
+	led            *store.Ledger
 }
 
 // Run executes one command in the project rooted at dir and returns the
 // process exit code. getenv reads the process environment.
 func Run(args []string, dir string, getenv func(string) string, stdin *os.File, stdout, stderr io.Writer) int {
-	e := &env{dir: dir, actor: engine.Actor{Session: getenv(SessionEnv)}, stdin: stdin, stdout: stdout, stderr: stderr}
+	e := &env{dir: dir, actor: engine.Actor{Session: getenv(SessionEnv)}, stdin: stdin, stdout: stdout, stderr: stderr, getenv: getenv}
+	now, err := clock(getenv)
+	if err != nil {
+		fmt.Fprintf(stderr, "jfl: %v\n", err)
+		return exitUsage
+	}
+	e.now = now
 	if len(args) == 0 {
 		fmt.Fprint(stderr, usage)
 		return exitUsage
@@ -86,6 +96,7 @@ var commands = map[string]func(*env, []string) error{
 	"migrate":   cmdMigrate,
 	"simulate":  cmdSimulate,
 	"publish":   cmdPublish,
+	"ledger":    cmdLedger,
 }
 
 const usage = `Usage: jfl <command> [arguments]
@@ -152,6 +163,15 @@ Commands:
                           .claude/skills, or agents-md, as a section of
                           AGENTS.md and Skills in .agents/skills; publishing
                           again replaces and removes only what jfl published
+  ledger                  sum the Ledger: the time each Artifact spent in each
+                          Status, so far in the one it is in, and the agent
+                          session time charged to it while it was in Focus;
+                          the time every Artifact of a Type spent in each
+                          Status; and agent time with nothing in Focus, which
+                          is unattributed. Every create, Transition, approved
+                          Proposal and migration, and every change of a
+                          session's Focus, adds an entry of its own to the
+                          committed .jigflow/ledger, timed by jfl's clock
   mcp                     serve the agent-safe commands as an MCP server over
                           stdio, as an agent session: next, move (never a
                           Human Transition), propose, query, and create into
@@ -245,6 +265,9 @@ func cmdCreate(e *env, args []string) error {
 	if a, err = st.Create(a, e.actor); err != nil {
 		return err
 	}
+	if err := e.recordStatus(a, ""); err != nil {
+		return err
+	}
 	fmt.Fprintf(e.stdout, "created %s %q in %s\n", a.ID, a.Title, a.Status)
 	return nil
 }
@@ -306,6 +329,9 @@ func (e *env) move(id, to string) error {
 		return err
 	}
 	if err := st.Save(moved); err != nil {
+		return err
+	}
+	if err := e.recordStatus(moved, a.Status); err != nil {
 		return err
 	}
 	if err := e.unfocus(pb, moved); err != nil {
@@ -454,7 +480,7 @@ func (e *env) focus(res engine.NextResult) error {
 	if len(res.Candidates) > 0 {
 		focus = res.Candidates[0].Artifact.ID
 	}
-	return store.NewSessions(e.dir).SetFocus(e.actor.Session, focus)
+	return e.setFocus(e.actor.Session, focus)
 }
 
 // pick says which Skill to run on which Artifact.
@@ -463,12 +489,22 @@ func (e *env) pick(c engine.Candidate) {
 }
 
 // unfocus takes an Artifact that is no longer agent work, handed to a
-// person or finished, out of every session's Focus.
+// person or finished, out of every session's Focus, and adds each change to
+// the Ledger.
 func (e *env) unfocus(pb *engine.Playbook, a engine.Artifact) error {
 	if pb.AgentWork(a) {
 		return nil
 	}
-	return store.NewSessions(e.dir).Unfocus(a.ID)
+	sessions, err := store.NewSessions(e.dir).Unfocus(a.ID)
+	if err != nil {
+		return err
+	}
+	for _, s := range sessions {
+		if err := e.ledger().RecordFocus(engine.FocusChange{At: e.now(), Session: s}); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // linkFlag collects repeated --link <link>=<id> flags.

@@ -284,8 +284,11 @@ func (s *mcpServer) callTool(params json.RawMessage) (any, *rpcError) {
 		return nil, &rpcError{rpcInvalidParams, fmt.Sprintf("%s: %v", in.Name, err)}
 	}
 	getenv := func(key string) string {
-		if key == SessionEnv {
+		switch key {
+		case SessionEnv:
 			return s.session
+		case clockEnv:
+			return s.e.getenv(key)
 		}
 		return ""
 	}
