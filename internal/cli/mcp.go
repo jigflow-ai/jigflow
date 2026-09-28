@@ -68,7 +68,7 @@ var mcpTools = []mcpTool{
 	},
 	{
 		Name:        "propose",
-		Description: "Put forward the creations and Transitions in a Proposal file for a person to approve or reject as one unit, like `jfl propose <file>`. The file is YAML: a summary and items, each {create: <Type>, ref, title, status, links} or {move: <id>, to: <status>}; creations may Link to each other by ref.",
+		Description: "Put forward the creations and Transitions in a Proposal file for a person to approve or reject as one unit, like `jfl propose <file>`. The file is YAML: a summary and items, each {create: <Type>, ref, title, status, links} or {move: <id>, to: <status>}; creations may Link to each other by ref. An item may change the Playbook instead: {gate: <name>, cmd: <command>} gives the Gates of that name their command, {guideline: <name>, text: <Markdown>} adds a Guideline.",
 		InputSchema: schema([]string{"file"}, map[string]any{
 			"file": map[string]any{"type": "string", "description": "the Proposal file, relative to the project root"},
 		}),

@@ -103,11 +103,25 @@ var commands = map[string]func(*env, []string) error{
 	"ledger":    cmdLedger,
 	"hook":      cmdHook,
 	"ui":        cmdUI,
+	"init":      cmdInit,
 }
 
 const usage = `Usage: jfl <command> [arguments]
 
 Commands:
+  init [--playbook larapilot|pocock|own] [--adapter <adapter>]
+       [--setting <connector>[.<Type>].<setting>=<value>]... [--label <Type>.<status>=<label>]...
+                          set the project up, asking at the terminal what the
+                          flags don't say: the Playbook to use, with no
+                          default (Larapilot-style, Pocock, or your own, which
+                          the playbook-author Skill builds when this build has
+                          it); the settings a tracker's Connector needs and the
+                          label of each Status it keeps; and the Adapter to
+                          publish through. It proposes, as one Proposal, the
+                          commands of the Gates tests and lint and a starter
+                          Guideline, conventions, from the toolchain it
+                          detects. Running it again keeps what is set up and
+                          asks only for what is missing
   create <Type> --title <title> [--status <status>] [--field <field>=<value>]...
          [--link <link>=<id>]...
                           create an Artifact in one of the Type's initial Statuses,
@@ -144,7 +158,9 @@ Commands:
                           out didn't move the Artifact on
   propose <file>          put forward the creations and Transitions in a
                           Proposal file for a person to approve or reject as
-                          one unit; creations may Link to each other by ref
+                          one unit; creations may Link to each other by ref;
+                          an item may change the Playbook instead, giving a
+                          Gate its command or adding a Guideline
   query [--type <Type>] [--status <status>]
                           list the Artifacts, with their Status, Claim and
                           Links, optionally only those of one Type or in one
@@ -362,6 +378,9 @@ func (e *env) move(id, to string) error {
 		}
 	}
 	for _, g := range tr.Gates {
+		if g.Cmd == "" {
+			return fmt.Errorf("%s: %q → %q refused: %s", a.ID, a.Status, to, noCommand(g))
+		}
 		if out, err := e.shell(g.Cmd, a.ID, a.Status, to); err != nil {
 			return fmt.Errorf("%s: %q → %q refused: Gate %q failed (%s: %v)%s", a.ID, a.Status, to, g.Name, g.Cmd, err, indent(out))
 		}

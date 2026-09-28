@@ -7,6 +7,7 @@ import (
 	"slices"
 
 	"github.com/jigflow-ai/jigflow/internal/engine"
+	"github.com/jigflow-ai/jigflow/internal/playbook"
 	"github.com/jigflow-ai/jigflow/internal/store"
 )
 
@@ -155,6 +156,9 @@ func (e *env) approve(id string, edit func(pb *engine.Playbook, p *engine.Propos
 	// Every Gate of every Transition must pass before anything is saved.
 	for _, c := range changes {
 		for _, g := range c.Transition.Gates {
+			if g.Cmd == "" {
+				return notApplied(fmt.Errorf("item %d (%s): %s", c.Item+1, p.Items[c.Item], noCommand(g)))
+			}
 			if out, err := e.shell(g.Cmd, c.Artifact.ID, c.From, c.Artifact.Status); err != nil {
 				return notApplied(fmt.Errorf("item %d (%s): Gate %q failed (%s: %v)%s", c.Item+1, p.Items[c.Item], g.Name, g.Cmd, err, indent(out)))
 			}
@@ -162,6 +166,19 @@ func (e *env) approve(id string, edit func(pb *engine.Playbook, p *engine.Propos
 	}
 	if err := verify(); err != nil {
 		return err
+	}
+	// The Playbook's changes are written first, all of them or none, so
+	// that a Playbook they'd break changes no Artifact either.
+	var playbookItems []engine.ProposalItem
+	for _, it := range p.Items {
+		if it.ChangesPlaybook() {
+			playbookItems = append(playbookItems, it)
+		}
+	}
+	if len(playbookItems) > 0 {
+		if err := playbook.Apply(e.dir, playbookItems); err != nil {
+			return notApplied(err)
+		}
 	}
 	// A tracker gives each Artifact it creates its own id, so the ids the
 	// engine allocated are renamed, in the Links and moves of later items
@@ -204,6 +221,9 @@ func (e *env) approve(id string, edit func(pb *engine.Playbook, p *engine.Propos
 		return err
 	}
 	fmt.Fprintf(e.stdout, "approved %s as one unit:\n", p.ID)
+	for _, it := range playbookItems {
+		fmt.Fprintf(e.stdout, "  %s\n", it)
+	}
 	for _, c := range changes {
 		if c.Created() {
 			fmt.Fprintf(e.stdout, "  created %s %q in %s\n", c.Artifact.ID, c.Artifact.Title, c.Artifact.Status)

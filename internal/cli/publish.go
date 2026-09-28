@@ -17,6 +17,12 @@ func cmdPublish(e *env, args []string) error {
 	if a == nil {
 		return fmt.Errorf("unknown Adapter %q (want %s)", args[0], adapterNames())
 	}
+	return e.publish(a)
+}
+
+// publish publishes the Playbook through the Adapter a and reports what it
+// wrote and removed.
+func (e *env) publish(a *adapter.Adapter) error {
 	pb, _, err := e.load()
 	if err != nil {
 		return err

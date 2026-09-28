@@ -95,7 +95,11 @@ func conditions(conds []engine.Condition) string {
 func commandList(cmds []engine.Command) string {
 	s := make([]string, len(cmds))
 	for i, c := range cmds {
-		s[i] = fmt.Sprintf("%s (%s)", c.Name, c.Cmd)
+		cmd := c.Cmd
+		if cmd == "" {
+			cmd = "no command yet"
+		}
+		s[i] = fmt.Sprintf("%s (%s)", c.Name, cmd)
 	}
 	return strings.Join(s, ", ")
 }

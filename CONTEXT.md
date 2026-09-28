@@ -53,7 +53,7 @@ A declared move of an Artifact from one Status to another.
 _Avoid_: Step, promotion
 
 **Gate**:
-A user-declared command that must succeed for a Transition to happen.
+A user-declared command that must succeed for a Transition to happen. A Playbook may declare one by name only and leave its command to the project's Playbook file, which `jfl init` proposes from the project's toolchain.
 _Avoid_: Check, hook, quality gate
 
 **Guard**:
@@ -77,7 +77,7 @@ The Artifact a session is currently working on; set by `next` and moved by Trans
 _Avoid_: Claim, current task, active item
 
 **Proposal**:
-A set of one or more Artifacts or Transitions an agent puts forward together, approved or rejected by a human as one unit.
+A set of one or more Artifacts, Transitions or changes to the Playbook (a Gate's command, a Guideline) an agent, or `jfl init`, puts forward together, approved or rejected by a human as one unit.
 _Avoid_: Batch, changeset, request
 
 **Claim**:

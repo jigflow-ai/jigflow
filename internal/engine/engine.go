@@ -24,6 +24,7 @@ type Playbook struct {
 	Personas   map[string]string     // the Personas the Playbook ships: name -> its Markdown
 	Guidelines map[string]string     // the Guidelines the project declares: name -> its Markdown
 	Connectors map[string]*Connector // the project's Connectors, by name
+	Gates      map[string]string     // the command the Playbook file gives each Gate, by the Gate's name
 }
 
 // Connector is how the project reaches an outside tracker that keeps the
@@ -147,7 +148,7 @@ func (ac Actor) Agent() bool { return ac.Session != "" }
 // Command is a user-declared shell command: a Gate or an Action.
 type Command struct {
 	Name string
-	Cmd  string
+	Cmd  string // empty for a Gate the Playbook leaves the project to give a command
 }
 
 // Artifact is one unit of workflow state.

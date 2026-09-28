@@ -1,9 +1,14 @@
 package cli
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
+
+	"github.com/jigflow-ai/jigflow/internal/engine"
+	"github.com/jigflow-ai/jigflow/internal/playbook"
 )
 
 // shell runs a user-declared command (a Gate or an Action) of the Transition
@@ -26,4 +31,10 @@ func indent(out string) string {
 		return ""
 	}
 	return "\n    " + strings.ReplaceAll(out, "\n", "\n    ")
+}
+
+// noCommand says that the Gate g has no command yet, and where to give it
+// one.
+func noCommand(g engine.Command) string {
+	return fmt.Sprintf("Gate %q has no command: give it one under gates in %s (jfl init proposes them)", g.Name, filepath.Join(playbook.Dir, "playbook.yaml"))
 }

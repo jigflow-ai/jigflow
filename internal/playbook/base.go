@@ -110,3 +110,20 @@ func builtinBase(name string) (*layer, error) {
 	}
 	return nil, fmt.Errorf("no Playbook %q is built in (built in: %s)", name, strings.Join(names, ", "))
 }
+
+// Builtin reports whether a Playbook named name is built into the binary.
+func Builtin(name string) bool {
+	_, err := fs.Stat(builtin, "builtin/"+name+"/playbook.yaml")
+	return err == nil
+}
+
+// BuiltinSkill returns the SKILL.md of the Skill named name that a
+// Playbook built into the binary ships, if any does.
+func BuiltinSkill(name string) ([]byte, bool) {
+	paths, _ := fs.Glob(builtin, "builtin/*/skills/"+name+"/SKILL.md")
+	if len(paths) == 0 {
+		return nil, false
+	}
+	data, err := fs.ReadFile(builtin, paths[0])
+	return data, err == nil
+}

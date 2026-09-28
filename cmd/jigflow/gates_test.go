@@ -160,10 +160,12 @@ func TestAFailingActionIsReportedButTheTransitionStands(t *testing.T) {
 	}
 }
 
-func TestAGateOrActionNeedsANameAndACommand(t *testing.T) {
+// A Gate may leave its command to the project's Playbook file, which gives
+// it one by name; an Action can't.
+func TestAGateNeedsANameAndAnActionANameAndACommand(t *testing.T) {
 	for name, tc := range map[string]struct{ gates, actions, want string }{
-		"gate without a name":    {gates: "      - cmd: \"true\"\n", want: `a Gate on "in-progress" → "in-review" needs a name and a cmd`},
-		"gate without a cmd":     {gates: "      - name: tests\n", want: `a Gate on "in-progress" → "in-review" needs a name and a cmd`},
+		"gate without a name":    {gates: "      - cmd: \"true\"\n", want: `a Gate on "in-progress" → "in-review" needs a name`},
+		"action without a cmd":   {actions: "      - name: commit\n", want: `an Action on "in-progress" → "in-review" needs a name and a cmd`},
 		"action without a name":  {actions: "      - cmd: \"true\"\n", want: `an Action on "in-progress" → "in-review" needs a name and a cmd`},
 		"misspelt command field": {gates: "      - name: tests\n        command: \"true\"\n", want: "command"},
 	} {
@@ -198,5 +200,35 @@ func TestGatesAndActionsKnowWhichArtifactAndTransitionTheyRunFor(t *testing.T) {
 	want := "gate T-1 in-progress in-review\naction T-1 in-progress in-review\n"
 	if got := p.Read("ran.log"); got != want {
 		t.Errorf("commands saw %q, want %q", got, want)
+	}
+}
+
+func TestTheProjectsPlaybookFileGivesAGateItsCommandByName(t *testing.T) {
+	p := gatedPlaybook(t, `      - name: tests
+      - name: lint
+        cmd: sh record.sh playbook-lint
+`, "")
+	p.Write("record.sh", record)
+	p.Write(".jigflow/playbook.yaml", "name: gated\ngates:\n  tests: sh record.sh project-tests\n  lint: sh record.sh project-lint\n")
+
+	p.MustRun("move", "T-1", "in-review")
+	if got := p.Read("ran.log"); got != "project-tests\nproject-lint\n" {
+		t.Errorf("Gates ran as %q, want the Playbook file's commands for tests and lint", got)
+	}
+}
+
+func TestAGateWithNoCommandRefusesTheTransitionSayingWhereToGiveIt(t *testing.T) {
+	p := gatedPlaybook(t, "      - name: tests\n", "")
+	before := p.Read(".jigflow/state/T-1.md")
+
+	r := p.Run("move", "T-1", "in-review")
+	if r.ExitCode != 1 || !strings.Contains(r.Stderr, `Gate "tests" has no command: give it one under gates in .jigflow/playbook.yaml`) {
+		t.Fatalf("move with a Gate with no command: exit %d, stderr %q", r.ExitCode, r.Stderr)
+	}
+	if after := p.Read(".jigflow/state/T-1.md"); after != before {
+		t.Errorf("a refused move changed the Artifact file:\n%s", after)
+	}
+	if r := p.MustRun("simulate", "Ticket"); !strings.Contains(r.Stdout, "tests (no command yet)") {
+		t.Errorf("simulate should show the Gate has no command yet:\n%s", r.Stdout)
 	}
 }

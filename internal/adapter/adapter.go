@@ -245,3 +245,19 @@ func writeManifest(root string, m map[string][]string) error {
 	}
 	return os.WriteFile(dst, append([]byte(manifestHeader), out...), 0o644)
 }
+
+// Published returns the Adapters that have published into the project
+// rooted at root, as its Manifest records, in the order Adapters lists them.
+func Published(root string) ([]*Adapter, error) {
+	manifest, err := readManifest(root)
+	if err != nil {
+		return nil, err
+	}
+	var out []*Adapter
+	for i := range Adapters {
+		if _, ok := manifest[Adapters[i].Name]; ok {
+			out = append(out, &Adapters[i])
+		}
+	}
+	return out, nil
+}

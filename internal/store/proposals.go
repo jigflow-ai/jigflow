@@ -49,6 +49,11 @@ type itemFile struct {
 	Links  map[string][]string `yaml:"links,omitempty"`
 	Move   string              `yaml:"move,omitempty"`
 	To     string              `yaml:"to,omitempty"`
+
+	Gate      string `yaml:"gate,omitempty"`
+	Cmd       string `yaml:"cmd,omitempty"`
+	Guideline string `yaml:"guideline,omitempty"`
+	Text      string `yaml:"text,omitempty"`
 }
 
 // ParseProposal reads a Proposal as an agent writes it: a summary and its
@@ -59,6 +64,12 @@ type itemFile struct {
 //	  - {create: Ticket, ref: table, title: Reset-token table, links: {part_of: [S-1]}}
 //	  - {create: Ticket, title: Reset endpoint, links: {blocked_by: [table]}}
 //	  - {move: S-1, to: ticketed}
+//
+// An item may change the Playbook instead (ADR 0004):
+//
+//	items:
+//	  - {gate: tests, cmd: go test ./...}
+//	  - {guideline: conventions, text: "# Conventions\n…"}
 func ParseProposal(data []byte) (summary string, items []engine.ProposalItem, err error) {
 	var in struct {
 		Summary string     `yaml:"summary"`

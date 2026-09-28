@@ -48,6 +48,13 @@ type playbookFile struct {
 	Name       string                   `yaml:"name"`
 	Extends    yaml.Node                `yaml:"extends"` // the Base Playbook; see parseBaseRef
 	Connectors map[string]connectorFile `yaml:"connectors"`
+	// Gates gives each Gate named here, wherever the Playbook declares it,
+	// the project's command: a Playbook may declare a Gate by name only and
+	// leave its command to the project (ADR 0019).
+	//
+	//	gates:
+	//	  tests: go test ./...
+	Gates map[string]string `yaml:"gates"`
 }
 
 // FileStore is the Store an Artifact Type may name to say, as it does when
@@ -243,7 +250,8 @@ func Load(root string) (*engine.Playbook, error) {
 		}
 		l = merge(base, own)
 	}
-	pb := &engine.Playbook{Name: own.name, Types: l.types, Skills: l.skills, Personas: l.personas, Guidelines: l.guidelines, Connectors: l.connectors}
+	giveGatesCommands(l.types, l.gates)
+	pb := &engine.Playbook{Name: own.name, Types: l.types, Skills: l.skills, Personas: l.personas, Guidelines: l.guidelines, Connectors: l.connectors, Gates: l.gates}
 	problems := builtinTypeProblems(pb, l.typeFiles)
 	pb.Types = append(pb.Types, engine.PersonaArtifactType())
 	migrationProblems, err := readMigrations(fsys, Dir, pb)
@@ -291,6 +299,7 @@ type layer struct {
 	personas   map[string]string // name -> its Markdown
 	guidelines map[string]string // name -> its Markdown
 	connectors map[string]*engine.Connector
+	gates      map[string]string // Gate name -> the command the Playbook file gives it
 
 	typeFiles, skillFiles, connectorFiles map[string]string   // name -> the file declaring it
 	skillProblems                         map[string][]string // Skill -> what its file lacks
@@ -309,6 +318,7 @@ func readLayer(fsys fs.FS, label string) (*layer, error) {
 		personas:       map[string]string{},
 		guidelines:     map[string]string{},
 		connectors:     map[string]*engine.Connector{},
+		gates:          pf.Gates,
 		typeFiles:      map[string]string{},
 		skillFiles:     map[string]string{},
 		connectorFiles: map[string]string{},
@@ -407,7 +417,7 @@ func (l *layer) readTypes(fsys fs.FS, label string) error {
 			t.Readiness[status] = conditions(cfs)
 		}
 		for _, tr := range tf.Transitions {
-			if err := checkCommands(tr.Gates, "a Gate", tr.From, tr.To); err != nil {
+			if err := checkGates(tr.Gates, tr.From, tr.To); err != nil {
 				return fmt.Errorf("%s: %w", rel, err)
 			}
 			if err := checkCommands(tr.Actions, "an Action", tr.From, tr.To); err != nil {
@@ -493,6 +503,7 @@ func merge(base, own *layer) *layer {
 		personas:       maps.Clone(base.personas),
 		guidelines:     maps.Clone(base.guidelines),
 		connectors:     maps.Clone(base.connectors),
+		gates:          maps.Clone(base.gates),
 		typeFiles:      maps.Clone(base.typeFiles),
 		skillFiles:     maps.Clone(base.skillFiles),
 		connectorFiles: maps.Clone(base.connectorFiles),
@@ -517,6 +528,10 @@ func merge(base, own *layer) *layer {
 	maps.Copy(m.guidelines, own.guidelines)
 	maps.Copy(m.connectors, own.connectors)
 	maps.Copy(m.connectorFiles, own.connectorFiles)
+	if m.gates == nil {
+		m.gates = map[string]string{}
+	}
+	maps.Copy(m.gates, own.gates)
 	return m
 }
 
@@ -606,6 +621,31 @@ func conditions(cfs []conditionFile) []engine.Condition {
 		cs = append(cs, engine.Condition{Kind: c.Kind, Link: c.Link, Statuses: c.Statuses, Min: c.Min})
 	}
 	return cs
+}
+
+// giveGatesCommands gives every Gate of types that gates names the command
+// it gives, replacing any the Gate is declared with.
+func giveGatesCommands(types []*engine.ArtifactType, gates map[string]string) {
+	for _, t := range types {
+		for i := range t.Transitions {
+			for j, g := range t.Transitions[i].Gates {
+				if cmd, ok := gates[g.Name]; ok {
+					t.Transitions[i].Gates[j].Cmd = cmd
+				}
+			}
+		}
+	}
+}
+
+// checkGates refuses a Gate that lacks a name, used to report it and to
+// give it its command from the Playbook file.
+func checkGates(cfs []commandFile, from, to string) error {
+	for _, c := range cfs {
+		if c.Name == "" {
+			return fmt.Errorf("a Gate on %q → %q needs a name", from, to)
+		}
+	}
+	return nil
 }
 
 // checkCommands refuses a Gate or Action that lacks a name (used to report
