@@ -6,6 +6,7 @@
 //	.jigflow/skills/*/SKILL.md   one directory per Skill, named after it
 //	.jigflow/personas/*.md       one file per Persona, named after it
 //	.jigflow/guidelines/*.md     one file per Guideline, named after it
+//	.jigflow/migrations/*.yaml   Playbook Migrations, one or more per file
 //
 // The Playbook file may extend a single Base Playbook, laid out the same way
 // in a directory of its own, whose parts the Playbook overrides by name.
@@ -87,7 +88,8 @@ type commandFile struct {
 // Base Playbook when it extends one. Artifact Types are declared in the
 // lexical order of their file names, a Base Playbook's first.
 func Load(root string) (*engine.Playbook, error) {
-	own, err := readLayer(os.DirFS(filepath.Join(root, Dir)), Dir)
+	fsys := os.DirFS(filepath.Join(root, Dir))
+	own, err := readLayer(fsys, Dir)
 	if errors.Is(err, os.ErrNotExist) {
 		return nil, fmt.Errorf("no Playbook found: %s is missing", path.Join(Dir, "playbook.yaml"))
 	}
@@ -103,7 +105,10 @@ func Load(root string) (*engine.Playbook, error) {
 		l = merge(base, own)
 	}
 	pb := &engine.Playbook{Name: own.name, Types: l.types, Skills: l.skills, Personas: l.personas, Guidelines: l.guidelines}
-	var problems []string
+	problems, err := readMigrations(fsys, Dir, pb)
+	if err != nil {
+		return nil, err
+	}
 	for _, name := range slices.Sorted(maps.Keys(l.skills)) {
 		problems = append(problems, l.skillProblems[name]...)
 	}

@@ -72,6 +72,7 @@ var commands = map[string]func(*env, []string) error{
 	"approve":   cmdApprove,
 	"reject":    cmdReject,
 	"check":     cmdCheck,
+	"migrate":   cmdMigrate,
 }
 
 const usage = `Usage: jfl <command> [arguments]
@@ -102,8 +103,13 @@ Commands:
   reject <proposal>       drop a pending Proposal, changing nothing; only a
                           person may
   check                   validate the Playbook, merged over the Base Playbook
-                          it extends, listing every problem; every other
+                          it extends, listing every problem, or the Artifacts
+                          it leaves in an undeclared Status; every other
                           command refuses to run while there are any
+  migrate                 apply the Playbook Migrations: move every Artifact in
+                          a Status its Artifact Type no longer declares to the
+                          Status a Migration maps it to, all of them or none;
+                          only a person may
   version                 print the version
 
 Environment:
@@ -120,7 +126,7 @@ func cmdCheck(e *env, args []string) error {
 	if len(args) != 0 {
 		return fmt.Errorf("%w: jfl check takes no arguments", errUsage)
 	}
-	pb, err := playbook.Load(e.dir)
+	pb, _, err := e.load()
 	if err != nil {
 		return err
 	}
@@ -128,12 +134,22 @@ func cmdCheck(e *env, args []string) error {
 	return nil
 }
 
+// load loads the Playbook and the Store it applies to. A Playbook that
+// would leave Artifacts in an undeclared Status doesn't load (ADR 0010).
 func (e *env) load() (*engine.Playbook, *store.File, error) {
 	pb, err := playbook.Load(e.dir)
 	if err != nil {
 		return nil, nil, err
 	}
-	return pb, store.NewFile(e.dir), nil
+	st := store.NewFile(e.dir)
+	all, err := st.List()
+	if err != nil {
+		return nil, nil, err
+	}
+	if err := engine.CheckOrphans(pb, all); err != nil {
+		return nil, nil, fmt.Errorf("%w\n%s", err, migrateHint)
+	}
+	return pb, st, nil
 }
 
 func cmdCreate(e *env, args []string) error {

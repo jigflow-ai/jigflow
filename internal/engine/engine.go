@@ -70,6 +70,7 @@ type ArtifactType struct {
 	Links       map[string]string      // Link name -> the Artifact Type it points to
 	Readiness   map[string][]Condition // Status -> what must hold before agent work there may start
 	Transitions []Transition
+	Migrations  map[string]string // an old, undeclared Status -> the Status its Artifacts migrate to
 }
 
 // Condition is a declared condition on the Statuses of Linked Artifacts: the
