@@ -36,10 +36,11 @@ func NewFile(root string) *File {
 
 // frontmatter is the on-disk field order of an Artifact file.
 type frontmatter struct {
-	ID     string `yaml:"id"`
-	Type   string `yaml:"type"`
-	Status string `yaml:"status"`
-	Title  string `yaml:"title"`
+	ID     string              `yaml:"id"`
+	Type   string              `yaml:"type"`
+	Status string              `yaml:"status"`
+	Title  string              `yaml:"title"`
+	Links  map[string][]string `yaml:"links,omitempty"`
 }
 
 const delim = "---\n"
@@ -90,7 +91,7 @@ func (f *File) Save(a engine.Artifact) error {
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return err
 	}
-	fm, err := yaml.Marshal(frontmatter{ID: a.ID, Type: a.Type, Status: a.Status, Title: a.Title})
+	fm, err := yaml.Marshal(frontmatter{ID: a.ID, Type: a.Type, Status: a.Status, Title: a.Title, Links: a.Links})
 	if err != nil {
 		return err
 	}
@@ -126,5 +127,5 @@ func (f *File) read(path string) (engine.Artifact, string, error) {
 	if err := yaml.Unmarshal([]byte(fmText), &fm); err != nil {
 		return engine.Artifact{}, "", fmt.Errorf("%s: %w", path, err)
 	}
-	return engine.Artifact{ID: fm.ID, Type: fm.Type, Status: fm.Status, Title: fm.Title}, body, nil
+	return engine.Artifact{ID: fm.ID, Type: fm.Type, Status: fm.Status, Title: fm.Title, Links: fm.Links}, body, nil
 }

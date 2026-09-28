@@ -7,6 +7,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"strings"
 
 	"github.com/jigflow-ai/jigflow/internal/engine"
 	"github.com/jigflow-ai/jigflow/internal/playbook"
@@ -65,8 +66,9 @@ var commands = map[string]func(*env, []string) error{
 const usage = `Usage: jfl <command> [arguments]
 
 Commands:
-  create <Type> --title <title> [--status <status>]
-                          create an Artifact in one of the Type's initial Statuses
+  create <Type> --title <title> [--status <status>] [--link <link>=<id>]...
+                          create an Artifact in one of the Type's initial Statuses,
+                          with Links to other Artifacts
   move <id> <status>      move an Artifact through a declared Transition,
                           running its Gates before and its Actions after
   next                    say which Skill to run on which Artifact
@@ -88,13 +90,15 @@ func (e *env) load() (*engine.Playbook, *store.File, error) {
 
 func cmdCreate(e *env, args []string) error {
 	if len(args) == 0 || args[0] == "" || args[0][0] == '-' {
-		return fmt.Errorf("%w: jfl create <Type> --title <title> [--status <status>]", errUsage)
+		return fmt.Errorf("%w: jfl create <Type> --title <title> [--status <status>] [--link <link>=<id>]...", errUsage)
 	}
 	typeName := args[0]
 	fs := flag.NewFlagSet("create", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 	title := fs.String("title", "", "title of the new Artifact")
 	status := fs.String("status", "", "starting Status (default: the Type's first initial Status)")
+	links := linkFlag{}
+	fs.Var(links, "link", "a Link to another Artifact, as <link>=<id>; repeatable")
 	if err := fs.Parse(args[1:]); err != nil {
 		return fmt.Errorf("%w: %v", errUsage, err)
 	}
@@ -110,7 +114,7 @@ func cmdCreate(e *env, args []string) error {
 	if err != nil {
 		return err
 	}
-	a, err := engine.Create(pb, typeName, *title, *status, existing)
+	a, err := engine.Create(pb, typeName, *title, *status, links, existing)
 	if err != nil {
 		return err
 	}
@@ -134,7 +138,11 @@ func cmdMove(e *env, args []string) error {
 	if err != nil {
 		return err
 	}
-	moved, tr, err := engine.Move(pb, a, to)
+	all, err := st.List()
+	if err != nil {
+		return err
+	}
+	moved, tr, err := engine.Move(pb, a, to, all)
 	if err != nil {
 		return err
 	}
@@ -184,5 +192,19 @@ func cmdNext(e *env, args []string) error {
 			fmt.Fprintf(e.stdout, "  %s: %s\n", s.Artifact.ID, s.Reason)
 		}
 	}
+	return nil
+}
+
+// linkFlag collects repeated --link <link>=<id> flags.
+type linkFlag map[string][]string
+
+func (l linkFlag) String() string { return "" }
+
+func (l linkFlag) Set(v string) error {
+	name, id, ok := strings.Cut(v, "=")
+	if !ok || name == "" || id == "" {
+		return fmt.Errorf("--link wants <link>=<id>, got %q", v)
+	}
+	l[name] = append(l[name], id)
 	return nil
 }

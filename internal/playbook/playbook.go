@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"os"
 	"path/filepath"
 	"slices"
@@ -26,18 +27,28 @@ type playbookFile struct {
 }
 
 type typeFile struct {
-	Name        string            `yaml:"name"`
-	Prefix      string            `yaml:"prefix"`
-	Statuses    []string          `yaml:"statuses"`
-	Initial     []string          `yaml:"initial"`
-	Final       []string          `yaml:"final"`
-	Bindings    map[string]string `yaml:"bindings"`
+	Name        string                     `yaml:"name"`
+	Prefix      string                     `yaml:"prefix"`
+	Statuses    []string                   `yaml:"statuses"`
+	Initial     []string                   `yaml:"initial"`
+	Final       []string                   `yaml:"final"`
+	Bindings    map[string]string          `yaml:"bindings"`
+	Links       map[string]string          `yaml:"links"`
+	Readiness   map[string][]conditionFile `yaml:"readiness"`
 	Transitions []struct {
-		From    string        `yaml:"from"`
-		To      string        `yaml:"to"`
-		Gates   []commandFile `yaml:"gates"`
-		Actions []commandFile `yaml:"actions"`
+		From    string          `yaml:"from"`
+		To      string          `yaml:"to"`
+		Guards  []conditionFile `yaml:"guards"`
+		Gates   []commandFile   `yaml:"gates"`
+		Actions []commandFile   `yaml:"actions"`
 	} `yaml:"transitions"`
+}
+
+type conditionFile struct {
+	Kind     string   `yaml:"kind"`
+	Link     string   `yaml:"link"`
+	Statuses []string `yaml:"statuses"`
+	Min      int      `yaml:"min"`
 }
 
 type commandFile struct {
@@ -63,6 +74,7 @@ func Load(root string) (*engine.Playbook, error) {
 		return nil, err
 	}
 	slices.Sort(paths)
+	files := map[string]string{} // Artifact Type -> its file, for messages
 	for _, path := range paths {
 		var tf typeFile
 		if err := readYAML(path, &tf); err != nil {
@@ -82,6 +94,13 @@ func Load(root string) (*engine.Playbook, error) {
 			Initial:  tf.Initial,
 			Final:    tf.Final,
 			Bindings: tf.Bindings,
+			Links:    tf.Links,
+		}
+		for status, cfs := range tf.Readiness {
+			if t.Readiness == nil {
+				t.Readiness = map[string][]engine.Condition{}
+			}
+			t.Readiness[status] = conditions(cfs)
 		}
 		for _, tr := range tf.Transitions {
 			if err := checkCommands(tr.Gates, "a Gate", tr.From, tr.To); err != nil {
@@ -93,13 +112,60 @@ func Load(root string) (*engine.Playbook, error) {
 			t.Transitions = append(t.Transitions, engine.Transition{
 				From:    tr.From,
 				To:      tr.To,
+				Guards:  conditions(tr.Guards),
 				Gates:   commands(tr.Gates),
 				Actions: commands(tr.Actions),
 			})
 		}
 		pb.Types = append(pb.Types, t)
+		files[t.Name] = rel
+	}
+	for _, t := range pb.Types {
+		if err := checkLinks(pb, t); err != nil {
+			return nil, fmt.Errorf("%s: %w", files[t.Name], err)
+		}
 	}
 	return pb, nil
+}
+
+// checkLinks refuses Links to undeclared Artifact Types, and Readiness or
+// Guards that refer to a Link nobody declares: such a condition could never
+// be met as its author meant.
+func checkLinks(pb *engine.Playbook, t *engine.ArtifactType) error {
+	for _, name := range slices.Sorted(maps.Keys(t.Links)) {
+		if pb.Type(t.Links[name]) == nil {
+			return fmt.Errorf("Link %q points to Artifact Type %q, which the Playbook doesn't declare", name, t.Links[name])
+		}
+	}
+	for _, status := range slices.Sorted(maps.Keys(t.Readiness)) {
+		if err := checkConditions(pb, t, t.Readiness[status]); err != nil {
+			return fmt.Errorf("Readiness of %q %w", status, err)
+		}
+	}
+	for _, tr := range t.Transitions {
+		if err := checkConditions(pb, t, tr.Guards); err != nil {
+			return fmt.Errorf("a Guard on %q → %q %w", tr.From, tr.To, err)
+		}
+	}
+	return nil
+}
+
+func checkConditions(pb *engine.Playbook, t *engine.ArtifactType, conds []engine.Condition) error {
+	for _, c := range conds {
+		switch c.Kind {
+		case engine.LinkedAllIn:
+			if _, ok := t.Links[c.Link]; !ok {
+				return fmt.Errorf("refers to Link %q, which a %s doesn't declare", c.Link, t.Name)
+			}
+		case engine.HasIncoming:
+			if !slices.ContainsFunc(pb.Types, func(o *engine.ArtifactType) bool { return o.Links[c.Link] == t.Name }) {
+				return fmt.Errorf("refers to incoming Link %q, which no Artifact Type declares towards %s", c.Link, t.Name)
+			}
+		default:
+			return fmt.Errorf("has unknown kind %q (want %s or %s)", c.Kind, engine.LinkedAllIn, engine.HasIncoming)
+		}
+	}
+	return nil
 }
 
 func readYAML(path string, v any) error {
@@ -119,6 +185,14 @@ func commands(cfs []commandFile) []engine.Command {
 	var cs []engine.Command
 	for _, c := range cfs {
 		cs = append(cs, engine.Command{Name: c.Name, Cmd: c.Cmd})
+	}
+	return cs
+}
+
+func conditions(cfs []conditionFile) []engine.Condition {
+	var cs []engine.Condition
+	for _, c := range cfs {
+		cs = append(cs, engine.Condition{Kind: c.Kind, Link: c.Link, Statuses: c.Statuses, Min: c.Min})
 	}
 	return cs
 }

@@ -29,7 +29,9 @@ type NextResult struct {
 // Next computes which Skill to run on which Artifact. Artifacts are
 // considered in declaration order: by Artifact Type in Playbook order, then
 // by the number in their id. Final Artifacts are left out silently; an
-// Artifact whose Status has no Binding is skipped as human work.
+// Artifact whose Status has no Binding is skipped as human work, and one
+// whose Status's Readiness fails is skipped as not ready. Guards play no part:
+// they are checked only at the moment of a Transition.
 func Next(pb *Playbook, artifacts []Artifact) NextResult {
 	var res NextResult
 	for _, a := range declarationOrder(pb, artifacts) {
@@ -44,6 +46,10 @@ func Next(pb *Playbook, artifacts []Artifact) NextResult {
 		skill := t.Bindings[a.Status]
 		if skill == "" {
 			res.Skipped = append(res.Skipped, Skip{a, fmt.Sprintf("%q has no Binding, so it's human work", a.Status)})
+			continue
+		}
+		if f := failed(t.Readiness[a.Status], a, artifacts); len(f) > 0 {
+			res.Skipped = append(res.Skipped, Skip{a, "not ready: waiting until " + describe(f)})
 			continue
 		}
 		res.Candidates = append(res.Candidates, Candidate{a, skill})
