@@ -94,6 +94,7 @@ var commands = map[string]func(*env, []string) error{
 	"next":      cmdNext,
 	"propose":   cmdPropose,
 	"query":     cmdQuery,
+	"show":      cmdShow,
 	"approve":   cmdApprove,
 	"reject":    cmdReject,
 	"check":     cmdCheck,
@@ -166,6 +167,9 @@ Commands:
                           list the Artifacts, with their Status, Claim and
                           Links, optionally only those of one Type or in one
                           Status
+  show <id>               print an Artifact as query lists it, then its body
+                          and the comments its tracker keeps, so Skills read
+                          Artifacts kept in a tracker through jfl too
   approve <proposal>      apply every change in a pending Proposal, or none;
                           only a person may, confirming it in an interactive
                           terminal or in the Dashboard, and its items may then
@@ -242,6 +246,11 @@ Environment:
                           the command is a person's
   XDG_CONFIG_HOME         where the user's Persona Library is, under
                           jigflow/personas (default ~/.config)
+  JFL_POCOCK_GIT, JFL_POCOCK_REF
+                          the git repository and ref jfl init --playbook pocock
+                          extends, for a fork or a mirror (default
+                          https://github.com/jigflow-ai/jigflow-playbook-pocock
+                          at v0.1.0)
 
 Exit status:
   0 done, 1 refused or failed, 2 malformed command line, 3 a Connector failed:
@@ -515,20 +524,55 @@ func cmdQuery(e *env, args []string) error {
 			continue
 		}
 		n++
-		line := fmt.Sprintf("%s %s %q: %s", a.ID, a.Type, a.Title, a.Status)
-		for _, name := range slices.Sorted(maps.Keys(a.Fields)) {
-			line += fmt.Sprintf(", %s: %s", name, a.Fields[name])
-		}
-		if a.Claim != "" {
-			line += ", claimed by agent session " + a.Claim
-		}
-		for _, name := range slices.Sorted(maps.Keys(a.Links)) {
-			line += fmt.Sprintf(", %s: %s", name, strings.Join(a.Links[name], " "))
-		}
-		fmt.Fprintln(e.stdout, line)
+		fmt.Fprintln(e.stdout, summary(a))
 	}
 	if n == 0 {
 		fmt.Fprintln(e.stdout, "no Artifacts")
+	}
+	return nil
+}
+
+// summary is the Artifact in a line: its id, Type, title and Status, then
+// its fields, Claim and Links.
+func summary(a engine.Artifact) string {
+	line := fmt.Sprintf("%s %s %q: %s", a.ID, a.Type, a.Title, a.Status)
+	for _, name := range slices.Sorted(maps.Keys(a.Fields)) {
+		line += fmt.Sprintf(", %s: %s", name, a.Fields[name])
+	}
+	if a.Claim != "" {
+		line += ", claimed by agent session " + a.Claim
+	}
+	for _, name := range slices.Sorted(maps.Keys(a.Links)) {
+		line += fmt.Sprintf(", %s: %s", name, strings.Join(a.Links[name], " "))
+	}
+	return line
+}
+
+// cmdShow prints an Artifact as query lists it, then its body and the
+// comments its tracker keeps apart from it, so a Skill reads an Artifact
+// kept in a tracker through jfl as it reads one in files.
+func cmdShow(e *env, args []string) error {
+	if len(args) != 1 {
+		return fmt.Errorf("%w: jfl show <id>", errUsage)
+	}
+	_, st, err := e.load()
+	if err != nil {
+		return err
+	}
+	a, err := st.Get(args[0])
+	if err != nil {
+		return err
+	}
+	text, err := st.Text(a.ID)
+	if err != nil {
+		return err
+	}
+	fmt.Fprintln(e.stdout, summary(a))
+	if body := strings.TrimSpace(text.Body); body != "" {
+		fmt.Fprintf(e.stdout, "\n%s\n", body)
+	}
+	for i, c := range text.Comments {
+		fmt.Fprintf(e.stdout, "\n## Comment %d\n\n%s\n", i+1, strings.TrimSpace(c))
 	}
 	return nil
 }

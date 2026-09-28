@@ -237,6 +237,13 @@ func (s *Server) routes() http.Handler {
 		i.Assignees = slices.DeleteFunc(i.Assignees, func(a string) bool { return slices.Contains(in.Assignees, a) })
 		reply(w, 200, s.json(i))
 	}))
+	mux.HandleFunc("GET "+issue+"/comments", s.withIssue(func(w http.ResponseWriter, r *http.Request, i *Issue) {
+		out := []any{}
+		for _, c := range i.Comments {
+			out = append(out, map[string]any{"body": c})
+		}
+		reply(w, 200, out)
+	}))
 	mux.HandleFunc("POST "+issue+"/comments", s.withIssue(func(w http.ResponseWriter, r *http.Request, i *Issue) {
 		var in struct{ Body string }
 		if !decode(w, r, &in) {

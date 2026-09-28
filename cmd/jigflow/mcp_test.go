@@ -16,7 +16,7 @@ func TestTheMCPServerListsOnlyTheAgentSafeTools(t *testing.T) {
 
 	tools := m.Tools()
 	slices.Sort(tools)
-	if want := []string{"create", "move", "next", "propose", "query"}; !slices.Equal(tools, want) {
+	if want := []string{"create", "move", "next", "propose", "query", "show"}; !slices.Equal(tools, want) {
 		t.Errorf("tools/list = %v, want %v", tools, want)
 	}
 }
@@ -178,6 +178,10 @@ func TestTheMCPServerQueriesAsTheCLIDoes(t *testing.T) {
 	cli = p.Run("query", "--status", "needs-triage", "--type", "Bug")
 	if r := m.MustCallTool("query", map[string]any{"type": "Bug", "status": "needs-triage"}); !r.IsError || r.Text != cli.Stderr {
 		t.Errorf("query of an unknown Type = %+v, want the CLI's refusal %q", r, cli.Stderr)
+	}
+	cli = p.MustRun("show", "I-1")
+	if r := m.MustCallTool("show", map[string]any{"id": "I-1"}); r.IsError || r.Text != cli.Stdout {
+		t.Errorf("show = %+v, want the CLI's %q", r, cli.Stdout)
 	}
 }
 

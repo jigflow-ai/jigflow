@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bufio"
+	"cmp"
 	"errors"
 	"flag"
 	"fmt"
@@ -28,7 +29,8 @@ type offer struct {
 	name     string
 	about    string
 	builtin  string // the Playbook built into jfl it extends, or
-	git, ref string // the git repository it extends, pinned to ref
+	git, ref string // the git repository it extends, pinned to ref,
+	env      string // unless <env>_GIT and <env>_REF name another
 }
 
 // extends is what the project's Playbook file says it extends: nothing, for
@@ -70,9 +72,11 @@ const starterGuideline = "conventions"
 // (ADR 0009).
 var offers = []offer{
 	{key: "larapilot", name: "Larapilot-style", about: "PRD, Requirement, Story and Task: spec, plan, implement, review", builtin: "larapilot"},
-	// The Pocock Playbook lives in a repository of its own, which a later
-	// release names here with the ref it is pinned to.
-	{key: "pocock", name: "Pocock", about: "Matt Pocock's workflow: triage, specs broken into tickets, implement, review"},
+	// The Pocock Playbook lives in a repository of its own, so it can
+	// follow upstream without a release of jfl (ADR 0009); a fork or a
+	// mirror can stand in for it.
+	{key: "pocock", name: "Pocock", about: "Matt Pocock's workflow: triage, specs broken into tickets, implement, review",
+		git: "https://github.com/jigflow-ai/jigflow-playbook-pocock", ref: "v0.1.0", env: "JFL_POCOCK"},
 	{key: own, name: "Build my own", about: "describe how you work to the " + playbookAuthor + " Skill, which proposes a Playbook"},
 }
 
@@ -119,6 +123,11 @@ func cmdInit(e *env, args []string) error {
 	}
 	pb, _, err := e.load()
 	if err != nil {
+		if !initialised {
+			// The Playbook chosen can't be loaded, e.g. its repository
+			// can't be fetched: leave the project as it was.
+			e.unwritePlaybook()
+		}
 		return err
 	}
 	if err := e.setUpConnectors(in, pb, settings.pairs, labels.pairs); err != nil {
@@ -340,6 +349,10 @@ func (e *env) chooseOffer(in *bufio.Reader, key string) (offer, error) {
 		if !o.available() {
 			return offer{}, fmt.Errorf("the %s Playbook isn't in this build of jfl yet; choose another", o.name)
 		}
+		if o.env != "" {
+			o.git = cmp.Or(e.getenv(o.env+"_GIT"), o.git)
+			o.ref = cmp.Or(e.getenv(o.env+"_REF"), o.ref)
+		}
 		return o, nil
 	}
 	return offer{}, fmt.Errorf("%w: unknown Playbook %q (want %s)", errUsage, key, offerKeys())
@@ -428,6 +441,17 @@ func (e *env) writePlaybook(o offer) error {
 		return err
 	}
 	return nil
+}
+
+// unwritePlaybook removes what writePlaybook, and loading what it wrote,
+// put in the project: the Playbook file, the lockfile and the cache of a
+// git Base Playbook, and the Playbook's directory if nothing else is in it.
+func (e *env) unwritePlaybook() {
+	dir := filepath.Join(e.dir, playbook.Dir)
+	for _, name := range []string{"playbook.yaml", "playbook.lock", "cache"} {
+		_ = os.RemoveAll(filepath.Join(dir, name))
+	}
+	_ = os.Remove(dir)
 }
 
 // offerKeys lists how --playbook names each offer.

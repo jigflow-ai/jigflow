@@ -108,6 +108,13 @@ func (f *File) Body(id string) (string, error) {
 	return body, err
 }
 
+// Text returns the body of the Artifact with the given id, which holds its
+// comments too.
+func (f *File) Text(id string) (Text, error) {
+	body, err := f.Body(id)
+	return Text{Body: body}, err
+}
+
 // Create writes a new Artifact's file, with the id it was given.
 func (f *File) Create(a engine.Artifact, _ engine.Actor) (engine.Artifact, error) {
 	return a, f.Save(a)

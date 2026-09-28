@@ -48,6 +48,9 @@ type (
 		State  string            `json:"state,omitempty"`
 		Claim  string            `json:"claim,omitempty"`
 		Links  map[string][]link `json:"links,omitempty"`
+		// Comments are the issue's comments, oldest first, reported by get
+		// only.
+		Comments []string `json:"comments,omitempty"`
 	}
 	link struct {
 		ID       string `json:"id,omitempty"`
@@ -134,6 +137,10 @@ func serve(in io.Reader) (any, error) {
 			return nil, err
 		}
 		it, err := gh.item(i)
+		if err != nil {
+			return nil, err
+		}
+		it.Comments, err = gh.comments(i)
 		return map[string]any{"item": it}, err
 	case "create":
 		it, err := gh.create(req.Item)
@@ -322,6 +329,25 @@ func (g *github) blockedBy(i ghIssue) ([]string, error) {
 		}
 		for _, b := range batch {
 			out = append(out, strconv.Itoa(b.Number))
+		}
+		page = next
+	}
+	return out, nil
+}
+
+// comments returns the text of the issue's comments, oldest first.
+func (g *github) comments(i ghIssue) ([]string, error) {
+	var out []string
+	for page := g.repoPath("issues", strconv.Itoa(i.Number), "comments") + "?per_page=100"; page != ""; {
+		var batch []struct {
+			Body string `json:"body"`
+		}
+		next, err := g.do("GET", page, nil, &batch)
+		if err != nil {
+			return nil, err
+		}
+		for _, c := range batch {
+			out = append(out, c.Body)
 		}
 		page = next
 	}

@@ -120,6 +120,9 @@ type (
 		State  string            `json:"state,omitempty"`
 		Claim  string            `json:"claim,omitempty"`
 		Links  map[string][]link `json:"links,omitempty"`
+		// Comments are the item's comments, oldest first; get may report
+		// them.
+		Comments []string `json:"comments,omitempty"`
 	}
 	// link is one target of a Link: an item of the same tracker, by the
 	// tracker's id, or an Artifact kept elsewhere, by its Artifact id.
@@ -173,6 +176,26 @@ func (s *Connector) Get(id string) (engine.Artifact, error) {
 	a := s.artifact(t, *resp.Item)
 	s.seen[id] = a
 	return a, nil
+}
+
+// Text returns the body and comments of the Artifact with the given id, as
+// the tracker has them.
+func (s *Connector) Text(id string) (Text, error) {
+	t, tid, ok := s.split(id)
+	if !ok {
+		return Text{}, fmt.Errorf("%s: %w", id, ErrNotFound)
+	}
+	resp, err := s.call(t, request{Op: "get", ID: tid})
+	if errors.Is(err, ErrNotFound) {
+		return Text{}, fmt.Errorf("%s: %w", id, ErrNotFound)
+	}
+	if err != nil {
+		return Text{}, err
+	}
+	if resp.Item == nil {
+		return Text{}, s.broken("get", "the response has no item")
+	}
+	return Text{Body: resp.Item.Body, Comments: resp.Item.Comments}, nil
 }
 
 // Create creates the Artifact in the tracker, which gives it its id. The

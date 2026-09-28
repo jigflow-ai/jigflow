@@ -36,7 +36,7 @@ The token comes from the environment jfl runs in, `GH_TOKEN` or else `GITHUB_TOK
 - **Title and body** are the issue's. The body is the issue's to edit freely; the Connector keeps what it needs at its end, in a hidden HTML comment (`<!-- jigflow: … -->`), and leaves that comment out of the body it reports.
 - **Claims** are assignees. A Claim assigns the issue to the `assignee` setting, or the token's user, and records the agent session in the hidden comment, since several sessions share one GitHub user. An issue assigned in GitHub without a session, or reassigned there, is claimed by its first assignee's login, so agents leave alone work a person took. Clearing a Claim removes only the assignee jfl added.
 - **`blocked_by` Links** between issues of the repository are GitHub's native issue dependencies ("blocked by"), so they show in GitHub and a dependency a teammate adds in GitHub is a Link jfl follows. Where the repository has no issue dependencies (older GitHub Enterprise Servers), they are kept in the hidden comment instead. Every other Link, and a Link to an Artifact kept elsewhere (a Spec in files), is kept in the hidden comment.
-- **Comments** are issue comments.
+- **Comments** are issue comments; `get` reports them, oldest first, for `jfl show`.
 - **Pull requests** are never Artifacts, though GitHub lists them among issues.
 
 ## Failures

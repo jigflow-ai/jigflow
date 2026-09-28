@@ -29,6 +29,16 @@ type Store interface {
 	Verify(id string) (bodyEdited bool, err error)
 	// Comment adds text by by to the Artifact with the given id.
 	Comment(id, text string, by engine.Actor) error
+	// Text returns the prose of the Artifact with the given id: its body
+	// and its comments, which only jfl's readers need.
+	Text(id string) (Text, error)
+}
+
+// Text is an Artifact's prose, which anyone edits: its body, and the
+// comments a tracker keeps apart from it (a file keeps them in its body).
+type Text struct {
+	Body     string
+	Comments []string
 }
 
 // Open returns the Store of the project rooted at root for the Playbook pb:
@@ -83,6 +93,8 @@ func (s *byType) Verify(id string) (bool, error) { return s.forID(id).Verify(id)
 func (s *byType) Comment(id, text string, by engine.Actor) error {
 	return s.forID(id).Comment(id, text, by)
 }
+
+func (s *byType) Text(id string) (Text, error) { return s.forID(id).Text(id) }
 
 // forType is the Store keeping the Artifacts of the named Artifact Type.
 func (s *byType) forType(name string) Store {

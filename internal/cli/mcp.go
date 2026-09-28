@@ -103,6 +103,20 @@ var mcpTools = []mcpTool{
 		},
 	},
 	{
+		Name:        "show",
+		Description: "Print an Artifact as query lists it, then its body and the comments its tracker keeps, like `jfl show <id>`.",
+		InputSchema: schema([]string{"id"}, map[string]any{
+			"id": map[string]any{"type": "string", "description": "the Artifact's id"},
+		}),
+		args: func(raw json.RawMessage) ([]string, error) {
+			var in struct{ ID string }
+			if err := decodeArgs(raw, &in, "id"); err != nil {
+				return nil, err
+			}
+			return []string{"show", in.ID}, nil
+		},
+	},
+	{
 		Name:        "create",
 		Description: "File an Artifact into an Inbox, like `jfl create <Type> --title <title> --status <status>`. Creating into any other Status that has a Binding is refused: put it in a Proposal instead.",
 		InputSchema: schema([]string{"type", "title"}, map[string]any{

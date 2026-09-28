@@ -78,7 +78,7 @@ and, per operation:
 | `op` | fields | response |
 |---|---|---|
 | `list` | | `{"items": [item, …]}`: every item of the Type |
-| `get` | `id` | `{"item": item}` |
+| `get` | `id` | `{"item": item}`, with its `comments` where the tracker keeps them |
 | `create` | `item`, without `id` | `{"item": item}`: the item as created, with the tracker's `id` |
 | `status` | `id`, `from`, `to` | `{}` |
 | `claim` | `id`, `claim` | `{}` |
@@ -105,7 +105,7 @@ An **item** is:
 }
 ```
 
-Only `id` and `title` are required in a response. A Link's target is `{"id": …}`, the tracker's id, when the Link's Artifact Type is kept by the same Connector (a Connector may store those as the tracker's native relations, like GitHub's issue dependencies), and `{"artifact": …}`, the jfl Artifact id, when it lives elsewhere (e.g. a Spec kept in files). jfl sends Links only on `create`.
+Only `id` and `title` are required in a response. A `get` response may add `"comments": ["…", …]`, the text of the item's comments, oldest first, which `jfl show` prints after its body so Skills read an Artifact kept in a tracker through jfl. A Link's target is `{"id": …}`, the tracker's id, when the Link's Artifact Type is kept by the same Connector (a Connector may store those as the tracker's native relations, like GitHub's issue dependencies), and `{"artifact": …}`, the jfl Artifact id, when it lives elsewhere (e.g. a Spec kept in files). jfl sends Links only on `create`.
 
 Examples:
 
