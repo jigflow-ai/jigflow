@@ -38,6 +38,7 @@ type typeFile struct {
 	Transitions []struct {
 		From    string          `yaml:"from"`
 		To      string          `yaml:"to"`
+		Human   bool            `yaml:"human"`
 		Guards  []conditionFile `yaml:"guards"`
 		Gates   []commandFile   `yaml:"gates"`
 		Actions []commandFile   `yaml:"actions"`
@@ -112,6 +113,7 @@ func Load(root string) (*engine.Playbook, error) {
 			t.Transitions = append(t.Transitions, engine.Transition{
 				From:    tr.From,
 				To:      tr.To,
+				Human:   tr.Human,
 				Guards:  conditions(tr.Guards),
 				Gates:   commands(tr.Gates),
 				Actions: commands(tr.Actions),

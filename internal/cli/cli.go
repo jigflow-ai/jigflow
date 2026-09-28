@@ -7,6 +7,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"os"
 	"strings"
 
 	"github.com/jigflow-ai/jigflow/internal/engine"
@@ -27,15 +28,21 @@ const (
 // errUsage marks errors in how a command was invoked.
 var errUsage = errors.New("usage")
 
+// SessionEnv is the environment variable through which an Adapter gives an
+// agent session its session id. A command run without it is a person's.
+const SessionEnv = "JFL_SESSION"
+
 type env struct {
 	dir            string
+	actor          engine.Actor
+	stdin          *os.File
 	stdout, stderr io.Writer
 }
 
 // Run executes one command in the project rooted at dir and returns the
-// process exit code.
-func Run(args []string, dir string, stdout, stderr io.Writer) int {
-	e := &env{dir: dir, stdout: stdout, stderr: stderr}
+// process exit code. getenv reads the process environment.
+func Run(args []string, dir string, getenv func(string) string, stdin *os.File, stdout, stderr io.Writer) int {
+	e := &env{dir: dir, actor: engine.Actor{Session: getenv(SessionEnv)}, stdin: stdin, stdout: stdout, stderr: stderr}
 	if len(args) == 0 {
 		fmt.Fprint(stderr, usage)
 		return exitUsage
@@ -70,9 +77,15 @@ Commands:
                           create an Artifact in one of the Type's initial Statuses,
                           with Links to other Artifacts
   move <id> <status>      move an Artifact through a declared Transition,
-                          running its Gates before and its Actions after
+                          running its Gates before and its Actions after;
+                          a Human Transition asks a person to confirm it in
+                          an interactive terminal and is refused to agents
   next                    say which Skill to run on which Artifact
   version                 print the version
+
+Environment:
+  JFL_SESSION             the agent session's id, set by Adapters; without it
+                          the command is a person's
 `
 
 func cmdVersion(e *env, _ []string) error {
@@ -142,9 +155,14 @@ func cmdMove(e *env, args []string) error {
 	if err != nil {
 		return err
 	}
-	moved, tr, err := engine.Move(pb, a, to, all)
+	moved, tr, err := engine.Move(pb, e.actor, a, to, all)
 	if err != nil {
 		return err
+	}
+	if tr.Human {
+		if err := e.confirmHuman(a, to); err != nil {
+			return err
+		}
 	}
 	for _, g := range tr.Gates {
 		if out, err := e.shell(g.Cmd, a.ID, a.Status, to); err != nil {

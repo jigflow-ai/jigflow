@@ -13,6 +13,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 )
 
@@ -98,17 +99,50 @@ func (p *Project) Read(rel string) string {
 	return string(data)
 }
 
-// Run executes `jfl args...` in the project folder.
+// SessionEnv is the environment variable through which Adapters give an
+// agent session its session id.
+const SessionEnv = "JFL_SESSION"
+
+// Run executes `jfl args...` in the project folder, as a person without a
+// terminal: no session id, and stdin that is not a TTY.
 func (p *Project) Run(args ...string) Result {
 	p.t.Helper()
-	return p.RunAs(p.bin.Jfl, args...)
+	return p.run(p.bin.Jfl, "", args)
+}
+
+// RunInSession executes `jfl args...` as the agent session with the given id,
+// the way an Adapter launches it.
+func (p *Project) RunInSession(session string, args ...string) Result {
+	p.t.Helper()
+	return p.run(p.bin.Jfl, session, args)
 }
 
 // RunAs executes the given executable (e.g. Binary.Jigflow) in the project folder.
 func (p *Project) RunAs(exe string, args ...string) Result {
 	p.t.Helper()
+	return p.run(exe, "", args)
+}
+
+// env is the test process's environment without a session id, plus the given
+// one when it isn't empty, so tests don't depend on how `go test` was started.
+func env(session string) []string {
+	var e []string
+	for _, kv := range os.Environ() {
+		if !strings.HasPrefix(kv, SessionEnv+"=") {
+			e = append(e, kv)
+		}
+	}
+	if session != "" {
+		e = append(e, SessionEnv+"="+session)
+	}
+	return e
+}
+
+func (p *Project) run(exe, session string, args []string) Result {
+	p.t.Helper()
 	cmd := exec.Command(exe, args...)
 	cmd.Dir = p.Dir
+	cmd.Env = env(session)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
 	err := cmd.Run()

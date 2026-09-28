@@ -58,10 +58,20 @@ type Condition struct {
 type Transition struct {
 	From    string
 	To      string
+	Human   bool        // a Human Transition: only a person may make it
 	Guards  []Condition // must all hold at the moment of the move
 	Gates   []Command   // must all succeed, in order, for the Transition to happen
 	Actions []Command   // run in order after the Transition succeeds
 }
+
+// Actor is who asks the engine for a move: an agent session, identified by
+// the session id its Adapter gives it, or a person, who has none.
+type Actor struct {
+	Session string
+}
+
+// Agent reports whether the Actor is an agent session.
+func (ac Actor) Agent() bool { return ac.Session != "" }
 
 // Command is a user-declared shell command: a Gate or an Action.
 type Command struct {
@@ -115,18 +125,23 @@ func Create(pb *Playbook, typeName, title, status string, links map[string][]str
 	return Artifact{ID: nextID(t, existing), Type: t.Name, Status: status, Title: title, Links: links}, nil
 }
 
-// Move decides moving an Artifact to the Status to. It is refused unless the
-// Artifact's Type declares a Transition from its current Status to to, the
-// Readiness of its current Status holds, and every Guard on the Transition
-// holds. all is every Artifact in the Store, so Links can be followed.
+// Move decides moving an Artifact to the Status to on behalf of actor. It is
+// refused unless the Artifact's Type declares a Transition from its current
+// Status to to, an agent isn't attempting a Human Transition, the Readiness
+// of its current Status holds (for an agent), and every Guard on the
+// Transition holds. all is every Artifact in the Store, so Links can be
+// followed.
 //
-// Every move is treated as an agent's: Readiness says when agent work in a
-// Status may start, so an agent can't move out of a Status that isn't ready.
+// Readiness says when agent work in a Status may start, so an agent can't
+// move out of a Status that isn't ready; a person isn't held to it.
+//
+// A Human Transition by a person still needs that person's confirmation;
+// asking for it is the caller's job, since the engine performs no I/O.
 //
 // It returns the moved Artifact and the Transition it takes. The engine
 // performs no I/O: the caller runs the Transition's Gates, saves the moved
 // Artifact only if they all succeed, and then runs its Actions.
-func Move(pb *Playbook, a Artifact, to string, all []Artifact) (Artifact, Transition, error) {
+func Move(pb *Playbook, actor Actor, a Artifact, to string, all []Artifact) (Artifact, Transition, error) {
 	t := pb.Type(a.Type)
 	if t == nil {
 		return Artifact{}, Transition{}, fmt.Errorf("%s has Artifact Type %q, which the Playbook doesn't declare", a.ID, a.Type)
@@ -141,10 +156,13 @@ func Move(pb *Playbook, a Artifact, to string, all []Artifact) (Artifact, Transi
 		}
 		return Artifact{}, Transition{}, errors.New(msg)
 	}
-	if f := failed(t.Readiness[a.Status], a, all); len(f) > 0 {
+	tr := t.Transitions[i]
+	if tr.Human && actor.Agent() {
+		return Artifact{}, Transition{}, fmt.Errorf("%s: %q → %q is a Human Transition. An agent can only propose it.", a.ID, a.Status, to)
+	}
+	if f := failed(t.Readiness[a.Status], a, all); len(f) > 0 && actor.Agent() {
 		return Artifact{}, Transition{}, fmt.Errorf("%s: not ready. Readiness of %q needs %s", a.ID, a.Status, describe(f))
 	}
-	tr := t.Transitions[i]
 	if f := failed(tr.Guards, a, all); len(f) > 0 {
 		return Artifact{}, Transition{}, fmt.Errorf("%s: %q → %q refused: a Guard needs %s", a.ID, a.Status, to, describe(f))
 	}

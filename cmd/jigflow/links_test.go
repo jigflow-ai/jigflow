@@ -155,13 +155,13 @@ func TestNextSkipsAnArtifactWhoseReadinessFailsAndSaysWhatItIsWaitingFor(t *test
 	}
 }
 
-func TestMovingOutOfAStatusWhoseReadinessFailsIsRefusedBeforeAnyGateRuns(t *testing.T) {
+func TestAnAgentMovingOutOfAStatusWhoseReadinessFailsIsRefusedBeforeAnyGateRuns(t *testing.T) {
 	p := linkedPlaybook(t)
 	p.MustRun("create", "Ticket", "--title", "Reset-token table")
 	p.MustRun("create", "Ticket", "--title", "Reset endpoint", "--link", "blocked_by=T-1")
 	before := p.Read(".jigflow/state/T-2.md")
 
-	r := p.Run("move", "T-2", "in-progress")
+	r := p.RunInSession("A", "move", "T-2", "in-progress")
 	if r.ExitCode != 1 {
 		t.Fatalf("move of a not-ready Artifact exited %d, want 1; stdout: %s", r.ExitCode, r.Stdout)
 	}
@@ -174,6 +174,17 @@ func TestMovingOutOfAStatusWhoseReadinessFailsIsRefusedBeforeAnyGateRuns(t *test
 	}
 	if _, err := os.Stat(filepath.Join(p.Dir, "ran.log")); err == nil {
 		t.Errorf("the Gate ran although Readiness refused the move: %q", p.Read("ran.log"))
+	}
+}
+
+func TestAPersonMayMoveOutOfAStatusWhoseReadinessFails(t *testing.T) {
+	p := linkedPlaybook(t)
+	p.MustRun("create", "Ticket", "--title", "Reset-token table")
+	p.MustRun("create", "Ticket", "--title", "Reset endpoint", "--link", "blocked_by=T-1")
+
+	p.MustRun("move", "T-2", "in-progress")
+	if got := p.Read(".jigflow/state/T-2.md"); !strings.Contains(got, "\nstatus: in-progress\n") {
+		t.Errorf("T-2 should be in-progress: Readiness applies only to agents\n%s", got)
 	}
 }
 

@@ -14,5 +14,5 @@ func main() {
 		fmt.Fprintln(os.Stderr, "jfl:", err)
 		os.Exit(1)
 	}
-	os.Exit(cli.Run(os.Args[1:], dir, os.Stdout, os.Stderr))
+	os.Exit(cli.Run(os.Args[1:], dir, os.Getenv, os.Stdin, os.Stdout, os.Stderr))
 }
