@@ -1,0 +1,173 @@
+// Package cli is the shell around the workflow engine: it parses commands,
+// loads the Playbook, reads and writes the Store, and reports results.
+package cli
+
+import (
+	"errors"
+	"flag"
+	"fmt"
+	"io"
+
+	"github.com/jigflow-ai/jigflow/internal/engine"
+	"github.com/jigflow-ai/jigflow/internal/playbook"
+	"github.com/jigflow-ai/jigflow/internal/store"
+)
+
+// Version is the binary's version, overridable at build time with -ldflags.
+var Version = "dev"
+
+// Exit codes.
+const (
+	exitOK      = 0
+	exitRefused = 1 // the command was understood but refused or failed
+	exitUsage   = 2 // the command line was malformed
+)
+
+// errUsage marks errors in how a command was invoked.
+var errUsage = errors.New("usage")
+
+type env struct {
+	dir            string
+	stdout, stderr io.Writer
+}
+
+// Run executes one command in the project rooted at dir and returns the
+// process exit code.
+func Run(args []string, dir string, stdout, stderr io.Writer) int {
+	e := &env{dir: dir, stdout: stdout, stderr: stderr}
+	if len(args) == 0 {
+		fmt.Fprint(stderr, usage)
+		return exitUsage
+	}
+	cmd, ok := commands[args[0]]
+	if !ok {
+		fmt.Fprintf(stderr, "jfl: unknown command %q\n\n%s", args[0], usage)
+		return exitUsage
+	}
+	if err := cmd(e, args[1:]); err != nil {
+		fmt.Fprintf(stderr, "jfl %s: %v\n", args[0], err)
+		if errors.Is(err, errUsage) {
+			return exitUsage
+		}
+		return exitRefused
+	}
+	return exitOK
+}
+
+var commands = map[string]func(*env, []string) error{
+	"version":   cmdVersion,
+	"--version": cmdVersion,
+	"create":    cmdCreate,
+	"move":      cmdMove,
+	"next":      cmdNext,
+}
+
+const usage = `Usage: jfl <command> [arguments]
+
+Commands:
+  create <Type> --title <title> [--status <status>]
+                          create an Artifact in one of the Type's initial Statuses
+  move <id> <status>      move an Artifact through a declared Transition
+  next                    say which Skill to run on which Artifact
+  version                 print the version
+`
+
+func cmdVersion(e *env, _ []string) error {
+	fmt.Fprintf(e.stdout, "jigflow %s\n", Version)
+	return nil
+}
+
+func (e *env) load() (*engine.Playbook, *store.File, error) {
+	pb, err := playbook.Load(e.dir)
+	if err != nil {
+		return nil, nil, err
+	}
+	return pb, store.NewFile(e.dir), nil
+}
+
+func cmdCreate(e *env, args []string) error {
+	if len(args) == 0 || args[0] == "" || args[0][0] == '-' {
+		return fmt.Errorf("%w: jfl create <Type> --title <title> [--status <status>]", errUsage)
+	}
+	typeName := args[0]
+	fs := flag.NewFlagSet("create", flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+	title := fs.String("title", "", "title of the new Artifact")
+	status := fs.String("status", "", "starting Status (default: the Type's first initial Status)")
+	if err := fs.Parse(args[1:]); err != nil {
+		return fmt.Errorf("%w: %v", errUsage, err)
+	}
+	if fs.NArg() > 0 {
+		return fmt.Errorf("%w: unexpected argument %q", errUsage, fs.Arg(0))
+	}
+
+	pb, st, err := e.load()
+	if err != nil {
+		return err
+	}
+	existing, err := st.List()
+	if err != nil {
+		return err
+	}
+	a, err := engine.Create(pb, typeName, *title, *status, existing)
+	if err != nil {
+		return err
+	}
+	if err := st.Save(a); err != nil {
+		return err
+	}
+	fmt.Fprintf(e.stdout, "created %s %q in %s\n", a.ID, a.Title, a.Status)
+	return nil
+}
+
+func cmdMove(e *env, args []string) error {
+	if len(args) != 2 {
+		return fmt.Errorf("%w: jfl move <id> <status>", errUsage)
+	}
+	id, to := args[0], args[1]
+	pb, st, err := e.load()
+	if err != nil {
+		return err
+	}
+	a, err := st.Get(id)
+	if err != nil {
+		return err
+	}
+	moved, err := engine.Move(pb, a, to)
+	if err != nil {
+		return err
+	}
+	if err := st.Save(moved); err != nil {
+		return err
+	}
+	fmt.Fprintf(e.stdout, "%s: %s → %s\n", moved.ID, a.Status, moved.Status)
+	return nil
+}
+
+func cmdNext(e *env, args []string) error {
+	if len(args) != 0 {
+		return fmt.Errorf("%w: jfl next takes no arguments", errUsage)
+	}
+	pb, st, err := e.load()
+	if err != nil {
+		return err
+	}
+	artifacts, err := st.List()
+	if err != nil {
+		return err
+	}
+	res := engine.Next(pb, artifacts)
+	if len(res.Candidates) == 0 {
+		fmt.Fprintln(e.stdout, "nothing for an agent to do")
+	} else {
+		top := res.Candidates[0]
+		fmt.Fprintf(e.stdout, "run /%s on %s %q\n", top.Skill, top.Artifact.ID, top.Artifact.Title)
+	}
+	if len(res.Skipped) > 0 {
+		fmt.Fprintln(e.stdout, "Skipped:")
+		for _, s := range res.Skipped {
+			fmt.Fprintf(e.stdout, "  %s: %s\n", s.Artifact.ID, s.Reason)
+		}
+	}
+	return nil
+}
