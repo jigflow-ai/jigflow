@@ -32,6 +32,8 @@ transitions:
   - {from: open, to: in-review}
   - {from: in-review, to: done}
 `)
+	writeSkill(p, "implement", true)
+	writeSkill(p, "code-review", true)
 	p.MustRun("create", "Ticket", "--title", "Reviewed")
 	p.MustRun("move", "T-1", "in-review")
 

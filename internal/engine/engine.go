@@ -18,9 +18,33 @@ import (
 
 // Playbook is the complete declared way of working for a project.
 type Playbook struct {
-	Name  string
-	Types []*ArtifactType // in declaration order
+	Name     string
+	Types    []*ArtifactType   // in declaration order
+	Skills   map[string]*Skill // by name
+	Personas []string          // names of the Personas the project declares
 }
+
+// Skill is a prompt file that tells an agent how to do one piece of work.
+type Skill struct {
+	Name       string
+	Changes    bool   // whether it changes code or Artifacts
+	Invocation string // its Invocation Mode: InvokedByUser, InvokedByAgent or InvokedByBinding
+	Personas   []PersonaRef
+}
+
+// PersonaRef is a Skill naming a Persona for the agent to adopt, with a
+// fallback description from which a missing Persona can be proposed.
+type PersonaRef struct {
+	Name     string
+	Fallback string
+}
+
+// Invocation Modes: how a Skill may be started.
+const (
+	InvokedByUser    = "user"  // by a person only
+	InvokedByAgent   = "agent" // by the agent whenever relevant
+	InvokedByBinding = "bound" // through a Binding
+)
 
 // Type returns the Artifact Type with the given name, or nil.
 func (p *Playbook) Type(name string) *ArtifactType {

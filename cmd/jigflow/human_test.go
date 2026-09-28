@@ -34,6 +34,7 @@ transitions:
     actions:
       - {name: commit, cmd: sh record.sh action}
 `)
+	writeSkill(p, "code-review", true)
 	p.Write("record.sh", record)
 	p.MustRun("create", "Ticket", "--title", "Add login page")
 	p.MustRun("move", "T-1", "ready-to-merge")

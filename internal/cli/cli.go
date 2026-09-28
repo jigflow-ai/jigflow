@@ -71,6 +71,7 @@ var commands = map[string]func(*env, []string) error{
 	"propose":   cmdPropose,
 	"approve":   cmdApprove,
 	"reject":    cmdReject,
+	"check":     cmdCheck,
 }
 
 const usage = `Usage: jfl <command> [arguments]
@@ -100,6 +101,8 @@ Commands:
                           Transitions and create into Statuses with a Binding
   reject <proposal>       drop a pending Proposal, changing nothing; only a
                           person may
+  check                   validate the Playbook, listing every problem; every
+                          other command refuses to run while there are any
   version                 print the version
 
 Environment:
@@ -109,6 +112,18 @@ Environment:
 
 func cmdVersion(e *env, _ []string) error {
 	fmt.Fprintf(e.stdout, "jigflow %s\n", Version)
+	return nil
+}
+
+func cmdCheck(e *env, args []string) error {
+	if len(args) != 0 {
+		return fmt.Errorf("%w: jfl check takes no arguments", errUsage)
+	}
+	pb, err := playbook.Load(e.dir)
+	if err != nil {
+		return err
+	}
+	fmt.Fprintf(e.stdout, "Playbook %q: no problems\n", pb.Name)
 	return nil
 }
 

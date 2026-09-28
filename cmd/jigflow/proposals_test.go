@@ -84,6 +84,10 @@ transitions:
   - {from: ready-for-agent, to: done}
   - {from: ready-for-human, to: done, human: true}
 `)
+	writeSkill(p, "to-tickets", true)
+	writeSkill(p, "implement", true)
+	writeSkill(p, "code-review", true)
+	writeSkill(p, "triage", false)
 	p.Write("record.sh", record)
 	return p
 }

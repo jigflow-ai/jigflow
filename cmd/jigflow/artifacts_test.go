@@ -34,6 +34,7 @@ transitions:
   - from: in-review
     to: done
 `)
+	writeSkill(p, "implement", true)
 	return p
 }
 

@@ -192,6 +192,11 @@ func cmdReject(e *env, args []string) error {
 	if e.actor.Agent() {
 		return fmt.Errorf("Only a human can reject %s.", id)
 	}
+	// Rejecting changes no Artifact, but no command runs on an invalid
+	// Playbook.
+	if _, _, err := e.load(); err != nil {
+		return err
+	}
 	ps := store.NewProposals(e.dir)
 	p, err := ps.Get(id)
 	if err != nil {

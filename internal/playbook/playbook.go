@@ -3,6 +3,11 @@
 //
 //	.jigflow/playbook.yaml      the Playbook file
 //	.jigflow/types/*.yaml       one file per Artifact Type
+//	.jigflow/skills/*/SKILL.md  one directory per Skill, named after it
+//	.jigflow/personas/*.md      one file per Persona, named after it
+//
+// A Playbook that fails any check doesn't load: Load reports every problem
+// at once, so `jfl check` and every other command print the same list.
 package playbook
 
 import (
@@ -10,10 +15,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"maps"
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 
 	"github.com/jigflow-ai/jigflow/internal/engine"
 	"go.yaml.in/yaml/v3"
@@ -46,6 +51,17 @@ type typeFile struct {
 	} `yaml:"transitions"`
 }
 
+// skillFile is the frontmatter of a SKILL.md. Changes is a pointer so a
+// Skill that doesn't say whether it changes anything can be told apart.
+type skillFile struct {
+	Changes    *bool  `yaml:"changes"`
+	Invocation string `yaml:"invocation"`
+	Personas   []struct {
+		Name     string `yaml:"name"`
+		Fallback string `yaml:"fallback"`
+	} `yaml:"personas"`
+}
+
 type conditionFile struct {
 	Kind     string   `yaml:"kind"`
 	Link     string   `yaml:"link"`
@@ -69,7 +85,7 @@ func Load(root string) (*engine.Playbook, error) {
 		}
 		return nil, err
 	}
-	pb := &engine.Playbook{Name: pf.Name}
+	pb := &engine.Playbook{Name: pf.Name, Skills: map[string]*engine.Skill{}}
 
 	paths, err := filepath.Glob(filepath.Join(dir, "types", "*.yaml"))
 	if err != nil {
@@ -124,52 +140,79 @@ func Load(root string) (*engine.Playbook, error) {
 		pb.Types = append(pb.Types, t)
 		files[t.Name] = rel
 	}
-	for _, t := range pb.Types {
-		if err := checkLinks(pb, t); err != nil {
-			return nil, fmt.Errorf("%s: %w", files[t.Name], err)
-		}
+	skillFiles, problems, err := loadSkills(root, pb)
+	if err != nil {
+		return nil, err
+	}
+	personas, err := filepath.Glob(filepath.Join(dir, "personas", "*.md"))
+	if err != nil {
+		return nil, err
+	}
+	for _, path := range personas {
+		pb.Personas = append(pb.Personas, strings.TrimSuffix(filepath.Base(path), ".md"))
+	}
+	if problems = append(problems, check(pb, files, skillFiles)...); len(problems) > 0 {
+		return nil, &Invalid{Problems: problems}
 	}
 	return pb, nil
 }
 
-// checkLinks refuses Links to undeclared Artifact Types, and Readiness or
-// Guards that refer to a Link nobody declares: such a condition could never
-// be met as its author meant.
-func checkLinks(pb *engine.Playbook, t *engine.ArtifactType) error {
-	for _, name := range slices.Sorted(maps.Keys(t.Links)) {
-		if pb.Type(t.Links[name]) == nil {
-			return fmt.Errorf("Link %q points to Artifact Type %q, which the Playbook doesn't declare", name, t.Links[name])
-		}
+// loadSkills reads every Skill: a directory under skills/ holding a SKILL.md
+// whose YAML frontmatter declares whether it changes code or Artifacts and
+// its Invocation Mode. It returns each Skill's file, for messages, and the
+// problems of Skills that don't.
+func loadSkills(root string, pb *engine.Playbook) (map[string]string, []string, error) {
+	paths, err := filepath.Glob(filepath.Join(root, Dir, "skills", "*", "SKILL.md"))
+	if err != nil {
+		return nil, nil, err
 	}
-	for _, status := range slices.Sorted(maps.Keys(t.Readiness)) {
-		if err := checkConditions(pb, t, t.Readiness[status]); err != nil {
-			return fmt.Errorf("Readiness of %q %w", status, err)
+	files := map[string]string{}
+	slices.Sort(paths)
+	var problems []string
+	for _, path := range paths {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return nil, nil, err
 		}
-	}
-	for _, tr := range t.Transitions {
-		if err := checkConditions(pb, t, tr.Guards); err != nil {
-			return fmt.Errorf("a Guard on %q → %q %w", tr.From, tr.To, err)
+		var sf skillFile
+		if fm, ok := frontmatter(data); ok {
+			if err := decodeYAML(fm, path, &sf); err != nil {
+				return nil, nil, err
+			}
 		}
+		rel, _ := filepath.Rel(root, path)
+		if sf.Changes == nil {
+			problems = append(problems, rel+": a Skill must declare changes: true or false")
+		}
+		switch sf.Invocation {
+		case engine.InvokedByUser, engine.InvokedByAgent, engine.InvokedByBinding:
+		case "":
+			problems = append(problems, rel+": a Skill must declare its Invocation Mode (invocation: user, agent or bound)")
+		default:
+			problems = append(problems, fmt.Sprintf("%s: unknown Invocation Mode %q (want user, agent or bound)", rel, sf.Invocation))
+		}
+		name := filepath.Base(filepath.Dir(path))
+		s := &engine.Skill{Name: name, Changes: sf.Changes != nil && *sf.Changes, Invocation: sf.Invocation}
+		for _, pf := range sf.Personas {
+			s.Personas = append(s.Personas, engine.PersonaRef{Name: pf.Name, Fallback: pf.Fallback})
+		}
+		pb.Skills[name] = s
+		files[name] = rel
 	}
-	return nil
+	return files, problems, nil
 }
 
-func checkConditions(pb *engine.Playbook, t *engine.ArtifactType, conds []engine.Condition) error {
-	for _, c := range conds {
-		switch c.Kind {
-		case engine.LinkedAllIn:
-			if _, ok := t.Links[c.Link]; !ok {
-				return fmt.Errorf("refers to Link %q, which a %s doesn't declare", c.Link, t.Name)
-			}
-		case engine.HasIncoming:
-			if !slices.ContainsFunc(pb.Types, func(o *engine.ArtifactType) bool { return o.Links[c.Link] == t.Name }) {
-				return fmt.Errorf("refers to incoming Link %q, which no Artifact Type declares towards %s", c.Link, t.Name)
-			}
-		default:
-			return fmt.Errorf("has unknown kind %q (want %s or %s)", c.Kind, engine.LinkedAllIn, engine.HasIncoming)
-		}
+// frontmatter returns the YAML block a Markdown file starts with, if any.
+func frontmatter(data []byte) ([]byte, bool) {
+	rest, ok := bytes.CutPrefix(data, []byte("---\n"))
+	if !ok {
+		return nil, false
 	}
-	return nil
+	if bytes.HasPrefix(rest, []byte("---\n")) {
+		return nil, true
+	}
+	fm, _, ok := bytes.Cut(rest, []byte("\n---\n"))
+	return fm, ok
 }
 
 func readYAML(path string, v any) error {
@@ -177,6 +220,10 @@ func readYAML(path string, v any) error {
 	if err != nil {
 		return err
 	}
+	return decodeYAML(data, path, v)
+}
+
+func decodeYAML(data []byte, path string, v any) error {
 	dec := yaml.NewDecoder(bytes.NewReader(data))
 	dec.KnownFields(true) // a misspelt field is an error, not silently ignored
 	if err := dec.Decode(v); err != nil && !errors.Is(err, io.EOF) {

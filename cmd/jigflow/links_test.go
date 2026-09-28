@@ -56,6 +56,8 @@ transitions:
   - from: in-progress
     to: done
 `)
+	writeSkill(p, "to-tickets", true)
+	writeSkill(p, "implement", true)
 	p.Write("record.sh", record)
 	return p
 }
@@ -234,10 +236,14 @@ func TestAPlaybookReferringToUndeclaredLinksOrTypesDoesNotLoad(t *testing.T) {
 	}{
 		{"Link to an undeclared Type", `links:
   part_of: Epic
+transitions:
+  - {from: ready-for-agent, to: done}
 `, `Link "part_of" points to Artifact Type "Epic"`},
 		{"Readiness on an undeclared Link", `readiness:
   ready-for-agent:
     - {kind: linked-all-in, link: depends_on, statuses: [done]}
+transitions:
+  - {from: ready-for-agent, to: done}
 `, `"depends_on"`},
 		{"Guard on an undeclared incoming Link", `transitions:
   - from: ready-for-agent
@@ -248,6 +254,8 @@ func TestAPlaybookReferringToUndeclaredLinksOrTypesDoesNotLoad(t *testing.T) {
 		{"condition of an unknown kind", `readiness:
   ready-for-agent:
     - {kind: all-done, link: blocked_by}
+transitions:
+  - {from: ready-for-agent, to: done}
 `, `"all-done"`},
 	}
 	for _, c := range cases {
