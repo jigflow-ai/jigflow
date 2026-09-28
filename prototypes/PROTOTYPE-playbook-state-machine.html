@@ -1,0 +1,547 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>JigFlow Playbook Prototype</title>
+<!-- PROTOTYPE: throwaway. Only the pure module in <script id="jigflow-core"> is worth lifting. -->
+<style>
+:root {
+  --bg: #fafaf9; --panel: #ffffff; --text: #1c1917; --muted: #78716c; --line: #e7e5e4;
+  --accent: #2563eb; --accent-soft: #dbeafe; --ok: #15803d; --ok-soft: #dcfce7;
+  --bad: #b91c1c; --bad-soft: #fee2e2; --warn: #a16207; --warn-soft: #fef9c3;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0c0a09; --panel: #1c1917; --text: #f5f5f4; --muted: #a8a29e; --line: #292524;
+    --accent: #60a5fa; --accent-soft: #1e3a8a55; --ok: #4ade80; --ok-soft: #14532d55;
+    --bad: #f87171; --bad-soft: #7f1d1d55; --warn: #facc15; --warn-soft: #713f1255;
+  }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+main { max-width: 1180px; margin: 0 auto; padding: 32px 16px 64px; }
+h1 { font-size: 26px; margin: 0 0 4px; }
+h2 { font-size: 16px; margin: 0 0 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+h3 { font-size: 15px; margin: 18px 0 8px; }
+p { margin: 0 0 10px; }
+.lede { color: var(--muted); max-width: 820px; }
+.banner { background: var(--warn-soft); color: var(--warn); border-radius: 8px; padding: 8px 12px; font-size: 13px; margin: 12px 0 20px; display: inline-block; }
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 18px; margin-bottom: 18px; }
+.grid { display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(0, 1fr); gap: 18px; }
+@media (max-width: 900px) { .grid { grid-template-columns: 1fr; } }
+table { width: 100%; border-collapse: collapse; font-size: 14px; }
+th { text-align: left; color: var(--muted); font-weight: 500; font-size: 12px; padding: 4px 6px; border-bottom: 1px solid var(--line); }
+td { padding: 7px 6px; border-bottom: 1px solid var(--line); vertical-align: top; }
+tr.changed td { background: var(--accent-soft); }
+.scroll { overflow-x: auto; }
+.pill { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 12px; background: var(--line); white-space: nowrap; }
+.pill.bound { background: var(--accent-soft); color: var(--accent); }
+.pill.human { background: var(--warn-soft); color: var(--warn); }
+.pill.final { background: var(--ok-soft); color: var(--ok); }
+.muted { color: var(--muted); }
+button { font: inherit; font-size: 13px; border: 1px solid var(--line); background: var(--panel); color: var(--text); padding: 5px 10px; border-radius: 7px; cursor: pointer; margin: 2px 4px 2px 0; }
+button:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+button.primary:hover:not(:disabled) { color: #fff; opacity: .9; }
+button:disabled { opacity: .4; cursor: default; }
+button.small { font-size: 12px; padding: 2px 7px; }
+.row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-bottom: 10px; }
+.seg button.on { background: var(--text); color: var(--bg); border-color: var(--text); }
+.log { list-style: none; padding: 0; margin: 0; font-size: 13px; max-height: 420px; overflow: auto; }
+.log li { padding: 7px 10px; border-radius: 7px; margin-bottom: 6px; background: var(--bg); border-left: 3px solid var(--line); }
+.log li.ok { border-left-color: var(--ok); }
+.log li.refused { border-left-color: var(--bad); background: var(--bad-soft); }
+.log li.info { border-left-color: var(--accent); }
+.log li:first-child { outline: 2px solid var(--accent); outline-offset: -1px; }
+.who { font-weight: 600; }
+.tabs { display: flex; flex-wrap: wrap; gap: 4px; border-bottom: 1px solid var(--line); margin-bottom: 14px; }
+.tabs button { border: none; border-bottom: 2px solid transparent; border-radius: 0; margin: 0; padding: 8px 12px; background: none; }
+.tabs button.on { border-bottom-color: var(--accent); color: var(--accent); }
+.steps { counter-reset: s; padding: 0; list-style: none; margin: 12px 0 0; }
+.steps li { margin-bottom: 6px; display: flex; gap: 8px; align-items: baseline; }
+.steps li::before { counter-increment: s; content: counter(s); color: var(--muted); font-size: 12px; min-width: 18px; text-align: right; }
+.steps li.done button { text-decoration: line-through; }
+.kv { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; font-size: 14px; }
+.proposal { border: 1px dashed var(--warn); border-radius: 8px; padding: 10px; margin-bottom: 8px; font-size: 13px; }
+code { font-size: 12.5px; background: var(--line); padding: 0 4px; border-radius: 4px; }
+</style>
+</head>
+<body>
+<main>
+<h1>JigFlow Playbook prototype</h1>
+<p class="lede"><strong>The question:</strong> does JigFlow's model (Statuses, Transitions, Guards, Gates, Human Transitions, Bindings, Proposals and Claims, plus the <code>next</code> command) run Matt Pocock's workflow without awkward gaps? This page runs a simplified version of the Pocock Playbook. Act as <em>You (the human)</em> or as one of two agent sessions, and watch what the rules allow and refuse.</p>
+<div class="banner">PROTOTYPE: throwaway. Everything lives in memory, and reloading resets it.</div>
+
+<div class="panel" id="walk">
+  <h2>Guided walkthroughs</h2>
+  <div class="tabs" id="tabs"></div>
+  <div id="scenario"></div>
+</div>
+
+<div class="grid">
+  <div>
+    <div class="panel">
+      <h2>Current state</h2>
+      <div id="state"></div>
+    </div>
+  </div>
+  <div>
+    <div class="panel">
+      <h2>Free play</h2>
+      <div class="row seg" id="actors"></div>
+      <div id="freeplay"></div>
+    </div>
+    <div class="panel">
+      <h2>What happened (newest first)</h2>
+      <ul class="log" id="log"></ul>
+    </div>
+  </div>
+</div>
+</main>
+
+<script id="jigflow-core">
+// ===== Pure module: no DOM. This is the part worth lifting. =====
+const JigFlow = (() => {
+  const clone = (x) => structuredClone(x);
+
+  function createState(playbook, seed = {}) {
+    return {
+      playbook,
+      artifacts: {}, order: [], proposals: [], counters: {},
+      gates: { tests: true, lint: true, ...(seed.gates || {}) },
+      focus: {}, log: [],
+    };
+  }
+
+  const typeOf = (s, a) => s.playbook.types[a.type];
+  const isFinal = (s, a) => typeOf(s, a).final.includes(a.status);
+  const bindingOf = (s, a) => typeOf(s, a).bindings[a.status] || null;
+  const outgoing = (s, a) => typeOf(s, a).transitions.filter(t => t.from === a.status);
+
+  function describeGuard(g) {
+    if (g.kind === 'linked-all-in') return `every "${g.link}" item is ${g.statuses.join('/')}`;
+    if (g.kind === 'has-incoming') return `at least ${g.min} item(s) link here via "${g.link}"`;
+    return g.kind;
+  }
+  const readinessOf = (s, a) => (typeOf(s, a).readiness || {})[a.status] || [];
+  const failedReadiness = (s, a) => failedConds(s, a, readinessOf(s, a));
+  const isInbox = (s, type, status) => (s.playbook.types[type].inbox || []).includes(status);
+  function failedGuards(s, a, t) { return failedConds(s, a, t.guards || []); }
+  function failedConds(s, a, conds) {
+    return conds.filter(g => {
+      if (g.kind === 'linked-all-in') return !(a.links[g.link] || []).every(id => g.statuses.includes(s.artifacts[id].status));
+      if (g.kind === 'has-incoming') return Object.values(s.artifacts).filter(o => (o.links[g.link] || []).includes(a.id)).length < g.min;
+      return false;
+    });
+  }
+  const failedGates = (s, t) => (t.gates || []).filter(g => !s.gates[g.name]);
+
+  function log(s, actor, kind, text) { s.log.unshift({ actor, kind, text }); }
+  const actorName = (actor) => actor.kind === 'human' ? 'You' : `Agent ${actor.session}`;
+
+  function newId(s, type) {
+    const p = s.playbook.types[type].prefix;
+    s.counters[p] = (s.counters[p] || 0) + 1;
+    return `${p}-${s.counters[p]}`;
+  }
+
+  // --- low-level ops, mutate a draft, return {ok, msg} ---
+  function doCreate(s, actor, spec, { viaProposal = false } = {}) {
+    const T = s.playbook.types[spec.type];
+    if (!T.initial.includes(spec.status)) return { ok: false, msg: `A ${spec.type} can't start in "${spec.status}". Allowed starting Statuses: ${T.initial.join(', ')}.` };
+    if (T.bindings[spec.status] && actor.kind === 'agent' && !viaProposal && !isInbox(s, spec.type, spec.status))
+      return { ok: false, msg: `Creating a ${spec.type} straight into "${spec.status}" would hand it to an agent immediately. An agent must put it in a Proposal for a human to approve.` };
+    const id = newId(s, spec.type);
+    s.artifacts[id] = { id, type: spec.type, title: spec.title, status: spec.status, links: clone(spec.links || {}), fields: clone(spec.fields || {}), claim: null };
+    s.order.push(id);
+    return { ok: true, msg: `created ${id} "${spec.title}" in ${spec.status}`, id };
+  }
+
+  function doTransition(s, actor, id, to, { viaProposal = false } = {}) {
+    const a = s.artifacts[id];
+    if (!a) return { ok: false, msg: `${id} doesn't exist.` };
+    const t = outgoing(s, a).find(t => t.to === to);
+    if (!t) return { ok: false, msg: `${id}: "${a.status}" → "${to}" is not a declared Transition.` };
+    if (t.human && actor.kind !== 'human' && !viaProposal)
+      return { ok: false, msg: `${id}: "${a.status}" → "${to}" is a Human Transition. An agent can only propose it.` };
+    if (actor.kind === 'agent' && a.claim && a.claim !== actor.session)
+      return { ok: false, msg: `${id} is claimed by Agent ${a.claim}.` };
+    const fr = actor.kind === 'agent' ? failedReadiness(s, a) : [];
+    if (fr.length) return { ok: false, msg: `${id}: not ready. Readiness of "${a.status}" needs ${fr.map(describeGuard).join('; ')}.` };
+    const fg = failedGuards(s, a, t);
+    if (fg.length) return { ok: false, msg: `${id}: blocked by a Guard, which needs ${fg.map(describeGuard).join('; ')}.` };
+    const fgt = failedGates(s, t);
+    if (fgt.length) return { ok: false, msg: `${id}: Gate failed: ${fgt.map(g => `${g.name} (${g.cmd})`).join(', ')}.` };
+    const from = a.status;
+    a.status = to;
+    if (actor.kind === 'agent') a.claim = actor.session;
+    if (isFinal(s, a) || !bindingOf(s, a)) a.claim = null;
+    const acts = (t.actions || []).map(x => `Action ran: ${x.cmd}`);
+    for (const [sess, fid] of Object.entries(s.focus)) if (fid === id && (!bindingOf(s, a) || isFinal(s, a))) delete s.focus[sess];
+    return { ok: true, msg: `${id}: ${from} → ${to}${acts.length ? '. ' + acts.join('; ') : ''}` };
+  }
+
+  // --- public API: (state, ...) => newState ---
+  function wrap(state, actor, fn) {
+    const s = clone(state);
+    const r = fn(s);
+    log(s, actorName(actor), r.ok ? (r.kind || 'ok') : 'refused', r.msg);
+    return r.ok ? s : Object.assign(clone(state), { log: s.log });
+  }
+
+  const create = (state, actor, spec) => wrap(state, actor, s => doCreate(s, actor, spec));
+  const transition = (state, actor, id, to) => wrap(state, actor, s => doTransition(s, actor, id, to));
+
+  function propose(state, actor, summary, items) {
+    return wrap(state, actor, s => {
+      const pid = `P-${s.proposals.length + 1}`;
+      s.proposals.push({ id: pid, by: actorName(actor), summary, items: clone(items), status: 'pending' });
+      return { ok: true, kind: 'info', msg: `proposed ${pid}: ${summary} (${items.length} change${items.length > 1 ? 's' : ''}, waiting for a human)` };
+    });
+  }
+
+  function approve(state, actor, pid) {
+    return wrap(state, actor, s => {
+      if (actor.kind !== 'human') return { ok: false, msg: `Only a human can approve ${pid}.` };
+      const p = s.proposals.find(p => p.id === pid);
+      if (!p || p.status !== 'pending') return { ok: false, msg: `${pid} isn't pending.` };
+      const refs = {}; const done = [];
+      const resolve = (x) => refs[x] || x;
+      for (const it of p.items) {
+        let r;
+        if (it.op === 'create') {
+          const links = Object.fromEntries(Object.entries(it.links || {}).map(([k, v]) => [k, v.map(resolve)]));
+          r = doCreate(s, actor, { ...it, links }, { viaProposal: true });
+          if (r.ok && it.ref) refs[it.ref] = r.id;
+        } else r = doTransition(s, actor, resolve(it.id), it.to, { viaProposal: true });
+        if (!r.ok) return { ok: false, msg: `${pid} was not applied at all (all or nothing): ${r.msg}` };
+        done.push(r.msg);
+      }
+      p.status = 'approved';
+      return { ok: true, msg: `approved ${pid} as one unit: ${done.join('; ')}` };
+    });
+  }
+
+  function reject(state, actor, pid) {
+    return wrap(state, actor, s => {
+      if (actor.kind !== 'human') return { ok: false, msg: `Only a human can reject ${pid}.` };
+      const p = s.proposals.find(p => p.id === pid);
+      if (!p || p.status !== 'pending') return { ok: false, msg: `${pid} isn't pending.` };
+      p.status = 'rejected';
+      return { ok: true, kind: 'info', msg: `rejected ${pid}. Nothing changed.` };
+    });
+  }
+
+  // Which work could this session pick up, and why is everything else skipped?
+  function candidates(state, session) {
+    const s = state; const picks = []; const skipped = [];
+    const pendingIds = new Set(s.proposals.filter(p => p.status === 'pending').flatMap(p => p.items.filter(i => i.op === 'transition').map(i => i.id)));
+    for (const id of s.order) {
+      const a = s.artifacts[id];
+      if (isFinal(s, a)) continue;
+      const skill = bindingOf(s, a);
+      if (!skill) { skipped.push({ id, why: `"${a.status}" has no Binding, so it's human work` }); continue; }
+      if (a.claim && a.claim !== session) { skipped.push({ id, why: `claimed by Agent ${a.claim}` }); continue; }
+      if (pendingIds.has(id)) { skipped.push({ id, why: `waiting on a pending Proposal` }); continue; }
+      const fr = failedReadiness(s, a);
+      if (fr.length) { skipped.push({ id, why: 'not ready: waiting until ' + fr.map(describeGuard).join('; ') }); continue; }
+      picks.push({ id, skill, mine: a.claim === session, prio: a.fields.priority ?? 9 });
+    }
+    picks.sort((x, y) => (y.mine - x.mine) || (x.prio - y.prio) || s.order.indexOf(x.id) - s.order.indexOf(y.id));
+    return { picks, skipped };
+  }
+
+  function next(state, actor) {
+    return wrap(state, actor, s => {
+      if (actor.kind !== 'agent') return { ok: false, msg: '`next` is for agent sessions.' };
+      const { picks, skipped } = candidates(s, actor.session);
+      const why = skipped.length ? ` Skipped: ${skipped.map(x => `${x.id} (${x.why})`).join(', ')}.` : '';
+      if (!picks.length) { delete s.focus[actor.session]; return { ok: true, kind: 'info', msg: `next → nothing for an agent to do.${why}` }; }
+      const [top, ...alts] = picks;
+      s.focus[actor.session] = top.id;
+      return { ok: true, kind: 'info', msg: `next → run /${top.skill} on ${top.id}.${alts.length ? ' Alternatives: ' + alts.map(a => a.id).join(', ') + '.' : ''}${why}` };
+    });
+  }
+
+  // jfl check (Inbox rule only): from an Inbox, can agents reach a changing Skill without a Human Transition?
+  function check(playbook) {
+    const problems = [];
+    for (const [type, T] of Object.entries(playbook.types)) for (const inbox of T.inbox || []) {
+      const seen = new Set([inbox]), queue = [inbox];
+      while (queue.length) {
+        const st = queue.shift(); const skill = T.bindings[st];
+        if (skill && playbook.skills[skill].changes) problems.push(`${type} Inbox "${inbox}" reaches /${skill} in "${st}" without a Human Transition`);
+        for (const t of T.transitions) if (t.from === st && !t.human && !seen.has(t.to)) { seen.add(t.to); queue.push(t.to); }
+      }
+    }
+    return problems;
+  }
+
+  function setGate(state, name, value) {
+    const s = clone(state); s.gates[name] = value;
+    log(s, 'World', 'info', `Gate "${name}" would now ${value ? 'pass' : 'fail'}`);
+    return s;
+  }
+
+  return { createState, create, transition, propose, approve, reject, next, setGate, candidates, check, bindingOf, isFinal, outgoing, readinessOf };
+})();
+
+// Simplified Pocock Playbook, as it might be declared in types/*.yaml
+const POCOCK = {
+  name: 'Pocock (simplified)',
+  skills: {
+    'to-tickets': { changes: true }, implement: { changes: true }, 'code-review': { changes: true }, triage: { changes: false },
+  },
+  types: {
+    Spec: {
+      prefix: 'S', store: 'GitHub Issues',
+      statuses: ['ready-for-agent', 'ticketed'], initial: ['ready-for-agent'], final: ['ticketed'],
+      bindings: { 'ready-for-agent': 'to-tickets' },
+      transitions: [
+        { from: 'ready-for-agent', to: 'ticketed', guards: [{ kind: 'has-incoming', link: 'part_of', min: 1 }] },
+      ],
+    },
+    Ticket: {
+      prefix: 'T', store: 'GitHub Issues',
+      statuses: ['ready-for-agent', 'in-progress', 'in-review', 'ready-to-merge', 'done'],
+      initial: ['ready-for-agent'], final: ['done'],
+      bindings: { 'ready-for-agent': 'implement', 'in-progress': 'implement', 'in-review': 'code-review' },
+      readiness: { 'ready-for-agent': [{ kind: 'linked-all-in', link: 'blocked_by', statuses: ['done'] }] },
+      transitions: [
+        { from: 'ready-for-agent', to: 'in-progress' },
+        { from: 'in-progress', to: 'in-review', gates: [{ name: 'tests', cmd: 'go test ./...' }] },
+        { from: 'in-review', to: 'in-progress' },
+        { from: 'in-review', to: 'ready-to-merge', gates: [{ name: 'lint', cmd: 'golangci-lint run' }] },
+        { from: 'ready-to-merge', to: 'done', human: true, actions: [{ cmd: 'git commit -m "T: …"' }] },
+      ],
+    },
+    Issue: {
+      prefix: 'I', store: 'GitHub Issues',
+      statuses: ['needs-triage', 'needs-info', 'ready-for-agent', 'ready-for-human', 'wontfix', 'done'],
+      initial: ['needs-triage'], final: ['wontfix', 'done'], inbox: ['needs-triage'],
+      bindings: { 'needs-triage': 'triage', 'ready-for-agent': 'implement' },
+      transitions: [
+        { from: 'needs-triage', to: 'needs-info' },
+        { from: 'needs-info', to: 'needs-triage' },
+        { from: 'needs-triage', to: 'ready-for-agent', human: true },
+        { from: 'needs-triage', to: 'ready-for-human', human: true },
+        { from: 'needs-triage', to: 'wontfix', human: true },
+        { from: 'ready-for-agent', to: 'done', gates: [{ name: 'tests', cmd: 'go test ./...' }] },
+        { from: 'ready-for-human', to: 'done', human: true },
+      ],
+    },
+  },
+};
+</script>
+
+<script>
+// ===== Throwaway page shell =====
+const HUMAN = { kind: 'human' }, A = { kind: 'agent', session: 'A' }, B = { kind: 'agent', session: 'B' };
+const ACTORS = [['You (human)', HUMAN], ['Agent session A', A], ['Agent session B', B]];
+const J = JigFlow;
+let state, prev, actor = A;
+
+const humanSeed = (s, specs) => specs.reduce((st, sp) => J.create(st, HUMAN, sp), s);
+function withoutLog(s) { s.log = []; return s; }
+
+const SEEDS = {
+  spec: () => withoutLog(humanSeed(J.createState(POCOCK, { gates: { tests: false } }), [
+    { type: 'Spec', status: 'ready-for-agent', title: 'Password reset by email' }])),
+  tickets: () => {
+    let s = J.createState(POCOCK);
+    s = humanSeed(s, [{ type: 'Spec', status: 'ready-for-agent', title: 'Password reset by email' }]);
+    s = J.propose(s, A, 'breakdown', breakdownItems());
+    s = J.approve(s, HUMAN, 'P-1');
+    s.proposals = []; return withoutLog(s);
+  },
+  merge: () => {
+    let s = SEEDS.tickets();
+    for (const to of ['in-progress', 'in-review', 'ready-to-merge']) s = J.transition(s, A, 'T-1', to);
+    return withoutLog(s);
+  },
+  review: () => {
+    let s = SEEDS.tickets();
+    for (const to of ['in-progress', 'in-review']) s = J.transition(s, A, 'T-1', to);
+    return withoutLog(s);
+  },
+  parallel: () => {
+    let s = J.createState(POCOCK);
+    s = humanSeed(s, [
+      { type: 'Ticket', status: 'ready-for-agent', title: 'Reset-token table', fields: { priority: 1 } },
+      { type: 'Ticket', status: 'ready-for-agent', title: 'Email template', fields: { priority: 2 } },
+      { type: 'Ticket', status: 'ready-for-agent', title: 'Reset endpoint', links: { blocked_by: ['T-1'] }, fields: { priority: 1 } }]);
+    return withoutLog(s);
+  },
+  empty: () => J.createState(POCOCK),
+};
+
+function breakdownItems() {
+  return [
+    { op: 'create', ref: '#1', type: 'Ticket', status: 'ready-for-agent', title: 'Reset-token table', links: { part_of: ['S-1'] }, fields: { priority: 1 } },
+    { op: 'create', ref: '#2', type: 'Ticket', status: 'ready-for-agent', title: 'Reset endpoint', links: { part_of: ['S-1'], blocked_by: ['#1'] }, fields: { priority: 1 } },
+    { op: 'create', ref: '#3', type: 'Ticket', status: 'ready-for-agent', title: 'Email template', links: { part_of: ['S-1'], blocked_by: ['#1'] }, fields: { priority: 2 } },
+    { op: 'transition', id: 'S-1', to: 'ticketed' },
+  ];
+}
+
+const step = (label, fn) => ({ label, fn });
+const SCENARIOS = [
+  { title: 'Happy path', seed: 'spec',
+    about: 'You start with an approved Spec. Watch an agent break it into tickets, and notice that nothing becomes agent work until you approve the whole breakdown in one click. After that, `next` respects blocking links, the tests Gate stops work that isn\'t ready, and merging is left to you.',
+    steps: [
+      step('Agent A asks for next work', s => J.next(s, A)),
+      step('Agent A runs /to-tickets and proposes 3 tickets', s => J.propose(s, A, 'break S-1 into 3 tickets', breakdownItems())),
+      step('Agent A asks for next work again', s => J.next(s, A)),
+      step('You approve the breakdown (one unit)', s => J.approve(s, HUMAN, 'P-1')),
+      step('Agent A asks for next work', s => J.next(s, A)),
+      step('Agent A starts T-1', s => J.transition(s, A, 'T-1', 'in-progress')),
+      step('Agent A sends T-1 to review (tests are failing)', s => J.transition(s, A, 'T-1', 'in-review')),
+      step('Agent A fixes the code: tests now pass', s => J.setGate(s, 'tests', true)),
+      step('Agent A sends T-1 to review again', s => J.transition(s, A, 'T-1', 'in-review')),
+      step('Agent A asks for next work', s => J.next(s, A)),
+      step('Agent A finishes /code-review: T-1 ready to merge', s => J.transition(s, A, 'T-1', 'ready-to-merge')),
+      step('Agent A asks for next work', s => J.next(s, A)),
+      step('You merge T-1', s => J.transition(s, HUMAN, 'T-1', 'done')),
+      step('Agent A asks for next work', s => J.next(s, A)),
+    ] },
+  { title: 'Agent tries to skip you', seed: 'merge',
+    about: 'T-1 is waiting in your merge queue. The agent tries two shortcuts: creating agent-ready work directly, and merging on its own. Both are refused. It can still propose the merge, and you decide.',
+    steps: [
+      step('Agent A creates a ticket directly in ready-for-agent', s => J.create(s, A, { type: 'Ticket', status: 'ready-for-agent', title: 'Sneaky extra work' })),
+      step('Agent A tries to merge T-1 itself', s => J.transition(s, A, 'T-1', 'done')),
+      step('Agent A proposes merging T-1 instead', s => J.propose(s, A, 'merge T-1', [{ op: 'transition', id: 'T-1', to: 'done' }])),
+      step('You approve the merge', s => J.approve(s, HUMAN, 'P-1')),
+    ] },
+  { title: 'Two sessions in parallel', seed: 'parallel',
+    about: 'Two agent sessions share one backlog. A Claim makes sure they never pick the same ticket, and a blocked ticket is skipped by both.',
+    steps: [
+      step('Agent A asks for next work', s => J.next(s, A)),
+      step('Agent A starts T-1 (and claims it)', s => J.transition(s, A, 'T-1', 'in-progress')),
+      step('Agent B asks for next work', s => J.next(s, B)),
+      step('Agent B tries to move T-1 anyway', s => J.transition(s, B, 'T-1', 'in-review')),
+      step('Agent B starts T-2', s => J.transition(s, B, 'T-2', 'in-progress')),
+    ] },
+  { title: 'Review loop', seed: 'review',
+    about: 'Code review finds a problem. A loop in JigFlow is just a Transition that goes backwards, with no separate orchestration.',
+    steps: [
+      step('Agent A asks for next work', s => J.next(s, A)),
+      step('Review finds a problem: back to in-progress', s => J.transition(s, A, 'T-1', 'in-progress')),
+      step('Agent A asks for next work', s => J.next(s, A)),
+      step('Agent A resubmits for review', s => J.transition(s, A, 'T-1', 'in-review')),
+    ] },
+  { title: 'Triage', seed: 'empty',
+    about: 'An incoming bug goes through Pocock\'s triage labels. The agent can ask for more information, but only you decide who does the work. needs-triage is an Inbox, so agents can file bugs into it without asking. Watch the Claim disappear when I-1 waits on the reporter. A "ready-for-human" issue never shows up in an agent\'s `next`.',
+    steps: [
+      step('A reporter (you) files a bug', s => J.create(s, HUMAN, { type: 'Issue', status: 'needs-triage', title: 'Reset link expires instantly', fields: { category: 'bug' } })),
+      step('Agent A asks for next work', s => J.next(s, A)),
+      step('Agent A runs /triage and asks for more info', s => J.transition(s, A, 'I-1', 'needs-info')),
+      step('Agent A asks for next work', s => J.next(s, A)),
+      step('The reporter adds details: back to triage', s => J.transition(s, HUMAN, 'I-1', 'needs-triage')),
+      step('Agent A marks I-1 ready-for-agent itself', s => J.transition(s, A, 'I-1', 'ready-for-agent')),
+      step('You mark I-1 ready-for-human', s => J.transition(s, HUMAN, 'I-1', 'ready-for-human')),
+      step('Agent A asks for next work', s => J.next(s, A)),
+      step('Agent B finds another bug and files it (needs-triage is an Inbox)', s => J.create(s, B, { type: 'Issue', status: 'needs-triage', title: 'Token not invalidated after use', fields: { category: 'bug' } })),
+      step('Agent A asks for next work', s => J.next(s, A)),
+    ] },
+];
+
+let scen = 0, pos = 0;
+function startScenario(i) { scen = i; pos = 0; prev = null; state = SEEDS[SCENARIOS[i].seed](); render(); }
+function apply(newState) { prev = state; state = newState; render(); }
+
+const el = (id) => document.getElementById(id);
+const esc = (t) => String(t).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+function renderTabs() {
+  el('tabs').innerHTML = SCENARIOS.map((s, i) => `<button class="${i === scen ? 'on' : ''}" data-tab="${i}">${esc(s.title)}</button>`).join('');
+  const S = SCENARIOS[scen];
+  el('scenario').innerHTML = `<p>${esc(S.about).replace(/`([^`]+)`/g, '<code>$1</code>')}</p>
+    <ol class="steps">${S.steps.map((st, i) => `<li class="${i < pos ? 'done' : ''}"><button class="${i === pos ? 'primary' : ''}" data-step="${i}" ${i !== pos ? 'disabled' : ''}>${esc(st.label)}</button></li>`).join('')}</ol>
+    <div class="row" style="margin-top:10px"><button data-restart>Restart this walkthrough</button>${pos >= S.steps.length ? '<span class="muted">Done. Try free play below, or another tab.</span>' : ''}</div>`;
+}
+
+function workCell(a) {
+  if (J.isFinal(state, a)) return '<span class="pill final">finished</span>';
+  const b = J.bindingOf(state, a);
+  return b ? `<span class="pill bound">agent: /${esc(b)}</span>` : '<span class="pill human">human queue</span>';
+}
+
+function renderState() {
+  const types = Object.keys(POCOCK.types);
+  let h = '';
+  for (const t of types) {
+    const rows = state.order.map(id => state.artifacts[id]).filter(a => a.type === t);
+    if (!rows.length) continue;
+    h += `<h3>${t}s <span class="muted" style="font-weight:400;font-size:12px">stored in ${POCOCK.types[t].store}</span></h3><div class="scroll"><table>
+      <tr><th>ID</th><th>Title</th><th>Status</th><th>Who works on it</th><th>Claim</th><th>Links</th><th>Try a Transition as ${esc(ACTORS.find(x => x[1] === actor)[0])}</th></tr>`;
+    for (const a of rows) {
+      const changed = prev && (!prev.artifacts[a.id] || prev.artifacts[a.id].status !== a.status || prev.artifacts[a.id].claim !== a.claim);
+      const links = Object.entries(a.links).filter(([, v]) => v.length).map(([k, v]) => `${k.replace('_', ' ')} ${v.join(', ')}`).join('<br>') || '<span class="muted">none</span>';
+      const moves = J.outgoing(state, a).map(tr => `<button class="small" data-move="${a.id}|${tr.to}">→ ${esc(tr.to)}${tr.human ? ' 👤' : ''}</button>`).join('') || '<span class="muted">none</span>';
+      h += `<tr class="${changed ? 'changed' : ''}"><td><strong>${a.id}</strong></td><td>${esc(a.title)}</td><td><code>${esc(a.status)}</code></td><td>${workCell(a)}</td><td>${a.claim ? 'Agent ' + a.claim : '<span class="muted">none</span>'}</td><td>${links}</td><td>${moves}</td></tr>`;
+    }
+    h += '</table></div>';
+  }
+  if (!state.order.length) h += '<p class="muted">No Artifacts yet.</p>';
+
+  const pend = state.proposals.filter(p => p.status === 'pending');
+  h += `<h3>Proposals waiting for you</h3>` + (pend.length ? pend.map(p => `<div class="proposal"><strong>${p.id}</strong> from ${esc(p.by)}: ${esc(p.summary)}<ul>${p.items.map(i => `<li>${i.op === 'create' ? `create ${i.type} "${esc(i.title)}" in <code>${i.status}</code>` : `move ${i.id} → <code>${i.to}</code>`}</li>`).join('')}</ul>
+    <button class="small" data-approve="${p.id}">Approve as ${esc(ACTORS.find(x => x[1] === actor)[0])}</button><button class="small" data-reject="${p.id}">Reject</button></div>`).join('') : '<p class="muted">None.</p>');
+
+  const cA = J.candidates(state, 'A'), cB = J.candidates(state, 'B');
+  h += `<h3>Playbook check</h3><p>${(J.check(POCOCK).length ? J.check(POCOCK).map(esc).join('<br>') : '✅ No problems: every Inbox reaches changing Skills only through a Human Transition.')}</p>
+  <h3>Sessions and Gates</h3><div class="kv">
+    <span class="muted">Agent A focus</span><span>${state.focus.A || '<span class="muted">none</span>'} <span class="muted">· could pick: ${cA.picks.map(p => p.id).join(', ') || 'nothing'}</span></span>
+    <span class="muted">Agent B focus</span><span>${state.focus.B || '<span class="muted">none</span>'} <span class="muted">· could pick: ${cB.picks.map(p => p.id).join(', ') || 'nothing'}</span></span>
+    <span class="muted">Gate: tests</span><span>${state.gates.tests ? '✅ would pass' : '❌ would fail'} <code>go test ./...</code></span>
+    <span class="muted">Gate: lint</span><span>${state.gates.lint ? '✅ would pass' : '❌ would fail'} <code>golangci-lint run</code></span></div>`;
+  el('state').innerHTML = h;
+}
+
+function renderFreeplay() {
+  el('actors').innerHTML = '<span class="muted" style="font-size:13px">Act as:</span>' + ACTORS.map(([n, a], i) => `<button class="${a === actor ? 'on' : ''}" data-actor="${i}">${n}</button>`).join('');
+  el('freeplay').innerHTML = `
+    <div class="row"><button data-fp="next">Ask for next work</button>
+    <button data-fp="breakdown">Propose ticket breakdown for S-1</button></div>
+    <div class="row"><button data-fp="direct">Create a ticket directly in ready-for-agent</button>
+    <button data-fp="issue">File a new bug</button></div>
+    <div class="row"><button data-fp="tests">Make tests ${state.gates.tests ? 'fail' : 'pass'}</button>
+    <button data-fp="lint">Make lint ${state.gates.lint ? 'fail' : 'pass'}</button></div>
+    <div class="row"><span class="muted" style="font-size:13px">Start over from:</span>
+    <button data-seed="spec">an approved Spec</button><button data-seed="parallel">3 tickets</button><button data-seed="empty">nothing</button></div>
+    <p class="muted" style="font-size:12.5px">Transition buttons are in each table row. 👤 marks a Human Transition.</p>`;
+}
+
+function renderLog() {
+  el('log').innerHTML = state.log.length ? state.log.map(e => `<li class="${e.kind}"><span class="who">${esc(e.actor)}</span>: ${esc(e.text)}</li>`).join('') : '<li class="muted">Nothing yet. Press the first highlighted step above.</li>';
+}
+
+function render() { renderTabs(); renderState(); renderFreeplay(); renderLog(); }
+
+document.addEventListener('click', (e) => {
+  const b = e.target.closest('button'); if (!b) return;
+  const d = b.dataset;
+  if (d.tab) return startScenario(+d.tab);
+  if (d.restart !== undefined) return startScenario(scen);
+  if (d.step) { const st = SCENARIOS[scen].steps[+d.step]; pos++; return apply(st.fn(state)); }
+  if (d.actor) { actor = ACTORS[+d.actor][1]; return render(); }
+  if (d.move) { const [id, to] = d.move.split('|'); return apply(J.transition(state, actor, id, to)); }
+  if (d.approve) return apply(J.approve(state, actor, d.approve));
+  if (d.reject) return apply(J.reject(state, actor, d.reject));
+  if (d.seed) { prev = null; state = SEEDS[d.seed](); return render(); }
+  const fp = {
+    next: () => J.next(state, actor),
+    breakdown: () => J.propose(state, actor, 'break S-1 into 3 tickets', breakdownItems()),
+    direct: () => J.create(state, actor, { type: 'Ticket', status: 'ready-for-agent', title: 'Extra ticket' }),
+    issue: () => J.create(state, actor, { type: 'Issue', status: 'needs-triage', title: 'New bug report', fields: { category: 'bug' } }),
+    tests: () => J.setGate(state, 'tests', !state.gates.tests),
+    lint: () => J.setGate(state, 'lint', !state.gates.lint),
+  }[d.fp];
+  if (fp) apply(fp());
+});
+
+startScenario(0);
+</script>
+</body>
+</html>

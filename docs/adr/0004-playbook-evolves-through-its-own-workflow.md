@@ -1,0 +1,3 @@
+# The Playbook evolves through its own workflow
+
+Personas can be created on demand when a need comes up in conversation. Instead of a separate mechanism, a Persona is an Artifact of a built-in type: the agent proposes one, and a Human Transition activates it. v1 extends the same path to the whole Playbook: a shipped `playbook-author` Skill interviews the user about how they work and proposes Artifact Types, Statuses and Bindings, which the human approves. This reuses "the agent proposes, the human approves" instead of adding special cases, and turns writing a Playbook from scratch from "learn every concept" into "describe how you work".

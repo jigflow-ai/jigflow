@@ -1,0 +1,3 @@
+# The Status machine is the topology; there is no separate orchestration layer
+
+Users "build their own agentic framework" by declaring Artifact Types, Statuses, Transitions and Bindings (Status to Skill), not by writing pipelines or graphs. A `next` command resolves which Skill applies to which Artifact whose Status's Readiness holds, and autopilot repeats `next` until it reaches a Human Transition; loops such as review-and-rework are just backward Transitions. We rejected a separate pipeline/graph concept because it would duplicate the Status machine and we don't run the agent loop anyway (ADR 0001).

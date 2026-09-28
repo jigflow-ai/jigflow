@@ -1,0 +1,7 @@
+# Human Transitions are a guardrail, not a security boundary
+
+The agent can run any shell command, so we cannot truly stop it from performing a Human Transition. The CLI requires an interactive TTY confirmation for Human Transitions, and the MCP server doesn't offer them at all. This stops accidents, not a determined agent. The Dashboard is the stronger, out-of-band channel (an agent in a terminal can't click in your browser), and a Playbook can require it for a given Transition.
+
+Creating an Artifact directly into a Status that has a Binding (e.g. `to-tickets` creating tickets straight into `ready-for-agent`) also counts as a Human Transition. Otherwise an agent could create work that autopilot immediately picks up, skipping the human. The exception is an Inbox Status (e.g. `needs-triage`), where agents may file items freely: `jfl check` refuses any Inbox from which a Skill that changes code or Artifacts can be reached without passing a Human Transition, so the human gate still sits downstream.
+
+Related Artifacts and Transitions go forward as one Proposal (e.g. a whole ticket breakdown), approved or rejected as a unit, with edits to individual items allowed in the Dashboard. Otherwise the creation rule above would make flows like Pocock's tedious. While a Proposal is pending, `next` skips the Artifacts it touches, so autopilot doesn't redo work that is waiting for approval.

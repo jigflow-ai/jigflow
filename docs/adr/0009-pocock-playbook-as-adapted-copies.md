@@ -1,0 +1,5 @@
+# Ship Matt Pocock's workflow as adapted copies, in its own repo
+
+JigFlow ships two Playbooks, Larapilot-style and Pocock, and `init` asks which one to use instead of choosing a default. Pocock's skills (MIT, © 2026 Matt Pocock) can't ship word for word, because they call `gh`/`glab` directly, which ADR 0008 forbids. We ship adapted copies instead: pinned to an upstream commit, with tracker instructions rewritten to use `jfl`, `setup-matt-pocock-skills` replaced by `jfl init`, and `ask-matt` replaced by a router generated from the Playbook's Bindings. The Playbook lives in its own repo (usable as a Base Playbook via a git URL), so it can follow upstream's fast pace without a binary release, and a sync script shows the diff against newer upstream versions.
+
+The Larapilot-style Playbook keeps the core (PRD, Requirement, Story, Task; the inception/adopt → spec → plan → implement → review loop; MoSCoW; "Done means"; one commit per Task as an Action) and drops what's tied to Laravel, the separate Journey and NFR Types (they become PRD fields), effort modes, and all but five or six generic Personas.
