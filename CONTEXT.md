@@ -69,15 +69,19 @@ A user-declared command run after a Transition succeeds (e.g. commit, open a bra
 _Avoid_: Hook, effect, callback
 
 **Human Transition**:
-A Transition that only a human may perform; the agent can propose it but never make it. Creating an Artifact directly into a Status that has a Binding also counts as a Human Transition, unless that Status is an Inbox. A Playbook may require one to be made in the Dashboard. It guards against accidents, not against a determined agent.
+A Transition that only a human may perform; the agent can propose or request it but never make it, since it needs a Confirmation. Creating an Artifact directly into a Status that has a Binding also counts as a Human Transition, unless that Status is an Inbox. A Playbook may require one to be made in the Dashboard. It guards against accidents, not against a determined agent.
 _Avoid_: Approval step, manual step
+
+**Confirmation**:
+A person's yes to a Human Transition or a Proposal, given through a channel the agent can't answer for them: an interactive terminal, a prompt the agent's client shows only to the person, or the Dashboard.
+_Avoid_: Approval, consent, sign-off
 
 **Focus**:
 The Artifact a session is currently working on; set by `next` and moved by Transitions. It lives only in the session, never in git.
 _Avoid_: Claim, current task, active item
 
 **Proposal**:
-A set of one or more Artifacts, Transitions or changes to the Playbook (a Gate's command, a Guideline, an Artifact Type, a Skill) an agent, or `jfl init`, puts forward together, approved or rejected by a human as one unit.
+A set of one or more Artifacts, Transitions or changes to the Playbook (a Gate's command, a Guideline, an Artifact Type, a Skill) an agent, or `jfl init`, puts forward together, approved, through a Confirmation, or rejected by a human as one unit.
 _Avoid_: Batch, changeset, request
 
 **Claim**:
@@ -87,7 +91,7 @@ _Avoid_: Lock, assignment, reservation
 ### Visibility
 
 **Ledger**:
-The committed record of the time each Artifact spends in each Status, and of agent session time, and tokens where the agent's own records expose them (never numbers the agent reports), charged to the Artifact in Focus or to unattributed.
+The committed record of the time each Artifact spends in each Status, and of agent session time, and tokens where the agent's own records expose them (never numbers the agent reports), charged to the Artifact in Focus or to unattributed; and the channel of the Confirmation behind each Human Transition or approved Proposal.
 _Avoid_: Usage log, metrics, telemetry
 
 **Connector**:
