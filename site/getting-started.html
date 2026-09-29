@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Getting started · JigFlow</title>
-<meta name="description" content="Install jfl, set a project up with jfl init, and work the first loop.">
+<meta name="description" content="Install jfl, set a project up from Claude Code or with jfl init, and work the first loop.">
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -46,6 +46,25 @@ export PATH="$PWD/bin:$PATH"</code></pre>
 <p>With Go installed you can use <code>go install github.com/jigflow-ai/jigflow/cmd/jigflow@latest</code> instead, and link <code>jfl</code> to <code>jigflow</code> yourself. The GitHub and Linear Connectors are separate executables (<code>jfl-connector-github</code>, <code>jfl-connector-linear</code>), needed only when an Artifact Type is kept in a tracker.</p>
 
 <h2 id="init">Set a project up</h2>
+<p>There are two ways, and they end in the same place: from Claude Code, where you answer the agent's questions in chat and it runs <code>jfl init</code> for you, or at the terminal, where you run <code>jfl init</code> yourself.</p>
+
+<h3 id="init-from-claude-code">From Claude Code</h3>
+<p>Install jfl's setup Skill once per machine:</p>
+<pre><code>jfl install claude-code</code></pre>
+<pre class="out"><code>installed jfl's Skills for Claude Code
+  wrote /home/you/.claude/skills/jigflow-init/SKILL.md</code></pre>
+<p>It goes in your user-level Claude Code Skills, under <code>$CLAUDE_CONFIG_DIR</code> when you set it, so every repository has it before it is set up. Nothing is written into the directory you run it in. Run it again after upgrading <code>jfl</code> to get the Skill that ships with it.</p>
+<p>Then, in Claude Code in the repository, type <code>/jigflow-init</code>. Only you can start it. The agent:</p>
+<ol>
+  <li>Looks at the repository, then suggests a Playbook and explains the three choices in a few lines each. Say "you choose" and it picks.</li>
+  <li>Works out the Connector settings it can, such as the GitHub <code>owner/name</code> from the git remote, and the label of each Status, shows them to you, and asks only for the rest.</li>
+  <li>Runs <code>jfl init</code> itself, as an agent session with <code>JFL_SESSION</code> set and every answer as a flag. There <code>init</code> never asks: one answer missing fails, naming the flag to give and writing nothing, and the agent fixes its command.</li>
+  <li>Reads back what was set up and the Proposal waiting for you. P-1 is the agent session's Proposal, so it can't approve it: you approve it in your own terminal, in the Dashboard, or in a form only you see.</li>
+  <li>Asks you to restart Claude Code in a new session, not a resumed one (no <code>--resume</code> or <code>--continue</code>), so the hooks and <code>jfl mcp</code> that <code>init</code> set up are live.</li>
+</ol>
+<p>In the new session, type <code>/jigflow-init</code> again and the agent asks you about P-1 through jfl's <code>approve</code> tool, in a form Claude Code shows only to you. If you chose to build your own Playbook, type <code>/playbook-author</code> there. Agents that read <code>AGENTS.md</code>, such as Codex, have no user-level place for Skills, so <code>jfl install agents-md</code> is refused: set those projects up at the terminal.</p>
+
+<h3 id="init-at-the-terminal">At the terminal</h3>
 <pre><code>mkdir todo &amp;&amp; cd todo &amp;&amp; git init
 printf 'module todo\n\ngo 1.22\n' &gt; go.mod
 jfl init</code></pre>
@@ -81,7 +100,6 @@ gates:
   tests: go test ./...
   lint: go vet ./...</code></pre>
 <p>Running <code>jfl init</code> again is safe. It keeps the Playbook, publishes again through the same Adapters, and asks for or proposes only what's missing.</p>
-<p id="init-agent">Your agent can run <code>jfl init</code> for you, once you've told it your answers in chat. Run as an agent session, with <code>JFL_SESSION</code> set, it never asks: every answer comes from a flag, the Connector settings and each Status's label too, and one missing fails, naming the flag to give and writing nothing, on a first run as on a later one. P-1 is then the agent session's Proposal, so it still waits for you: approve it with <code>jfl approve P-1</code> in your own terminal, in the Dashboard, or in the form your agent's client shows only to you.</p>
 
 <h2 id="first-loop">The first loop</h2>
 <p>Create a PRD. A person creates it in <code>inception</code>, for a product not built yet, or in <code>adopt</code>, for an existing codebase:</p>

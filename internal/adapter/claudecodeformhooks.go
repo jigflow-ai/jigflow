@@ -64,11 +64,21 @@ const claudeCodeLocalSettings = ".claude/settings.local.json"
 // claudeCodeUserSettings is the user's Claude Code settings file, or ""
 // when neither CLAUDE_CONFIG_DIR nor HOME says where it is.
 func claudeCodeUserSettings(getenv func(string) string) string {
+	if dir := claudeCodeUserDir(getenv); dir != "" {
+		return filepath.Join(dir, "settings.json")
+	}
+	return ""
+}
+
+// claudeCodeUserDir is the directory where Claude Code keeps the user's
+// own configuration, their settings and Skills among it: CLAUDE_CONFIG_DIR,
+// or else .claude in the home directory; "" when neither says where it is.
+func claudeCodeUserDir(getenv func(string) string) string {
 	if config := getenv("CLAUDE_CONFIG_DIR"); config != "" {
-		return filepath.Join(config, "settings.json")
+		return config
 	}
 	if home := getenv("HOME"); home != "" {
-		return filepath.Join(home, ".claude", "settings.json")
+		return filepath.Join(home, ".claude")
 	}
 	return ""
 }

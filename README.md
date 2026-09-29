@@ -20,6 +20,14 @@ export PATH="$PWD/bin:$PATH"
 
 Or, with Go installed: `go install github.com/jigflow-ai/jigflow/cmd/jigflow@latest`, then `ln -s jigflow "$(go env GOPATH)/bin/jfl"`.
 
+To set projects up from Claude Code, install jfl's setup Skill once per machine:
+
+```sh
+jfl install claude-code         # writes jigflow-init to ~/.claude/skills, or $CLAUDE_CONFIG_DIR/skills
+```
+
+Then type `/jigflow-init` in Claude Code in any repository. The agent looks at the repository, suggests a Playbook, works out the settings it can (such as the GitHub repository from the git remote) and asks you for the rest, then runs `jfl init` for you with every answer as a flag. What `init` proposes still waits for your approval, and the agent asks you to restart Claude Code in a new session so jfl's hooks and MCP server are live. Or run `jfl init` yourself, as below.
+
 ## Try it in five minutes
 
 In an empty repository, with the Larapilot-style Playbook that ships inside `jfl`:
@@ -79,6 +87,7 @@ From there `/spec` turns the PRD into Requirements, `/plan` into Stories and Tas
 | `jfl create`, `move`, `comment`, `show`, `query` | work with Artifacts |
 | `jfl propose`, `approve`, `reject` | Proposals: changes a person approves as one unit |
 | `jfl check`, `simulate`, `migrate` | validate a Playbook (warning about agent hooks that could answer a Confirmation for you), walk an Artifact Type through it, migrate Artifacts after a change |
+| `jfl install claude-code` | install the `/jigflow-init` Skill for every project, which sets a project up from Claude Code |
 | `jfl publish <adapter>` | publish the Skills for `claude-code` or `agents-md`, and register `jfl mcp` for the agent: in `.mcp.json` for Claude Code, or by printing the command for an `AGENTS.md` agent |
 | `jfl ui`, `ledger` | the local Dashboard; time and tokens per Artifact, and where each Confirmation came from |
 | `jfl mcp` | the agent-safe commands as an MCP server, and approving a Proposal, as soon as it is proposed or later, or making a Human Transition, in a form your agent's client shows only to you |

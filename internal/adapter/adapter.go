@@ -38,12 +38,21 @@ type Adapter struct {
 	// the Adapter doesn't write. Every publish prints it.
 	RegisterHint string
 	render       func(pb *engine.Playbook, personas map[string]string) []File
+	// install, when set, renders jfl's own Skills, those of no Playbook,
+	// for the coding agent to offer in every project of the user's: the
+	// directory it finds the user's Skills in, and the files, relative to
+	// it.
+	install func(getenv func(string) string) (dir string, files []File, err error)
+	// NoInstall says why an Adapter without install can't install jfl's
+	// own Skills.
+	NoInstall string
 }
 
 // Adapters are the Adapters JigFlow ships, by name.
 var Adapters = []Adapter{
-	{Name: ClaudeCode, Agent: "Claude Code", Where: []string{claudeCodeSkills, claudeCodeSettings, claudeCodeMCP}, render: claudeCode},
-	{Name: "agents-md", Agent: "agents that read AGENTS.md", Where: []string{"AGENTS.md", agentsSkills, agentsPersonas}, RegisterHint: agentsRegisterMCP, render: agentsMD},
+	{Name: ClaudeCode, Agent: "Claude Code", Where: []string{claudeCodeSkills, claudeCodeSettings, claudeCodeMCP}, render: claudeCode, install: claudeCodeInstall},
+	{Name: "agents-md", Agent: "agents that read AGENTS.md", Where: []string{"AGENTS.md", agentsSkills, agentsPersonas}, RegisterHint: agentsRegisterMCP, render: agentsMD,
+		NoInstall: "agents that read AGENTS.md have no documented place for a user's own Skills, only a project's; set a project up for them with jfl init at a terminal"},
 }
 
 // Find returns the Adapter with the given name, or nil.

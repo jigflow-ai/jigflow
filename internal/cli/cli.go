@@ -117,6 +117,7 @@ var commands = map[string]func(*env, []string) error{
 	"migrate":   cmdMigrate,
 	"simulate":  cmdSimulate,
 	"publish":   cmdPublish,
+	"install":   cmdInstall,
 	"ledger":    cmdLedger,
 	"hook":      cmdHook,
 	"ui":        cmdUI,
@@ -256,6 +257,20 @@ Commands:
                           It warns about hooks that can answer the
                           Confirmation form, as check does, whichever the
                           Adapter, since any agent may run in Claude Code
+  install <adapter>       install jfl's own Skills, which belong to no
+                          Playbook, for a coding agent at user level, so
+                          every project has them before it is set up:
+                          claude-code writes jigflow-init, a Skill only a
+                          person starts, to $CLAUDE_CONFIG_DIR/skills, or
+                          ~/.claude/skills. Typed as /jigflow-init in a
+                          repository, it has the agent suggest a Playbook,
+                          work out its settings with the person and run
+                          jfl init with every answer as a flag. It writes
+                          nothing into the directory it runs in; installing
+                          again changes nothing, or replaces the Skill with
+                          the one this jfl ships, but never one a person
+                          wrote. agents-md is refused: those agents have no
+                          user-level place for Skills
   ledger                  sum the Ledger: the time each Artifact spent in each
                           Status, so far in the one it is in, and the agent
                           session time and tokens charged to it while it was
