@@ -125,7 +125,7 @@ transitions:
 <tr><td><code>statuses</code></td><td>Every Status, in order.</td></tr>
 <tr><td><code>initial</code>, <code>final</code></td><td>Where Artifacts may be created, and where they end. Entering a final Status releases a Claim.</td></tr>
 <tr><td><code>inbox</code></td><td>Statuses anyone, agents included, may create into directly. <code>jfl check</code> refuses an Inbox from which a Skill that changes code or Artifacts is reachable without passing a Human Transition.</td></tr>
-<tr><td><code>links</code></td><td>Named, typed Links to Artifacts of other Types (or the same one).</td></tr>
+<tr><td><code>links</code></td><td>Named, typed Links to Artifacts of other Types (or the same one). Their order counts: the Dashboard's Timeline nests an Artifact under the target of its first declared Link to a different Type, so declare the one to its parent first, as <code>part_of: Story</code> above.</td></tr>
 <tr><td><code>bindings</code></td><td>For each Status an agent works on, the Skill that does it. A Status with no Binding is human work.</td></tr>
 <tr><td><code>readiness</code></td><td>Per Status, the conditions that must hold before agent work may start there.</td></tr>
 <tr><td><code>transitions</code></td><td>Every allowed move. Anything not listed is refused.</td></tr>

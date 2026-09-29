@@ -142,6 +142,30 @@ a.id { font-family: var(--mono); font-size: 12.5px; font-weight: 500; }
 form.comment-form { display: grid; gap: 8px; justify-items: start; }
 form.comment-form textarea { box-sizing: border-box; width: 100%; font: 14px/1.5 var(--mono); color: var(--text); background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; resize: vertical; }
 form.comment-form textarea:focus { border-color: var(--accent); outline: 3px solid var(--accent-soft); outline-offset: 0; }
+/* The Timeline: a bar per Artifact across time, coloured by Status, hatched
+   where it waited on a person, with agent session time in a band under it. */
+:root { --s0: #8cc4e3; --s1: #0a86c9; --s2: #d99a2b; --s3: #0c8467; --s4: #8b67c9; --s5: #d0566f; --s6: #4fa5a0; --s7: #7c8b2f; --s-other: #9aaab5; --agent: #0d2b3e; }
+@media (prefers-color-scheme: dark) {
+  :root { --s0: #5a9fc4; --s1: #4cb6ee; --s2: #f5b454; --s3: #4fd1a5; --s4: #b393ec; --s5: #ff8aa0; --s6: #6fc8c2; --s7: #b6c45a; --s-other: #7d93a3; --agent: #e4f0f7; }
+}
+.tl { min-width: 640px; }
+ul.timeline, ul.timeline ul { list-style: none; margin: 0; padding: 0; }
+.tl-row { display: grid; grid-template-columns: minmax(180px, 32%) 1fr; align-items: center; gap: 12px; border-bottom: 1px solid var(--line-soft); }
+.tl-axis { border-bottom: 1px solid var(--line); }
+.tl-label { padding: 3px 0 3px calc(var(--depth, 0) * 18px); font-size: 13.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tl-ends { display: flex; justify-content: space-between; padding: 4px 0; }
+.tl-bar { display: block; overflow: visible; }
+.tl-bar a:hover rect:not(.agent) { stroke: var(--text); stroke-width: 1; }
+.tl-key { display: inline-flex; align-items: center; gap: 5px; margin-right: 8px; }
+.tl-defs { position: absolute; }
+rect.agent { fill: var(--agent); opacity: .75; }
+.s0 { fill: var(--s0); } .s1 { fill: var(--s1); } .s2 { fill: var(--s2); } .s3 { fill: var(--s3); } .s4 { fill: var(--s4); } .s5 { fill: var(--s5); } .s6 { fill: var(--s6); } .s7 { fill: var(--s7); } .s-other { fill: var(--s-other); }
+.tl-defs pattern rect { fill: var(--panel); }
+.tl-defs pattern line { stroke-width: 3; }
+.tl-defs pattern.s0 line { stroke: var(--s0); } .tl-defs pattern.s1 line { stroke: var(--s1); } .tl-defs pattern.s2 line { stroke: var(--s2); } .tl-defs pattern.s3 line { stroke: var(--s3); } .tl-defs pattern.s4 line { stroke: var(--s4); } .tl-defs pattern.s5 line { stroke: var(--s5); } .tl-defs pattern.s6 line { stroke: var(--s6); } .tl-defs pattern.s7 line { stroke: var(--s7); } .tl-defs pattern.s-other line { stroke: var(--s-other); }
+rect.hatched { stroke-width: 1; }
+/* A presentation attribute gives way to any CSS, so the hatching is set here too. */
+rect.hatched.s0 { fill: url(#hatch-s0); stroke: var(--s0); } rect.hatched.s1 { fill: url(#hatch-s1); stroke: var(--s1); } rect.hatched.s2 { fill: url(#hatch-s2); stroke: var(--s2); } rect.hatched.s3 { fill: url(#hatch-s3); stroke: var(--s3); } rect.hatched.s4 { fill: url(#hatch-s4); stroke: var(--s4); } rect.hatched.s5 { fill: url(#hatch-s5); stroke: var(--s5); } rect.hatched.s6 { fill: url(#hatch-s6); stroke: var(--s6); } rect.hatched.s7 { fill: url(#hatch-s7); stroke: var(--s7); } rect.hatched.s-other { fill: url(#hatch-s-other); stroke: var(--s-other); }
 @media (max-width: 560px) {
   header .bar { justify-content: flex-start; }
   h1 { font-size: 24px; }
@@ -159,6 +183,7 @@ form.comment-form textarea:focus { border-color: var(--accent); outline: 3px sol
     <div class="name"><svg width="22" height="22" viewBox="0 0 22 22" aria-hidden="true"><rect x="1" y="1" width="20" height="20" rx="6" fill="var(--accent)"/><path d="M6 8h6.5a2.5 2.5 0 0 1 0 5H9.5a2.5 2.5 0 0 0 0 5H16" fill="none" stroke="var(--on-accent)" stroke-width="2" stroke-linecap="round"/></svg>JigFlow <span>{{.Playbook}}</span></div>
     <nav>
       <a href="/"{{if eq .Page "backlog"}} aria-current="page"{{end}}>Backlog</a>
+      <a href="/timeline"{{if eq .Page "timeline"}} aria-current="page"{{end}}>Timeline</a>
       <a href="/playbook"{{if eq .Page "playbook"}} aria-current="page"{{end}}>Playbook</a>
       <a href="/workflows"{{if eq .Page "workflows"}} aria-current="page"{{end}}>Workflows</a>
       <a href="/ledger"{{if eq .Page "ledger"}} aria-current="page"{{end}}>Ledger</a>

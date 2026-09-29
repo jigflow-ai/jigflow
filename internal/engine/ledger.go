@@ -2,6 +2,7 @@ package engine
 
 import (
 	"cmp"
+	"maps"
 	"slices"
 	"strconv"
 	"strings"
@@ -209,19 +210,12 @@ func Summarise(pb *Playbook, l Ledger, now time.Time) LedgerSummary {
 		}
 	}
 
-	// Each session's Focus changes, in the order they happened.
-	sessions := map[string][]FocusChange{}
-	for _, f := range l.Focuses {
-		sessions[f.Session] = append(sessions[f.Session], f)
-	}
-	for _, fs := range sessions {
-		for i := 0; i+1 < len(fs); i++ {
-			d := elapsed(fs[i].At, fs[i+1].At)
-			if fs[i].Focus == "" {
-				sum.Unattributed += d
-			} else {
-				artifact(fs[i].Focus).Agent += d
-			}
+	sessions := l.sessions()
+	for _, s := range l.AgentTime() {
+		if s.Artifact == "" {
+			sum.Unattributed += s.Time()
+		} else {
+			artifact(s.Artifact).Agent += s.Time()
 		}
 	}
 
@@ -268,6 +262,43 @@ func Summarise(pb *Playbook, l Ledger, now time.Time) LedgerSummary {
 		}
 	}
 	return sum
+}
+
+// AgentStretch is agent session time charged to one Artifact, or to none
+// when nothing was in Focus: from one Focus change of the session to its
+// next.
+type AgentStretch struct {
+	Session, Artifact string
+	From, To          time.Time
+}
+
+// Time is how long the stretch lasted, or none when the clocks of the
+// machines that recorded it disagree on which came first.
+func (s AgentStretch) Time() time.Duration { return elapsed(s.From, s.To) }
+
+// AgentTime returns the Ledger's agent session time, stretch by stretch,
+// by session and in the order it happened. Time after a session's last
+// Focus change isn't charged yet.
+func (l Ledger) AgentTime() []AgentStretch {
+	sessions := l.sessions()
+	var out []AgentStretch
+	for _, id := range slices.Sorted(maps.Keys(sessions)) {
+		fs := sessions[id]
+		for i := 0; i+1 < len(fs); i++ {
+			out = append(out, AgentStretch{Session: id, Artifact: fs[i].Focus, From: fs[i].At, To: fs[i+1].At})
+		}
+	}
+	return out
+}
+
+// sessions returns each session's Focus changes, in the order they
+// happened.
+func (l Ledger) sessions() map[string][]FocusChange {
+	sessions := map[string][]FocusChange{}
+	for _, f := range l.Focuses {
+		sessions[f.Session] = append(sessions[f.Session], f)
+	}
+	return sessions
 }
 
 // focusAt is a session's Focus at the time at, given its Focus changes in

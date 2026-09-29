@@ -234,9 +234,23 @@ func linksTo(pb *engine.Playbook, a engine.Artifact, all []engine.Artifact) []in
 // each with the time it stayed in the Status it entered, and the agent
 // session time charged to it, as jfl ledger sums them at now.
 func history(pb *engine.Playbook, l engine.Ledger, a engine.Artifact, now time.Time) ([]historyEntry, time.Duration) {
+	var agent time.Duration
+	for _, at := range engine.Summarise(pb, l, now).Artifacts {
+		if at.ID == a.ID {
+			agent = at.Agent
+		}
+	}
+	return statusHistory(pb, l, a.ID, a.Type, now), agent
+}
+
+// statusHistory returns the Status changes in the Ledger l of the Artifact
+// id, of the Artifact Type typ, each with the time it stayed in the Status
+// it entered: until its next change, or so far at now while it is still
+// there, and none in a final Status.
+func statusHistory(pb *engine.Playbook, l engine.Ledger, id, typ string, now time.Time) []historyEntry {
 	var h []historyEntry
 	for _, c := range l.Statuses {
-		if c.Artifact != a.ID {
+		if c.Artifact != id {
 			continue
 		}
 		if n := len(h); n > 0 {
@@ -246,15 +260,9 @@ func history(pb *engine.Playbook, l engine.Ledger, a engine.Artifact, now time.T
 	}
 	// No work waits in a final Status, so no time is summed there.
 	if n := len(h); n > 0 {
-		if t := pb.Type(a.Type); t == nil || !slices.Contains(t.Final, h[n-1].To) {
+		if t := pb.Type(typ); t == nil || !slices.Contains(t.Final, h[n-1].To) {
 			h[n-1].Time, h[n-1].Now = max(now.Sub(h[n-1].At), 0), true
 		}
 	}
-	var agent time.Duration
-	for _, at := range engine.Summarise(pb, l, now).Artifacts {
-		if at.ID == a.ID {
-			agent = at.Agent
-		}
-	}
-	return h, agent
+	return h
 }

@@ -129,11 +129,21 @@ type ArtifactType struct {
 	Bindings    map[string]string      // Status -> Skill; a Status with no Binding is human work
 	Hints       map[string]Hints       // Status -> how its Binding asks for the Skill to run
 	Links       map[string]string      // Link name -> the Artifact Type it points to
+	LinkOrder   []string               // the names of Links, in the order they are declared
 	Readiness   map[string][]Condition // Status -> what must hold before agent work there may start
 	Transitions []Transition
 	Migrations  map[string]string // an old, undeclared Status -> the Status its Artifacts migrate to
 	File        string            // the file declaring it, as its author knows it; empty when built in
 	Source      string            // that file, as written
+}
+
+// DeclaredLinks returns the names of the Links of t in the order they are
+// declared, or by name for a Type built with no order.
+func (t *ArtifactType) DeclaredLinks() []string {
+	if len(t.LinkOrder) == len(t.Links) {
+		return t.LinkOrder
+	}
+	return slices.Sorted(maps.Keys(t.Links))
 }
 
 // Hints are how a Binding asks for its Skill to run, which Adapters

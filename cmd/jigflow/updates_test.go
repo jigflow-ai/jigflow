@@ -152,7 +152,7 @@ func TestEveryPageListensToTheStreamToUpdateItself(t *testing.T) {
 	p.MustRun("create", "Ticket", "--title", "Login page")
 	ui := p.StartUI()
 
-	for _, path := range []string{"/", "/workflows", "/ledger", "/artifacts/T-1"} {
+	for _, path := range []string{"/", "/timeline", "/workflows", "/ledger", "/artifacts/T-1"} {
 		if !listens(get(t, ui, path)) {
 			t.Errorf("%s doesn't listen to the change stream", path)
 		}
@@ -197,7 +197,7 @@ func TestEveryPageHasABarToSayTheProjectChangedWithoutLosingEdits(t *testing.T) 
 	p := proposedBreakdown(t)
 	ui := p.StartUI()
 
-	for _, path := range []string{"/", "/workflows", "/ledger"} {
+	for _, path := range []string{"/", "/timeline", "/workflows", "/ledger"} {
 		m := changedBar.FindStringSubmatch(get(t, ui, path))
 		if m == nil {
 			t.Errorf("%s has no bar to say the project changed", path)

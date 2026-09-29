@@ -40,7 +40,7 @@ var uiPages = func() map[string]*template.Template {
 	// since is the version of the project a page shows, which writePage
 	// gives each page it writes.
 	funcs := template.FuncMap{"duration": duration, "tokens": tokens, "since": func() string { return "" }}
-	for _, name := range []string{"backlog", "playbook", "workflows", "ledger", "artifact", "playbookfile", "problem"} {
+	for _, name := range []string{"backlog", "timeline", "playbook", "workflows", "ledger", "artifact", "playbookfile", "problem"} {
 		pages[name] = template.Must(template.New("layout.html").Funcs(funcs).ParseFS(uiFiles, "ui/layout.html", "ui/parts.html", "ui/"+name+".html"))
 	}
 	return pages
@@ -141,6 +141,9 @@ func (d *dashboard) handler() http.Handler {
 			return
 		}
 		d.render(w, http.StatusOK, "backlog", "", d.backlogView(r, nil))
+	})
+	mux.HandleFunc("GET /timeline", func(w http.ResponseWriter, r *http.Request) {
+		d.render(w, http.StatusOK, "timeline", "", d.e.timelineView)
 	})
 	mux.HandleFunc("GET /playbook", func(w http.ResponseWriter, r *http.Request) {
 		d.render(w, http.StatusOK, "playbook", "", d.e.playbookView)
@@ -342,7 +345,7 @@ func (c chrome) Here() string {
 		return c.Path
 	}
 	switch c.Page {
-	case "playbook", "workflows", "ledger":
+	case "timeline", "playbook", "workflows", "ledger":
 		return "/" + c.Page
 	}
 	return "/"

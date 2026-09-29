@@ -124,6 +124,29 @@ func (tf *termFile) UnmarshalYAML(n *yaml.Node) error {
 	return nil
 }
 
+// linksFile is the Links of an Artifact Type: each name and the Artifact
+// Type it points to, in the order they are declared.
+//
+//	links:
+//	  part_of: Story
+//	  blocked_by: Task
+type linksFile struct {
+	To    map[string]string
+	Order []string
+}
+
+func (lf *linksFile) UnmarshalYAML(n *yaml.Node) error {
+	if err := n.Decode(&lf.To); err != nil {
+		return err
+	}
+	if n.Kind == yaml.MappingNode {
+		for i := 0; i < len(n.Content); i += 2 {
+			lf.Order = append(lf.Order, n.Content[i].Value)
+		}
+	}
+	return nil
+}
+
 type typeFile struct {
 	Name        string                     `yaml:"name"`
 	Prefix      string                     `yaml:"prefix"`
@@ -134,7 +157,7 @@ type typeFile struct {
 	Final       []string                   `yaml:"final"`
 	Inbox       []string                   `yaml:"inbox"`
 	Bindings    map[string]bindingFile     `yaml:"bindings"`
-	Links       map[string]string          `yaml:"links"`
+	Links       linksFile                  `yaml:"links"`
 	Readiness   map[string][]conditionFile `yaml:"readiness"`
 	Transitions []struct {
 		From    string          `yaml:"from"`
@@ -443,17 +466,18 @@ func (l *layer) readTypes(fsys fs.FS, label string) error {
 			tf.Store = ""
 		}
 		t := &engine.ArtifactType{
-			Name:     tf.Name,
-			Prefix:   tf.Prefix,
-			Store:    tf.Store,
-			Fields:   tf.Fields,
-			Statuses: tf.Statuses,
-			Initial:  tf.Initial,
-			Final:    tf.Final,
-			Inbox:    tf.Inbox,
-			Links:    tf.Links,
-			File:     rel,
-			Source:   string(data),
+			Name:      tf.Name,
+			Prefix:    tf.Prefix,
+			Store:     tf.Store,
+			Fields:    tf.Fields,
+			Statuses:  tf.Statuses,
+			Initial:   tf.Initial,
+			Final:     tf.Final,
+			Inbox:     tf.Inbox,
+			Links:     tf.Links.To,
+			LinkOrder: tf.Links.Order,
+			File:      rel,
+			Source:    string(data),
 		}
 		for status, b := range tf.Bindings {
 			if t.Bindings == nil {

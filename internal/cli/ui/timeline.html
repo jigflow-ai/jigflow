@@ -1,0 +1,49 @@
+{{define "title"}}Timeline{{end}}
+{{define "content"}}
+<h1>Timeline</h1>
+{{with .Tracked}}<p class="panel note">{{.}}: moves made in the tracker itself aren't in the Ledger, so a bar shows only the Statuses jfl moved it through.</p>{{end}}
+{{if not .Rows}}
+<p class="panel empty">Nothing to draw yet: the Ledger has no Status change. Each Artifact gets a bar once jfl creates or moves it.</p>
+{{else}}
+<p class="muted small">How the work went, from the Ledger only: what happened, with no forecast. Hover over a bar for its Status and dates, and open it for its Artifact's page. The page updates when the project changes, not as time passes.</p>
+<svg class="tl-defs" width="0" height="0" aria-hidden="true" focusable="false">
+  <defs>
+  {{range .Classes}}<pattern id="hatch-{{.}}" class="{{.}}" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="6" height="6"/><line x1="1.5" y1="0" x2="1.5" y2="6"/></pattern>{{end}}
+  </defs>
+</svg>
+<section class="panel" id="timeline">
+  <h2>How the work went</h2>
+  <div class="legend">
+    {{range .Legend}}<span><strong>{{.Type}}</strong> {{range .Statuses}}<span class="tl-key"><svg width="14" height="10" aria-hidden="true"><rect class="{{.Class}}{{if .Hatched}} hatched{{end}}"{{if .Hatched}} fill="url(#hatch-{{.Class}})"{{end}} width="14" height="10" rx="2"/></svg>{{.Status}}</span> {{end}}</span>{{end}}
+    <span class="tl-key"><svg width="14" height="10" aria-hidden="true"><rect class="s-other hatched" fill="url(#hatch-s-other)" width="14" height="10" rx="2"/></svg>hatched: no Binding, waiting on a person</span>
+    <span class="tl-key"><svg width="14" height="10" aria-hidden="true"><rect class="agent" y="3" width="14" height="4" rx="1"/></svg>agent session time</span>
+  </div>
+  <div class="scroll">
+  <div class="tl">
+    <div class="tl-row tl-axis">
+      <div class="tl-label"></div>
+      <div class="tl-ends small muted"><time datetime="{{.Start.UTC.Format "2006-01-02T15:04:05Z07:00"}}">{{.Start.Local.Format "2 Jan 2006 15:04"}}</time><span>to <time datetime="{{.AsOf.UTC.Format "2006-01-02T15:04:05Z07:00"}}">{{.AsOf.Local.Format "2 Jan 2006 15:04"}}</time>, now</span></div>
+    </div>
+    <ul class="timeline">
+    {{range .Rows}}{{template "timeline-row" .}}{{end}}
+    </ul>
+  </div>
+  </div>
+</section>
+<p class="muted small">Times come from jfl's own clock, never from the agent. Time after an agent session's last Focus change isn't charged yet.</p>
+{{end}}
+{{end}}
+{{define "timeline-row"}}
+<li id="row-{{.ID}}">
+  <div class="tl-row">
+    <div class="tl-label" style="--depth: {{.Depth}}"><a class="id" href="/artifacts/{{.ID}}">{{.ID}}</a> {{.Title}} <span class="muted small">{{.Status}}</span></div>
+    <svg class="tl-bar" width="100%" height="24" role="img" aria-label="{{.ID}} over time">
+      <a href="/artifacts/{{.ID}}">
+      {{range .Segments}}<rect class="{{.Class}}{{if .Hatched}} hatched{{end}}"{{if .Hatched}} fill="url(#hatch-{{.Class}})"{{end}} x="{{printf "%.3f" .X}}%" y="2" width="{{printf "%.3f" .W}}%" height="14" rx="2"><title>{{.Hover}}</title></rect>{{end}}
+      {{range .Agent}}<rect class="agent" x="{{printf "%.3f" .X}}%" y="19" width="{{printf "%.3f" .W}}%" height="4" rx="1"><title>{{.Hover}}</title></rect>{{end}}
+      </a>
+    </svg>
+  </div>
+  {{with .Rows}}<ul>{{range .}}{{template "timeline-row" .}}{{end}}</ul>{{end}}
+</li>
+{{end}}

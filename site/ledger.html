@@ -89,7 +89,7 @@ via: terminal</code></pre>
 
 <h2 id="trust">Why it doesn't ask the agent</h2>
 <p>A ledger the agent can make up is worse than none. So no command or MCP tool takes usage numbers. Times come from <code>jfl</code>'s own clock when it writes an entry, and tokens come from Claude Code's transcripts, read by a hook that refuses to run inside an agent session. As with Human Transitions, this guards against accidents, not against an agent determined to forge its own transcripts. The reasoning is in ADRs <a href="https://github.com/jigflow-ai/jigflow/blob/main/docs/adr/0007-ledger-never-self-reported.md">0007</a>, <a href="https://github.com/jigflow-ai/jigflow/blob/main/docs/adr/0014-ledger-is-one-committed-file-per-entry.md">0014</a> and <a href="https://github.com/jigflow-ai/jigflow/blob/main/docs/adr/0015-claude-code-usage-from-its-transcripts-through-hooks.md">0015</a>.</p>
-<p>The Dashboard (<code>jfl ui</code>) shows the same sums next to the backlog.</p>
+<p>The Dashboard (<code>jfl ui</code>) shows the same sums next to the backlog, and draws them on its Timeline: each Artifact a bar across time, split by the Statuses it passed through, with the time it waited on a person hatched and the agent session time charged to it as a band under its bar. It draws only what the Ledger records, with no forecast.</p>
 <footer class="page-footer"><a href="connectors.html">← Connectors</a><a href="cli.html">CLI →</a></footer>
 </main>
 </div>
