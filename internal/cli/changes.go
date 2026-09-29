@@ -1,16 +1,21 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
 	"hash/fnv"
 	"io/fs"
+	"maps"
 	"net/http"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/jigflow-ai/jigflow/internal/engine"
 	"github.com/jigflow-ai/jigflow/internal/playbook"
+	"github.com/jigflow-ai/jigflow/internal/store"
 )
 
 // The Dashboard's pages update themselves (ADR 0025): each listens to a
@@ -21,13 +26,39 @@ import (
 // filesEvery is how often jfl ui looks over .jigflow/ while a page listens.
 const filesEvery = time.Second
 
-// look is one thing the Dashboard's pages show that can change, and how
-// often to look at it: fingerprint says what it is like now, so that a
-// different fingerprint means it changed. The project's files are one; a
-// tracker Store, asked less often, can be another.
+// trackerEvery is how often jfl ui asks the tracker Stores while a page
+// listens: each ask counts against the tracker's rate limit, and changes
+// made through jfl land in .jigflow/ and show at once (ADR 0025).
+const trackerEvery = 30 * time.Second
+
+// trackerEveryEnv names the environment variable that sets trackerEvery, as
+// a Go duration. It is empty in a shipped jfl: only the tests' build sets
+// it (-ldflags -X), so that they needn't wait 30 seconds.
+var trackerEveryEnv string
+
+// trackerInterval is how often jfl ui asks the tracker Stores: every
+// trackerEvery, or as often as trackerEveryEnv sets in a test build.
+func trackerInterval(getenv func(string) string) (time.Duration, error) {
+	if trackerEveryEnv == "" || getenv(trackerEveryEnv) == "" {
+		return trackerEvery, nil
+	}
+	d, err := time.ParseDuration(getenv(trackerEveryEnv))
+	if err == nil && d <= 0 {
+		err = errors.New("not a positive duration")
+	}
+	if err != nil {
+		return 0, fmt.Errorf("%s: %w", trackerEveryEnv, err)
+	}
+	return d, nil
+}
+
+// look is one thing the Dashboard's pages show that can change: fingerprint
+// says what it is like now, so that a different fingerprint means it
+// changed, and due how long to wait before looking at it again. The
+// project's files are one; the tracker Stores, asked less often, another.
 type look struct {
-	every       time.Duration
 	fingerprint func() string
+	due         func() time.Duration
 }
 
 // changes tells the pages listening when what they show changed.
@@ -72,9 +103,10 @@ func versionOf(seen []string) string {
 // Changes made meanwhile are told once: the channel holds one signal.
 func (c *changes) listen(since string) (<-chan struct{}, func()) {
 	ch := make(chan struct{}, 1)
+	// Unlocked: looking may take a while, as asking a tracker does.
+	seen := c.see()
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	seen := c.see()
 	if since != "" && versionOf(seen) != since {
 		// Changed between the page being shown and its listening.
 		ch <- struct{}{}
@@ -100,16 +132,16 @@ func (c *changes) listen(since string) (<-chan struct{}, func()) {
 	}
 }
 
-// watch looks again every l.every, from what it saw last, and tells every
-// listener when it sees a change, until stop is closed.
+// watch looks again whenever l is due, from what it saw last, and tells
+// every listener when it sees a change, until stop is closed.
 func (c *changes) watch(l look, last string, stop <-chan struct{}) {
-	tick := time.NewTicker(l.every)
-	defer tick.Stop()
 	for {
+		wait := time.NewTimer(l.due())
 		select {
 		case <-stop:
+			wait.Stop()
 			return
-		case <-tick.C:
+		case <-wait.C:
 		}
 		now := l.fingerprint()
 		if now == last {
@@ -142,7 +174,7 @@ func (c *changes) watch(l look, last string, stop <-chan struct{}) {
 func projectFiles(dir string) look {
 	root := filepath.Join(dir, playbook.Dir)
 	cache := filepath.Join(root, "cache")
-	return look{every: filesEvery, fingerprint: func() string {
+	return look{due: func() time.Duration { return filesEvery }, fingerprint: func() string {
 		var b strings.Builder
 		_ = filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
 			if err != nil {
@@ -167,6 +199,69 @@ func projectFiles(dir string) look {
 		})
 		return b.String()
 	}}
+}
+
+// trackers asks the tracker Stores of the project's Playbook, through their
+// Connectors, what they list: what each item is like, as jfl reads it, and
+// so the Status, labels and new items a person changed in the tracker. Each
+// ask counts against the tracker's rate limit, so they are asked at most
+// once every so often, whether for a page being shown, a page starting to
+// listen or the watch, and are otherwise seen as last asked.
+func trackers(dir string, every time.Duration) look {
+	t := &trackerAsks{dir: dir, every: every, kept: map[string]string{}}
+	return look{fingerprint: t.fingerprint, due: t.due}
+}
+
+// trackerAsks is what the tracker Stores listed when last asked.
+type trackerAsks struct {
+	dir   string
+	every time.Duration
+
+	mu    sync.Mutex // one ask at a time
+	asked time.Time  // when last asked; zero before
+	seen  string     // what they listed then
+	// kept is what each Connector listed when last it answered, which
+	// stands for what it lists while it can't be reached: a tracker that
+	// can't be reached is no change.
+	kept map[string]string
+}
+
+func (t *trackerAsks) fingerprint() string {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if !t.asked.IsZero() && time.Since(t.asked) < t.every {
+		return t.seen
+	}
+	t.asked = time.Now()
+	pb, err := playbook.Load(t.dir)
+	if err != nil {
+		// The pages say why the Playbook doesn't load, and the project's
+		// files the change that mends it.
+		return t.seen
+	}
+	var b strings.Builder
+	for _, name := range slices.Sorted(maps.Keys(pb.Connectors)) {
+		if kept, err := store.NewConnector(t.dir, pb, pb.Connectors[name]).List(); err == nil {
+			slices.SortFunc(kept, func(x, y engine.Artifact) int { return strings.Compare(x.ID, y.ID) })
+			var items strings.Builder
+			for _, a := range kept {
+				// fmt prints maps sorted by key; quoted, a title's line
+				// break can't run into the next item.
+				fmt.Fprintf(&items, "%q\n", fmt.Sprintf("%+v", a))
+			}
+			t.kept[name] = items.String()
+		}
+		fmt.Fprintf(&b, "%s %d:%s", name, len(t.kept[name]), t.kept[name])
+	}
+	t.seen = b.String()
+	return t.seen
+}
+
+// due is how long until the trackers may be asked again.
+func (t *trackerAsks) due() time.Duration {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return max(0, t.every-time.Since(t.asked))
 }
 
 // stream is the change stream a page's script listens to, saying the

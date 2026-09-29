@@ -67,11 +67,15 @@ func cmdUI(e *env, args []string) error {
 	if _, _, err := e.load(); err != nil {
 		return err
 	}
+	every, err := trackerInterval(e.getenv)
+	if err != nil {
+		return err
+	}
 	ln, err := net.Listen("tcp", *addr)
 	if err != nil {
 		return err
 	}
-	d := &dashboard{e: e, changes: newChanges(projectFiles(e.dir)), closing: make(chan struct{})}
+	d := &dashboard{e: e, changes: newChanges(projectFiles(e.dir), trackers(e.dir, every)), closing: make(chan struct{})}
 	_, port, _ := net.SplitHostPort(ln.Addr().String())
 	d.cookie = "jfl-dashboard-" + port
 	if !e.actor.Agent() {

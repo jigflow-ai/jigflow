@@ -31,9 +31,16 @@ type Binary struct {
 // can set the time the Ledger records (ADR 0007).
 const ClockEnv = "JFL_TEST_CLOCK"
 
+// TrackerEveryEnv is the environment variable through which the tests set
+// how often jfl ui asks a tracker Store for changes while a page listens, as
+// a Go duration such as "250ms", instead of every 30 seconds. Only the
+// binary Build compiles reads it.
+const TrackerEveryEnv = "JFL_TEST_TRACKER_EVERY"
+
 // Build compiles the given main package (e.g. "github.com/jigflow-ai/jigflow/cmd/jigflow")
 // with CGO disabled into a fresh temporary directory and links `jfl` to it.
-// The binary reads its clock from ClockEnv when a test sets it.
+// The binary reads its clock from ClockEnv, and how often jfl ui asks a
+// tracker from TrackerEveryEnv, when a test sets them.
 // Call Cleanup on the result when done.
 func Build(pkg string) (*Binary, error) {
 	dir, err := os.MkdirTemp("", "jigflow-bin-")
@@ -49,7 +56,7 @@ func Build(pkg string) (*Binary, error) {
 		Jigflow: filepath.Join(dir, "jigflow"+exe),
 		Jfl:     filepath.Join(dir, "jfl"+exe),
 	}
-	cmd := exec.Command("go", "build", "-trimpath", "-ldflags", "-X github.com/jigflow-ai/jigflow/internal/cli.clockEnv="+ClockEnv, "-o", b.Jigflow, pkg)
+	cmd := exec.Command("go", "build", "-trimpath", "-ldflags", "-X github.com/jigflow-ai/jigflow/internal/cli.clockEnv="+ClockEnv+" -X github.com/jigflow-ai/jigflow/internal/cli.trackerEveryEnv="+TrackerEveryEnv, "-o", b.Jigflow, pkg)
 	cmd.Env = append(os.Environ(), "CGO_ENABLED=0")
 	if out, err := cmd.CombinedOutput(); err != nil {
 		b.Cleanup()
@@ -163,13 +170,14 @@ func (p *Project) RunAs(exe string, args ...string) Result {
 	return p.run(exe, "", args)
 }
 
-// env is the test process's environment without a session id or clock, plus
-// the given session id when it isn't empty and the project's clock when it
-// is set, so tests don't depend on how `go test` was started.
+// env is the test process's environment without a session id, clock or
+// tracker interval, plus the given session id when it isn't empty and the
+// project's clock when it is set, so tests don't depend on how `go test`
+// was started.
 func (p *Project) env(session string) []string {
 	var e []string
 	for _, kv := range os.Environ() {
-		if !strings.HasPrefix(kv, SessionEnv+"=") && !strings.HasPrefix(kv, ClockEnv+"=") {
+		if !strings.HasPrefix(kv, SessionEnv+"=") && !strings.HasPrefix(kv, ClockEnv+"=") && !strings.HasPrefix(kv, TrackerEveryEnv+"=") {
 			e = append(e, kv)
 		}
 	}

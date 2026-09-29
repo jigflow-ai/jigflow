@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -183,6 +184,7 @@ type Stream struct {
 	Status      int
 	ContentType string
 	events      chan string
+	close       func()
 }
 
 // Listen opens the change stream with the request, sent as any program on
@@ -196,8 +198,9 @@ func (u *UI) Listen(req *http.Request) *Stream {
 		u.t.Fatalf("%s %s: %v", req.Method, req.URL, err)
 	}
 	done := make(chan struct{})
-	u.t.Cleanup(func() { close(done); _ = resp.Body.Close() })
 	s := &Stream{Status: resp.StatusCode, ContentType: resp.Header.Get("Content-Type"), events: make(chan string, 16)}
+	s.close = sync.OnceFunc(func() { close(done); _ = resp.Body.Close() })
+	u.t.Cleanup(s.close)
 	go func() {
 		defer close(s.events)
 		r := bufio.NewReader(resp.Body)
@@ -225,6 +228,9 @@ func (u *UI) Listen(req *http.Request) *Stream {
 	}()
 	return s
 }
+
+// Close stops listening, as a page does when the person closes it.
+func (s *Stream) Close() { s.close() }
 
 // Next waits up to within for the stream's next event and returns its
 // data, or false when none came in that time or the stream ended.

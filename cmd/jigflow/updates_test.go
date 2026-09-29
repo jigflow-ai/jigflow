@@ -9,6 +9,8 @@ import (
 	"time"
 
 	"github.com/jigflow-ai/jigflow/internal/clitest"
+	"github.com/jigflow-ai/jigflow/internal/clitest/fakegithub"
+	"github.com/jigflow-ai/jigflow/internal/clitest/fakelinear"
 )
 
 // The Dashboard's pages update themselves (ADR 0025): each listens to a
@@ -248,4 +250,148 @@ func TestAProposalEditedWhileItWasDecidedElsewhereIsRefusedSayingWhy(t *testing.
 	}
 	wantText(t, section(t, refused.HTML, "Not done"), "P-1 isn't pending")
 	assertNothingApplied(t, p)
+}
+
+// askEvery is how often jfl ui asks a tracker Store for changes in these
+// tests, instead of every 30 seconds, while a page listens.
+const askEvery = 250 * time.Millisecond
+
+// askedEvery makes jfl ui, started from now on, ask the project's tracker
+// for changes every so often while a page listens.
+func askedEvery(p *clitest.Project, every time.Duration) {
+	p.Setenv(clitest.TrackerEveryEnv, every.String())
+}
+
+func TestTheStreamSignalsAnEditMadeInGitHubIssues(t *testing.T) {
+	p, gh := githubPlaybook(t)
+	gh.Add(fakegithub.Issue{Title: "Reset-token table", Labels: []string{"ticket", "ready-for-agent"}})
+	askedEvery(p, askEvery)
+	ui := p.StartUI()
+	s := listenAsPage(t, ui, get(t, ui, "/"))
+
+	gh.Edit(41, func(i *fakegithub.Issue) { i.Labels = []string{"ticket", "status: doing"} })
+	wantSignal(t, s, "an issue's labels edited in GitHub")
+	gh.Add(fakegithub.Issue{Title: "Reset endpoint", Labels: []string{"ticket"}})
+	wantSignal(t, s, "an issue filed in GitHub")
+}
+
+func TestTheStreamSignalsAnEditMadeInLinear(t *testing.T) {
+	p, ln := linearPlaybook(t)
+	ln.Add(fakelinear.Issue{Title: "Reset-token table", State: "Todo", Labels: []string{"ticket"}})
+	askedEvery(p, askEvery)
+	ui := p.StartUI()
+	s := listenAsPage(t, ui, get(t, ui, "/"))
+
+	ln.Edit(41, func(i *fakelinear.Issue) { i.State = "In Progress" })
+	wantSignal(t, s, "an issue's workflow state changed in Linear")
+	ln.Add(fakelinear.Issue{Title: "Reset endpoint", Labels: []string{"ticket"}})
+	wantSignal(t, s, "an issue filed in Linear")
+}
+
+// lists counts the times the fake GitHub listed the repository's issues.
+func lists(gh *fakegithub.Server) int {
+	n := 0
+	for _, r := range gh.Requests() {
+		if r == "GET /repos/acme/shop/issues" {
+			n++
+		}
+	}
+	return n
+}
+
+func TestTheTrackerIsAskedOnceForEveryPageListeningAndNotWhileNoneIs(t *testing.T) {
+	p, gh := githubPlaybook(t)
+	gh.Add(fakegithub.Issue{Title: "Reset-token table", Labels: []string{"ticket", "ready-for-agent"}})
+	askedEvery(p, askEvery)
+	ui := p.StartUI()
+
+	before := lists(gh)
+	time.Sleep(6 * askEvery)
+	if n := lists(gh) - before; n != 0 {
+		t.Errorf("GitHub was asked %d times while no page listened, want none", n)
+	}
+
+	// Pages shown one after another, as when each change reloads the page,
+	// don't ask again each: the Status machines page lists no issues itself.
+	before = lists(gh)
+	for range 5 {
+		get(t, ui, "/workflows")
+	}
+	if n := lists(gh) - before; n > 1 {
+		t.Errorf("GitHub was asked %d times for 5 pages shown at once, want once at most", n)
+	}
+
+	var pages []*clitest.Stream
+	for range 3 {
+		pages = append(pages, listen(t, ui))
+	}
+	before = lists(gh)
+	time.Sleep(12 * askEvery)
+	// Once every askEvery for the three pages together, with one to spare
+	// for timing, not once for each.
+	if n := lists(gh) - before; n < 1 || n > 13 {
+		t.Errorf("GitHub was asked %d times in %s with three pages listening, want once every %s", n, 12*askEvery, askEvery)
+	}
+
+	for _, s := range pages {
+		s.Close()
+	}
+	time.Sleep(4 * askEvery) // for jfl ui to see the pages go
+	before = lists(gh)
+	time.Sleep(6 * askEvery)
+	if n := lists(gh) - before; n != 0 {
+		t.Errorf("GitHub was asked %d times once every page stopped listening, want none", n)
+	}
+}
+
+// unreachable is a fake tracker that can be made unreachable, and edited.
+type unreachable struct {
+	name    string
+	tracker func(t *testing.T) (p *clitest.Project, fail func(status int), edit func())
+}
+
+var trackers = []unreachable{
+	{"GitHub", func(t *testing.T) (*clitest.Project, func(int), func()) {
+		p, gh := githubPlaybook(t)
+		gh.Add(fakegithub.Issue{Title: "Reset-token table", Labels: []string{"ticket", "ready-for-agent"}})
+		return p, gh.Fail, func() { gh.Edit(41, func(i *fakegithub.Issue) { i.Labels = []string{"ticket", "status: doing"} }) }
+	}},
+	{"Linear", func(t *testing.T) (*clitest.Project, func(int), func()) {
+		p, ln := linearPlaybook(t)
+		ln.Add(fakelinear.Issue{Title: "Reset-token table", State: "Todo", Labels: []string{"ticket"}})
+		return p, ln.Fail, func() { ln.Edit(41, func(i *fakelinear.Issue) { i.State = "In Progress" }) }
+	}},
+}
+
+func TestATrackerThatCantBeReachedSignalsNothingAndLeavesTheStreamOpen(t *testing.T) {
+	for _, tr := range trackers {
+		t.Run(tr.name, func(t *testing.T) {
+			p, fail, edit := tr.tracker(t)
+			askedEvery(p, askEvery)
+			ui := p.StartUI()
+			s := listenAsPage(t, ui, get(t, ui, "/"))
+
+			fail(http.StatusBadGateway)
+			if e, ok := s.Next(8 * askEvery); ok {
+				t.Errorf("the stream said %q while %s couldn't be reached, want nothing", e, tr.name)
+			}
+
+			// The stream is still open, and signals the tracker's next edit.
+			fail(0)
+			edit()
+			wantSignal(t, s, "an issue edited in "+tr.name+" once it could be reached")
+		})
+	}
+}
+func TestATrackerEditMadeBeforeThePageListensIsSignalledToo(t *testing.T) {
+	p, gh := githubPlaybook(t)
+	gh.Add(fakegithub.Issue{Title: "Reset-token table", Labels: []string{"ticket", "ready-for-agent"}})
+	askedEvery(p, askEvery)
+	ui := p.StartUI()
+	page := get(t, ui, "/")
+
+	// A teammate edits the issue while the page loads, before it listens:
+	// the page is told once the tracker is next asked.
+	gh.Edit(41, func(i *fakegithub.Issue) { i.Labels = []string{"ticket", "status: doing"} })
+	wantSignal(t, listenAsPage(t, ui, page), "an issue edited in GitHub since the page was shown")
 }
