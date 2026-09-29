@@ -2,6 +2,7 @@ package main_test
 
 import (
 	"net/http"
+	"net/url"
 	"regexp"
 	"strings"
 	"testing"
@@ -172,4 +173,79 @@ func TestTheLedgerPageSaysAsOfWhenItsTimesAre(t *testing.T) {
 	if !strings.Contains(page, `<time datetime="2026-09-28T10:15:00Z">`) {
 		t.Errorf("the Ledger page doesn't say as of 2026-09-28T10:15:00Z when its times are:\n%s", text(page))
 	}
+}
+
+// changedBar is the bar a page shows, instead of loading again, when the
+// project changes after a form on it was edited: its attributes and what it
+// holds.
+var changedBar = regexp.MustCompile(`(?s)<div\b([^>]*\bid="changed"[^>]*)>(.*?)</div>`)
+
+var (
+	hidden  = regexp.MustCompile(`(^|\s)hidden(\s|=|$)`)
+	anchors = regexp.MustCompile(`(?s)<a\b([^>]*)>(.*?)</a>`)
+)
+
+func TestEveryPageHasABarToSayTheProjectChangedWithoutLosingEdits(t *testing.T) {
+	p := proposedBreakdown(t)
+	ui := p.StartUI()
+
+	for _, path := range []string{"/", "/workflows", "/ledger"} {
+		m := changedBar.FindStringSubmatch(get(t, ui, path))
+		if m == nil {
+			t.Errorf("%s has no bar to say the project changed", path)
+			continue
+		}
+		// Hidden until the page's script shows it: with JavaScript off,
+		// nothing ever says so, as before.
+		if !hidden.MatchString(m[1]) {
+			t.Errorf("%s shows the bar before the project changed: <div%s>", path, m[1])
+		}
+		wantText(t, m[2], "The project changed")
+		a := anchors.FindStringSubmatch(m[2])
+		if a == nil || attrs(a[1])["href"] != path || text(a[2]) != "Reload" {
+			t.Errorf("%s's bar has no Reload link to the page it shows:\n%s", path, m[2])
+		}
+	}
+}
+
+func TestAProposalEditedBeforeTheProjectChangedIsApprovedWithTheEdits(t *testing.T) {
+	p := proposedBreakdown(t)
+	ui := p.StartUI()
+	page := get(t, ui, "/")
+	s := listenAsPage(t, ui, page)
+
+	// The agent works on while the person edits P-1 on the page, which the
+	// change doesn't reload: the form the page shows still approves.
+	p.MustRun("create", "Issue", "--title", "Crash on logout")
+	wantSignal(t, s, "a new Artifact")
+
+	approved := submit(t, ui, section(t, page, "Pending Proposals"), "Approve all 4 changes", url.Values{
+		"item-2-title":           {"Reset endpoint, rate-limited"},
+		"item-2-link-blocked_by": {""},
+	})
+	if approved.Status != http.StatusOK {
+		t.Fatalf("approving P-1 with edits after the project changed: status %d\n%s", approved.Status, text(approved.HTML))
+	}
+	wantText(t, section(t, approved.HTML, "Done"), `item 2 edited: create Ticket "Reset endpoint, rate-limited", part_of S-1`, "approved P-1 as one unit")
+	if q := p.MustRun("query", "--type", "Ticket").Stdout; !strings.Contains(q, `T-2 Ticket "Reset endpoint, rate-limited"`) {
+		t.Errorf("jfl query should list the edited T-2:\n%s", q)
+	}
+}
+
+func TestAProposalEditedWhileItWasDecidedElsewhereIsRefusedSayingWhy(t *testing.T) {
+	p := proposedBreakdown(t)
+	ui := p.StartUI()
+	page := get(t, ui, "/")
+
+	// Rejected in a terminal while the person edits it in the Dashboard.
+	p.MustRun("reject", "P-1")
+
+	refused := submit(t, ui, section(t, page, "Pending Proposals"), "Approve all 4 changes", url.Values{
+		"item-2-title": {"Reset endpoint, rate-limited"},
+	})
+	if refused.Status == http.StatusOK {
+		t.Fatalf("approving P-1, rejected elsewhere, was done:\n%s", text(refused.HTML))
+	}
+	wantText(t, section(t, refused.HTML, "Not done"), "P-1 isn't pending")
+	assertNothingApplied(t, p)
 }

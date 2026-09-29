@@ -74,6 +74,8 @@ form.reject { margin-top: 8px; }
 .edit { display: flex; flex-wrap: wrap; gap: 4px 12px; margin: 4px 0 8px; font-size: 13px; color: var(--muted); }
 .edit input, .edit select { font: inherit; color: var(--text); background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 2px 6px; max-width: 100%; }
 .edit input[type="text"] { min-width: 8em; }
+.changed { position: sticky; top: 0; z-index: 1; display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; padding: 10px 16px; background: var(--accent-soft); border-bottom: 1px solid var(--accent); font-size: 14px; }
+.changed[hidden] { display: none; }
 .diagram { overflow-x: auto; margin-bottom: 14px; }
 .diagram svg { display: block; max-width: none; }
 .diagram .node rect { fill: var(--panel); stroke: var(--muted); stroke-width: 1.2; }
@@ -100,6 +102,9 @@ form.reject { margin-top: 8px; }
     </nav>
   </div>
 </header>
+<div class="changed" id="changed" role="status" hidden>
+  <span><strong>The project changed</strong> since this page was shown. Your edits stay until you reload.</span> <a href="{{.Here}}">Reload</a>
+</div>
 <main>
 {{template "content" .}}
 </main>
@@ -121,8 +126,29 @@ form.reject { margin-top: 8px; }
     try { sessionStorage.setItem(key, JSON.stringify({x: scrollX, y: scrollY})); } catch (e) {}
     location.replace(here + location.hash);
   }
-  // changed is what the page does when the project changed.
-  function changed() { reload(); }
+  // edited reports whether the person changed a field of any form on the
+  // page: today only a Proposal's, before approving it, has fields to edit.
+  function edited() {
+    return Array.prototype.some.call(document.forms, function (f) {
+      return Array.prototype.some.call(f.elements, function (el) {
+        if (el.type === "select-one") {
+          // With no option marked selected, the first one is.
+          var shown = 0;
+          Array.prototype.forEach.call(el.options, function (o, i) { if (o.defaultSelected) shown = i; });
+          return el.selectedIndex !== shown;
+        }
+        if (el.type === "checkbox" || el.type === "radio") return el.checked !== el.defaultChecked;
+        return "defaultValue" in el && el.value !== el.defaultValue;
+      });
+    });
+  }
+  // changed is what the page does when the project changed: loads again,
+  // unless that would lose edits, when the bar says so and offers to.
+  var bar = document.getElementById("changed");
+  bar.querySelector("a").addEventListener("click", function (e) { e.preventDefault(); reload(); });
+  function changed() {
+    if (edited()) bar.hidden = false; else reload();
+  }
   // The stream is told what the page shows, so that it signals a change
   // written before it listened, or while jfl ui was stopped: the browser
   // listens again once it serves again.
