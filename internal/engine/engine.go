@@ -25,6 +25,10 @@ type Playbook struct {
 	Guidelines map[string]string     // the Guidelines the project declares: name -> its Markdown
 	Connectors map[string]*Connector // the project's Connectors, by name
 	Gates      map[string]string     // the command the Playbook file gives each Gate, by the Gate's name
+	// Mockups is the one folder the Playbook declares for Mockups,
+	// relative to the project's root, as a slash-separated path; empty
+	// when it declares none.
+	Mockups string
 	// Origins says where each part of the Playbook comes from, as the
 	// Dashboard shows it.
 	Origins Origins
@@ -32,9 +36,10 @@ type Playbook struct {
 
 // Origins says where each part of a Playbook comes from, by the part's
 // name: the Artifact Types, Skills, Personas and Guidelines it declares,
-// and the commands its Playbook file gives Gates.
+// and the commands its Playbook file gives Gates; and the Mockup folder.
 type Origins struct {
 	Types, Skills, Personas, Guidelines, Gates map[string]Origin
+	Mockups                                    Origin // the Playbook file declaring the Mockup folder
 }
 
 // Origin is where one part of a Playbook comes from: the project's own

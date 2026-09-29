@@ -26,6 +26,7 @@ type playbookPage struct {
 	Guidelines []namedPart
 	Personas   []personaPart
 	Gates      []gatePart
+	Mockups    *namedPart // the Mockup folder, when the Playbook declares one
 }
 
 // gatePart is a Gate on one Transition, the command it runs, and where
@@ -119,6 +120,9 @@ func (e *env) playbookView() (any, error) {
 				})
 			}
 		}
+	}
+	if pb.Mockups != "" {
+		v.Mockups = &namedPart{pb.Mockups, from(pb.Origins.Mockups)}
 	}
 	if v.Personas, err = e.personaParts(pb); err != nil {
 		return nil, err

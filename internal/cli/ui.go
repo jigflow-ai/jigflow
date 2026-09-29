@@ -24,6 +24,7 @@ import (
 
 	"github.com/jigflow-ai/jigflow/internal/adapter"
 	"github.com/jigflow-ai/jigflow/internal/engine"
+	"github.com/jigflow-ai/jigflow/internal/playbook"
 	"github.com/jigflow-ai/jigflow/internal/store"
 )
 
@@ -40,8 +41,8 @@ var uiPages = func() map[string]*template.Template {
 	// since is the version of the project a page shows, and git whether
 	// the project is in a git repository, which writePage gives each page
 	// it writes.
-	funcs := template.FuncMap{"duration": duration, "tokens": tokens, "since": func() string { return "" }, "git": func() bool { return false }}
-	for _, name := range []string{"backlog", "timeline", "git", "playbook", "workflows", "ledger", "artifact", "playbookfile", "problem"} {
+	funcs := template.FuncMap{"duration": duration, "tokens": tokens, "since": func() string { return "" }, "git": func() bool { return false }, "design": func() bool { return false }}
+	for _, name := range []string{"backlog", "timeline", "git", "design", "playbook", "workflows", "ledger", "artifact", "playbookfile", "problem"} {
 		pages[name] = template.Must(template.New("layout.html").Funcs(funcs).ParseFS(uiFiles, "ui/layout.html", "ui/parts.html", "ui/"+name+".html"))
 	}
 	return pages
@@ -149,6 +150,9 @@ func (d *dashboard) handler() http.Handler {
 	mux.HandleFunc("GET /git", func(w http.ResponseWriter, r *http.Request) {
 		d.render(w, http.StatusOK, "git", "", d.e.gitView(r))
 	})
+	mux.HandleFunc("GET /design", func(w http.ResponseWriter, r *http.Request) {
+		d.render(w, http.StatusOK, "design", "", d.e.designView)
+	})
 	mux.HandleFunc("GET /playbook", func(w http.ResponseWriter, r *http.Request) {
 		d.render(w, http.StatusOK, "playbook", "", d.e.playbookView)
 	})
@@ -163,6 +167,9 @@ func (d *dashboard) handler() http.Handler {
 	})
 	mux.HandleFunc("GET /artifacts/{id}", func(w http.ResponseWriter, r *http.Request) {
 		d.render(w, http.StatusOK, "artifact", r.URL.Path, d.artifactView(r, r.PathValue("id"), nil))
+	})
+	mux.HandleFunc("GET /mockups/{name...}", func(w http.ResponseWriter, r *http.Request) {
+		d.serveMockup(w, r, r.PathValue("name"))
 	})
 	mux.HandleFunc("GET /changes", d.stream)
 	mux.HandleFunc("POST /proposals/{id}/approve", d.act(func(c *env, r *http.Request) error {
@@ -244,7 +251,7 @@ func (d *dashboard) render(w http.ResponseWriter, status int, page, path string,
 		// A Connector failing is a problem with the tracker, which the
 		// person must tell apart from the Playbook or the state being wrong.
 		status = http.StatusInternalServerError
-		if errors.Is(err, store.ErrNotFound) {
+		if errors.Is(err, store.ErrNotFound) || errors.Is(err, errNoMockupFolder) {
 			status = http.StatusNotFound
 		}
 		if _, ok := errors.AsType[*store.ConnectorError](err); ok {
@@ -253,12 +260,12 @@ func (d *dashboard) render(w http.ResponseWriter, status int, page, path string,
 		}
 		page, data = "problem", problem{chrome: chrome{Page: page, Path: path}, Problem: err.Error()}
 	}
-	writePage(w, status, page, data, frame{since, d.inGit()})
+	writePage(w, status, page, data, d.frame(since))
 }
 
 // refuse writes the page that says why the request can't be served.
 func (d *dashboard) refuse(w http.ResponseWriter, status int, why error) {
-	writePage(w, status, "problem", problem{Problem: why.Error()}, frame{d.changes.version(), d.inGit()})
+	writePage(w, status, "problem", problem{Problem: why.Error()}, d.frame(d.changes.version()))
 }
 
 // inGit reports whether the project is in a git repository, whose history
@@ -269,10 +276,23 @@ func (d *dashboard) inGit() bool {
 }
 
 // frame is what every page is told around its data: the version of the
-// project it shows, and whether the project is in a git repository.
+// project it shows, whether the project is in a git repository, and
+// whether its Playbook declares a Mockup folder, which the Design page
+// shows.
 type frame struct {
-	since string
-	git   bool
+	since  string
+	git    bool
+	design bool
+}
+
+// frame is what every page is told around its data, since being the
+// version of the project it shows.
+func (d *dashboard) frame(since string) frame {
+	f := frame{since: since, git: d.inGit()}
+	if pb, err := playbook.Load(d.e.dir); err == nil {
+		f.design = pb.Mockups != ""
+	}
+	return f
 }
 
 // writePage writes the page, rendered with data, with the status given,
@@ -281,7 +301,7 @@ func writePage(w http.ResponseWriter, status int, page string, data any, f frame
 	var buf bytes.Buffer
 	t, err := uiPages[page].Clone()
 	if err == nil {
-		err = t.Funcs(template.FuncMap{"since": func() string { return f.since }, "git": func() bool { return f.git }}).Execute(&buf, data)
+		err = t.Funcs(template.FuncMap{"since": func() string { return f.since }, "git": func() bool { return f.git }, "design": func() bool { return f.design }}).Execute(&buf, data)
 	}
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -363,7 +383,7 @@ func (c chrome) Here() string {
 		return c.Path
 	}
 	switch c.Page {
-	case "timeline", "git", "playbook", "workflows", "ledger":
+	case "timeline", "git", "design", "playbook", "workflows", "ledger":
 		return "/" + c.Page
 	}
 	return "/"

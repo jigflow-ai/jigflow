@@ -4,11 +4,16 @@ import (
 	"bytes"
 	"html"
 	"html/template"
+	"net/url"
+	"path"
+	"slices"
+	"strings"
 
 	"github.com/yuin/goldmark"
 	"github.com/yuin/goldmark/ast"
 	"github.com/yuin/goldmark/extension"
 	"github.com/yuin/goldmark/renderer"
+	"github.com/yuin/goldmark/text"
 	"github.com/yuin/goldmark/util"
 )
 
@@ -23,11 +28,76 @@ var markdown = goldmark.New(
 
 // renderMarkdown renders source as HTML safe to put on a page.
 func renderMarkdown(source string) (template.HTML, error) {
-	var buf bytes.Buffer
-	if err := markdown.Convert([]byte(source), &buf); err != nil {
-		return "", err
+	h, _, err := renderLinkingMockups(source, "")
+	return h, err
+}
+
+// renderLinkingMockups renders source as renderMarkdown does, and returns
+// the paths, inside the Mockup folder mockups, of the Mockups it links to,
+// once each in the order it first does. A link to one, by its path from
+// the project's root or at the Dashboard's /mockups/, opens it in the
+// Dashboard. With no Mockup folder, it links none.
+func renderLinkingMockups(source, mockups string) (template.HTML, []string, error) {
+	src := []byte(source)
+	doc := markdown.Parser().Parse(text.NewReader(src))
+	var linked []string
+	if mockups != "" {
+		err := ast.Walk(doc, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
+			if !entering {
+				return ast.WalkContinue, nil
+			}
+			var dest *[]byte
+			switch l := n.(type) {
+			case *ast.Link:
+				dest = &l.Destination
+			case *ast.Image:
+				dest = &l.Destination
+			default:
+				return ast.WalkContinue, nil
+			}
+			if p, ok := mockupPath(string(*dest), mockups); ok {
+				*dest = []byte(mockupURL(p))
+				if !slices.Contains(linked, p) {
+					linked = append(linked, p)
+				}
+			}
+			return ast.WalkContinue, nil
+		})
+		if err != nil {
+			return "", nil, err
+		}
 	}
-	return template.HTML(buf.String()), nil
+	var buf bytes.Buffer
+	if err := markdown.Renderer().Render(&buf, src, doc); err != nil {
+		return "", nil, err
+	}
+	return template.HTML(buf.String()), linked, nil
+}
+
+// mockupPath returns the path inside the Mockup folder mockups of the file
+// the link dest names, when it names one: by its path from the project's
+// root, such as .jigflow/mockups/REQ-1/checkout.html, or at the
+// Dashboard's /mockups/.
+func mockupPath(dest, mockups string) (string, bool) {
+	u, err := url.Parse(dest)
+	if err != nil || u.Scheme != "" || u.Host != "" || u.Path == "" {
+		return "", false
+	}
+	p := u.Path
+	if rest, ok := strings.CutPrefix(p, "/mockups/"); ok {
+		p = rest
+	} else {
+		p = strings.TrimPrefix(path.Clean("/"+p), "/")
+		var ok bool
+		if p, ok = strings.CutPrefix(p, mockups+"/"); !ok {
+			return "", false
+		}
+	}
+	p = path.Clean(p)
+	if p == "." || p == ".." || strings.HasPrefix(p, "../") || path.IsAbs(p) {
+		return "", false
+	}
+	return p, true
 }
 
 // htmlAsText renders the HTML written in Markdown, blocks and inline, as

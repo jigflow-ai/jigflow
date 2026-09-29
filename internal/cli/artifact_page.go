@@ -38,6 +38,7 @@ type artifactPage struct {
 	Git                     bool          // whether the project is in a git repository
 	Commits                 []gitCommit   // those whose subject starts with its id, newest first
 	Body                    template.HTML // rendered from Markdown
+	Mockups                 []mockupFile  // those its body links to, in the Playbook's Mockup folder or missing from it
 	// Comments are those a tracker keeps apart from the body, rendered,
 	// oldest first; a file keeps its comments in its body.
 	Comments []template.HTML
@@ -171,7 +172,11 @@ func (e *env) artifact(id string) (artifactPage, error) {
 			return artifactPage{}, err
 		}
 	}
-	if v.Body, err = renderMarkdown(text.Body); err != nil {
+	var linked []string
+	if v.Body, linked, err = renderLinkingMockups(text.Body, pb.Mockups); err != nil {
+		return artifactPage{}, err
+	}
+	if v.Mockups, err = e.linkedMockups(pb.Mockups, linked); err != nil {
 		return artifactPage{}, err
 	}
 	for _, c := range text.Comments {

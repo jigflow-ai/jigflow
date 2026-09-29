@@ -169,36 +169,47 @@ func (c *changes) watch(l look, last string, stop <-chan struct{}) {
 
 // projectFiles looks over the project's .jigflow/ folder, where jfl writes
 // the Playbook, the Artifacts kept in files, Proposals, Sessions and the
-// Ledger: the name, size and modification time of each file, read with the
-// standard library only.
+// Ledger, and the Mockup folder the Playbook declares, wherever it is: the
+// name, size and modification time of each file, read with the standard
+// library only.
 func projectFiles(dir string) look {
 	root := filepath.Join(dir, playbook.Dir)
 	cache := filepath.Join(root, "cache")
 	return look{due: func() time.Duration { return filesEvery }, fingerprint: func() string {
 		var b strings.Builder
-		_ = filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
-			if err != nil {
-				fmt.Fprintf(&b, "%s: %v\n", path, err)
-				return nil
-			}
-			if d.IsDir() {
-				if path == cache {
-					// Checkouts of git Base Playbooks, fetched once per
-					// commit the Playbook pins, which the lock file names.
-					return fs.SkipDir
-				}
-				return nil
-			}
-			info, err := d.Info()
-			if err != nil {
-				fmt.Fprintf(&b, "%s: %v\n", path, err)
-				return nil
-			}
-			fmt.Fprintf(&b, "%s %d %d\n", path, info.Size(), info.ModTime().UnixNano())
-			return nil
-		})
+		walkFiles(&b, root, cache)
+		// The Mockup folder, where the Playbook declares one outside .jigflow/.
+		if pb, err := playbook.Load(dir); err == nil && pb.Mockups != "" && !strings.HasPrefix(pb.Mockups+"/", playbook.Dir+"/") {
+			walkFiles(&b, filepath.Join(dir, filepath.FromSlash(pb.Mockups)), "")
+		}
 		return b.String()
 	}}
+}
+
+// walkFiles writes to b what each file under root is like, skipping the
+// directory skip.
+func walkFiles(b *strings.Builder, root, skip string) {
+	_ = filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			fmt.Fprintf(b, "%s: %v\n", path, err)
+			return nil
+		}
+		if d.IsDir() {
+			if path == skip {
+				// Checkouts of git Base Playbooks, fetched once per
+				// commit the Playbook pins, which the lock file names.
+				return fs.SkipDir
+			}
+			return nil
+		}
+		info, err := d.Info()
+		if err != nil {
+			fmt.Fprintf(b, "%s: %v\n", path, err)
+			return nil
+		}
+		fmt.Fprintf(b, "%s %d %d\n", path, info.Size(), info.ModTime().UnixNano())
+		return nil
+	})
 }
 
 // trackers asks the tracker Stores of the project's Playbook, through their

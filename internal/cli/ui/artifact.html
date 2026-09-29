@@ -79,6 +79,13 @@
   <h2>Body</h2>
   {{if .Body}}<div class="prose">{{.Body}}</div>{{else}}<p class="empty">No body yet.</p>{{end}}
 </section>
+{{with .Mockups}}
+<section class="panel" id="mockups">
+  <h2>Mockups</h2>
+  <p class="muted small">The Mockups its body links to, each running sandboxed, apart from the Dashboard.</p>
+  {{template "mockups" .}}
+</section>
+{{end}}
 {{with .Comments}}
 <section class="panel" id="comments">
   <h2>Comments</h2>

@@ -218,9 +218,11 @@ Commands:
                           it leaves in an undeclared Status; every other
                           command refuses to run while there are any.
                           --proposal validates it as that pending Proposal
-                          would make it, writing nothing. It warns, still
-                          succeeding, about each Claude Code Elicitation or
-                          ElicitationResult hook in .claude/settings.json,
+                          would make it, writing nothing. It says where the
+                          Playbook keeps Mockups, when it declares a folder
+                          for them. It warns, still succeeding, about each
+                          Claude Code Elicitation or ElicitationResult hook
+                          in .claude/settings.json,
                           .claude/settings.local.json or the user's
                           settings whose matcher matches jfl's MCP server:
                           it can answer the Confirmation form in the
@@ -314,15 +316,19 @@ Commands:
                           summed and drawn as a Timeline of how long each
                           Artifact spent in each Status, in a git repository
                           the branch's commits linked to the Artifacts they
-                          name, and each Type's Status machine drawn, with
-                          check's warning about hooks that can answer the
-                          Confirmation form. The browser that opens the link
-                          it prints may approve or reject Proposals, editing
-                          their creations first, make Human Transitions, and
-                          comment on an Artifact from its page, as jfl comment
-                          run by them; a Dashboard an agent session starts is
-                          only to look at. It never edits an Artifact's body,
-                          except to add such a comment
+                          name, the Mockups in the folder the Playbook
+                          declares, served only from it and sandboxed, on a
+                          Design page and on the pages of the Artifacts
+                          linking them, and each Type's Status machine
+                          drawn, with check's warning about hooks that can
+                          answer the Confirmation form. The browser that
+                          opens the link it prints may approve or reject
+                          Proposals, editing their creations first, make
+                          Human Transitions, and comment on an Artifact from
+                          its page, as jfl comment run by them; a Dashboard
+                          an agent session starts is only to look at. It
+                          never edits an Artifact's body, except to add such
+                          a comment
   version                 print the version
 
 Environment:
@@ -370,6 +376,9 @@ func cmdCheck(e *env, args []string) error {
 		return err
 	}
 	fmt.Fprintf(e.stdout, "Playbook %q: no problems\n", pb.Name)
+	if pb.Mockups != "" {
+		fmt.Fprintf(e.stdout, "Mockups in %s\n", pb.Mockups)
+	}
 	e.warnFormHooks()
 	return nil
 }

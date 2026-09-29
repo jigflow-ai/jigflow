@@ -26,3 +26,10 @@
 </table>
 </div>
 {{end}}
+{{/* Mockups, each previewed in a sandboxed frame and opened on its own; one a body links but the folder lacks shown as missing (ADR 0027). */}}
+{{define "mockups"}}<div class="mockups">{{range .}}
+  <figure class="mockup{{if .Missing}} missing{{end}}">
+    {{if .Missing}}<div class="mockup-missing">missing</div>{{else}}<iframe src="{{.URL}}" sandbox="allow-scripts" loading="lazy" title="{{.Name}}"></iframe>{{end}}
+    <figcaption>{{if .Missing}}<code>{{.Name}}</code> <span class="pill human">missing</span>{{else}}<a href="{{.URL}}" target="_blank" rel="noopener">{{.Name}}</a>{{end}}</figcaption>
+  </figure>
+{{end}}</div>{{end}}

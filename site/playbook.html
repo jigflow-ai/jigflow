@@ -42,7 +42,7 @@
 
 <h2 id="layout">Layout</h2>
 <pre><code>.jigflow/
-  playbook.yaml            <span class="c"># name, extends, gates, connectors</span>
+  playbook.yaml            <span class="c"># name, extends, gates, connectors, mockups</span>
   types/*.yaml             <span class="c"># one Artifact Type per file, declared in file-name order</span>
   skills/&lt;name&gt;/SKILL.md   <span class="c"># Skills</span>
   guidelines/&lt;name&gt;.md     <span class="c"># Guidelines</span>
@@ -60,6 +60,7 @@ extends: {git: https://github.com/jigflow-ai/jigflow-playbook-pocock, ref: v0.4.
 gates:
   tests: go test ./...
   lint: go vet ./...
+mockups: design/screens
 connectors:
   github:
     command: jfl-connector-github
@@ -76,6 +77,7 @@ connectors:
 <tr><td><code>extends</code></td><td>The single <a href="#extends">Base Playbook</a>.</td></tr>
 <tr><td><code>gates</code></td><td>The project's command for each Gate named here, wherever the Playbook declares it. It overrides a declared command. This is how a shipped Playbook declares a Gate by name only and leaves the command to you.</td></tr>
 <tr><td><code>connectors</code></td><td>The Connectors that Stores name, with their settings and how Statuses and fields map to the tracker. See <a href="connectors.html">Connectors</a>.</td></tr>
+<tr><td><code>mockups</code></td><td>The one folder for Mockups, the pages and pictures that show what a piece of work should look like, relative to the project root and inside it. Each goes in a subfolder named after the Artifact it belongs to, and a body links it by its path from the project root, such as <code>.jigflow/mockups/REQ-1/checkout.html</code>. It overrides the Base Playbook's: the Larapilot-style Playbook sets <code>.jigflow/mockups</code>, and a Playbook that declares none has no Mockups. <code>jfl check</code> says where it is. The Dashboard serves only the files in it, sandboxed, and shows them on its <a href="proposals.html#dashboard">Design page</a> and on the pages of the Artifacts linking them.</td></tr>
 </table></div>
 
 <h2 id="extends">Base Playbooks: <code>extends</code></h2>
@@ -83,7 +85,7 @@ connectors:
 <pre><code>extends: {builtin: larapilot}                                <span class="c"># built into jfl</span>
 extends: {path: ../playbooks/ours}                           <span class="c"># a directory, relative to the project root</span>
 extends: {git: https://github.com/acme/playbook, ref: v2.1.0} <span class="c"># a git repository, pinned to a ref</span></code></pre>
-<p>The extending Playbook's parts override the base's parts <strong>by name</strong>: an Artifact Type, Skill, Guideline, Persona, Connector or Gate command of the same name replaces the base's one, and everything else is kept. A replaced Artifact Type keeps the base's place in the declaration order, and new ones come after the base's. The Dashboard's Playbook page (<code>jfl ui</code>) lists every part and says where it comes from: the Base Playbook, the project, or the project overriding the base's. For a git base, <code>jfl</code> records in <code>.jigflow/playbook.lock</code> the commit the ref resolved to, and keeps using it until you change the ref.</p>
+<p>The extending Playbook's parts override the base's parts <strong>by name</strong>: an Artifact Type, Skill, Guideline, Persona, Connector or Gate command of the same name replaces the base's one, a Mockup folder replaces the base's, and everything else is kept. A replaced Artifact Type keeps the base's place in the declaration order, and new ones come after the base's. The Dashboard's Playbook page (<code>jfl ui</code>) lists every part and says where it comes from: the Base Playbook, the project, or the project overriding the base's. For a git base, <code>jfl</code> records in <code>.jigflow/playbook.lock</code> the commit the ref resolved to, and keeps using it until you change the ref.</p>
 
 <h2 id="types">Artifact Types: <code>types/*.yaml</code></h2>
 <p>This is the Larapilot-style Task, complete:</p>

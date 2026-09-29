@@ -8,3 +8,8 @@
 # Playbook file gives them its commands, which jfl init proposes from the
 # toolchain (ADR 0019).
 name: larapilot
+
+# Mockups, the screens a design shows, are files in this one folder, in a
+# subfolder named after the Artifact they belong to. The Dashboard serves
+# them sandboxed (ADR 0027); a project may point it elsewhere.
+mockups: .jigflow/mockups

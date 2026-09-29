@@ -77,4 +77,16 @@
   <p class="empty">No Transition has a Gate.</p>
   {{end}}
 </section>
+{{with .Mockups}}
+<section class="panel" id="mockups">
+  <h2>Mockups</h2>
+  <p class="muted small">The one folder for Mockups, which the <a href="/design">Design page</a> lists and the Dashboard serves sandboxed.</p>
+  <div class="scroll">
+  <table>
+    <thead><tr><th>Folder</th><th>Comes from</th></tr></thead>
+    <tbody><tr><td><code>{{.Name}}</code></td><td class="small">{{.From}}</td></tr></tbody>
+  </table>
+  </div>
+</section>
+{{end}}
 {{end}}

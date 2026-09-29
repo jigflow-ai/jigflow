@@ -113,7 +113,8 @@ func (u *UI) Stop() {
 // Page is one response of the Dashboard.
 type Page struct {
 	Status int
-	HTML   string
+	HTML   string // the body, whatever its type
+	Header http.Header
 }
 
 // Get requests the path, e.g. "/ledger", from the person's browser.
@@ -174,7 +175,7 @@ func (u *UI) send(c *http.Client, req *http.Request) Page {
 	if err != nil {
 		u.t.Fatal(err)
 	}
-	return Page{Status: resp.StatusCode, HTML: string(body)}
+	return Page{Status: resp.StatusCode, HTML: string(body), Header: resp.Header}
 }
 
 // Stream is the Dashboard's change stream, read as a page listens to it:

@@ -48,7 +48,7 @@
 <tr><td>Story</td><td><code>planned</code> → <code>accepted</code></td><td>A slice someone can use. Once you approve the plan, <code>/plan</code> writes its body: acceptance criteria, then a <code>## Technical plan</code> section with the context, design, conventions and testing it will be built with. <code>/implement</code> builds each of its Tasks the way that plan says, and <code>/review</code> sends back a Task that ignores it. A person accepts it.</td></tr>
 <tr><td>Task</td><td><code>ready</code> → <code>in-progress</code> → <code>in-review</code> → <code>reviewed</code> → <code>done</code></td><td><code>/implement</code> works it test-first, and the <code>tests</code> and <code>lint</code> Gates guard <code>in-review</code>. <code>/review</code> reviews it in a fresh session. A person accepting it commits it as one commit named <code>&lt;id&gt;: &lt;title&gt;</code>.</td></tr>
 </table></div>
-<p>It ships six generic Personas (product-owner, architect, engineer, tester, reviewer, security-reviewer) and a <code>conventions</code> Guideline, which the one <code>jfl init</code> proposes from your repository replaces. The Gates are declared by name only, so their commands come from your toolchain.</p>
+<p>It ships six generic Personas (product-owner, architect, engineer, tester, reviewer, security-reviewer) and a <code>conventions</code> Guideline, which the one <code>jfl init</code> proposes from your repository replaces. The Gates are declared by name only, so their commands come from your toolchain. Mockups go in <code>.jigflow/mockups</code>, which your Playbook file can point elsewhere with <a href="playbook.html#playbook-yaml"><code>mockups</code></a>.</p>
 
 <h2 id="pocock">Pocock</h2>
 <pre><code>jfl init --playbook pocock</code></pre>

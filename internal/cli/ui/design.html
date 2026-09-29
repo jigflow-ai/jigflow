@@ -1,0 +1,21 @@
+{{define "title"}}Design{{end}}
+{{define "content"}}
+<h1>Design</h1>
+<p class="muted small">The Mockups in <code>{{.Folder}}</code>, the folder the Playbook declares for them, grouped by the subfolder named after the Artifact each belongs to. Each runs sandboxed, apart from the Dashboard.</p>
+{{if not (or .Groups .Others)}}
+<p class="panel empty">No Mockup in {{.Folder}} yet.</p>
+{{end}}
+{{range .Groups}}
+<section class="panel" id="mockups-{{.ID}}">
+  <h2><a class="id" href="/artifacts/{{.ID}}">{{.ID}}</a> {{.Title}}</h2>
+  {{template "mockups" .Mockups}}
+</section>
+{{end}}
+{{with .Others}}
+<section class="panel" id="other-mockups">
+  <h2>Not linked to an Artifact</h2>
+  <p class="muted small">In a subfolder named after no Artifact, or in none.</p>
+  {{template "mockups" .}}
+</section>
+{{end}}
+{{end}}

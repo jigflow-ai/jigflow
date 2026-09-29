@@ -26,6 +26,7 @@ package playbook
 
 import (
 	"bytes"
+	"cmp"
 	"errors"
 	"fmt"
 	"io"
@@ -55,6 +56,11 @@ type playbookFile struct {
 	//	gates:
 	//	  tests: go test ./...
 	Gates map[string]string `yaml:"gates"`
+	// Mockups is the one folder for Mockups, relative to the project's
+	// root, which the Dashboard serves sandboxed (ADR 0027).
+	//
+	//	mockups: .jigflow/mockups
+	Mockups string `yaml:"mockups"`
 }
 
 // FileStore is the Store an Artifact Type may name to say, as it does when
@@ -280,8 +286,9 @@ func load(root string, fsys fs.FS) (*engine.Playbook, error) {
 		l = merge(base, own)
 	}
 	giveGatesCommands(l.types, l.gates)
-	pb := &engine.Playbook{Name: own.name, Types: l.types, Skills: l.skills, Personas: l.personas, Guidelines: l.guidelines, Connectors: l.connectors, Gates: l.gates, Origins: origins(base, own)}
+	pb := &engine.Playbook{Name: own.name, Types: l.types, Skills: l.skills, Personas: l.personas, Guidelines: l.guidelines, Connectors: l.connectors, Gates: l.gates, Mockups: l.mockups, Origins: origins(base, own)}
 	problems := builtinTypeProblems(pb, l.typeFiles)
+	problems = append(problems, mockupsProblems(pb)...)
 	pb.Types = append(pb.Types, engine.PersonaArtifactType())
 	pb.Origins.Types[engine.PersonaType] = engine.Origin{Builtin: true}
 	migrationProblems, err := readMigrations(fsys, Dir, pb)
@@ -325,7 +332,18 @@ func origins(base, own *layer) engine.Origins {
 		}
 		return m
 	}
+	var mockups engine.Origin
+	switch {
+	case own.mockups != "":
+		mockups = engine.Origin{Project: true, File: in(own.label, "playbook.yaml")}
+		if base != nil && base.mockups != "" {
+			mockups.Base = base.label
+		}
+	case base != nil && base.mockups != "":
+		mockups = engine.Origin{Base: base.label, File: in(base.label, "playbook.yaml")}
+	}
 	return engine.Origins{
+		Mockups:    mockups,
 		Types:      of(func(l *layer) map[string]string { return l.typeFiles }),
 		Skills:     of(func(l *layer) map[string]string { return l.skillFiles }),
 		Personas:   of(func(l *layer) map[string]string { return files(l.personas, l, "personas") }),
@@ -338,6 +356,21 @@ func origins(base, own *layer) engine.Origins {
 			return m
 		}),
 	}
+}
+
+// mockupsProblems reports a Mockup folder outside the project, or the
+// project itself: the Dashboard serves every file in it (ADR 0027). It
+// cleans the folder's path otherwise.
+func mockupsProblems(pb *engine.Playbook) []string {
+	if pb.Mockups == "" {
+		return nil
+	}
+	dir := path.Clean(filepath.ToSlash(pb.Mockups))
+	if path.IsAbs(dir) || filepath.IsAbs(pb.Mockups) || filepath.VolumeName(pb.Mockups) != "" || dir == "." || dir == ".." || strings.HasPrefix(dir, "../") {
+		return []string{fmt.Sprintf("%s: mockups %q must name a folder inside the project, relative to its root, such as .jigflow/mockups", pb.Origins.Mockups.File, pb.Mockups)}
+	}
+	pb.Mockups = dir
+	return nil
 }
 
 // builtinTypeProblems reports Artifact Types a Playbook declares that
@@ -373,6 +406,7 @@ type layer struct {
 	guidelines map[string]string // name -> its Markdown
 	connectors map[string]*engine.Connector
 	gates      map[string]string // Gate name -> the command the Playbook file gives it
+	mockups    string            // the Mockup folder, if the Playbook file declares one
 
 	typeFiles, skillFiles, connectorFiles map[string]string   // name -> the file declaring it
 	skillProblems                         map[string][]string // Skill -> what its file lacks
@@ -393,6 +427,7 @@ func readLayer(fsys fs.FS, label string) (*layer, error) {
 		guidelines:     map[string]string{},
 		connectors:     map[string]*engine.Connector{},
 		gates:          pf.Gates,
+		mockups:        pf.Mockups,
 		typeFiles:      map[string]string{},
 		skillFiles:     map[string]string{},
 		connectorFiles: map[string]string{},
@@ -585,6 +620,7 @@ func merge(base, own *layer) *layer {
 		guidelines:     maps.Clone(base.guidelines),
 		connectors:     maps.Clone(base.connectors),
 		gates:          maps.Clone(base.gates),
+		mockups:        cmp.Or(own.mockups, base.mockups),
 		typeFiles:      maps.Clone(base.typeFiles),
 		skillFiles:     maps.Clone(base.skillFiles),
 		connectorFiles: maps.Clone(base.connectorFiles),
