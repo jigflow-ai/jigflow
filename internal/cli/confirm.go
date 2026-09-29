@@ -93,10 +93,7 @@ func (e *env) confirmApproval(pb *engine.Playbook, p engine.Proposal) (engine.Ch
 	if e.clicked {
 		return engine.ViaDashboard, nil
 	}
-	by := "a person"
-	if p.By != "" {
-		by = "agent session " + p.By
-	}
+	by := p.ProposedBy()
 	question := func(items, or string) string {
 		return fmt.Sprintf("%s from %s: %s\n%sApprove all %s as one unit%s?", p.ID, by, p.Summary, items, plural(len(p.Items), "change"), or)
 	}

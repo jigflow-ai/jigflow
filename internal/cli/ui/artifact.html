@@ -1,0 +1,83 @@
+{{define "title"}}{{.ID}} {{.Title}}{{end}}
+{{define "content"}}
+<h1><span class="id">{{.ID}}</span> {{.Title}}</h1>
+<section class="panel" id="about">
+  <h2>About</h2>
+  <dl class="facts">
+    <dt>Type</dt><dd>{{.Type}}</dd>
+    <dt>Status</dt><dd>{{.Status}}</dd>
+    <dt>Work</dt><dd>{{template "work" .Work}}{{with .Note}} <span class="muted small">{{.}}</span>{{end}}</dd>
+    <dt>Claim</dt><dd>{{with .Claim}}agent session {{.}}{{else}}<span class="muted">none</span>{{end}}</dd>
+    {{range .Fields}}<dt>{{.Name}}</dt><dd>{{.Value}}</dd>{{end}}
+  </dl>
+</section>
+<div class="attention-grid">
+<section class="panel attention" id="moves">
+  <h2>Human Transitions</h2>
+  {{if not .CanAct}}<p class="muted small">{{.Cannot}}.</p>
+  {{else if .Moves}}{{template "moves" .}}
+  {{else}}<p class="empty">No Human Transition leaves {{.Status}}.</p>{{end}}
+</section>
+<section class="panel attention" id="proposals">
+  <h2>Pending Proposals</h2>
+  {{range .Proposals}}
+  <p><a class="id" href="/#{{.ID}}">{{.ID}}</a> {{.Summary}} <span class="muted small">from {{.By}}</span></p>
+  {{else}}
+  <p class="empty">No pending Proposal touches it.</p>
+  {{end}}
+</section>
+</div>
+<section class="panel" id="links">
+  <h2>Links</h2>
+  {{range .Links}}
+  <h3 class="small">{{.Name}}</h3>
+  {{template "linked" .Artifacts}}
+  {{else}}
+  <p class="empty">It links to nothing.</p>
+  {{end}}
+</section>
+<section class="panel" id="linked-here">
+  <h2>Linked here</h2>
+  {{range .LinkedHere}}
+  <h3 class="small">{{.Type}} {{.Name}} <span class="muted">{{.Done}} of {{len .Artifacts}} finished</span></h3>
+  {{template "linked" .Artifacts}}
+  {{else}}
+  <p class="empty">Nothing links here.</p>
+  {{end}}
+</section>
+<section class="panel" id="history">
+  <h2>History</h2>
+  {{if .History}}
+  <div class="scroll">
+  <table>
+    <thead><tr><th>When</th><th>Change</th><th>Time there</th></tr></thead>
+    <tbody>
+    {{range .History}}
+      <tr>
+        <td class="small"><time datetime="{{.At.UTC.Format "2006-01-02T15:04:05Z07:00"}}">{{.At.Local.Format "2 Jan 2006 15:04"}}</time></td>
+        <td>{{if .From}}{{.From}} → {{.To}}{{else}}created in {{.To}}{{end}}{{with .Via}} <span class="muted small">confirmed in the {{.}}</span>{{end}}</td>
+        <td class="num">{{if or .Time .Now}}{{duration .Time}}{{if .Now}} <span class="muted">so far</span>{{end}}{{end}}</td>
+      </tr>
+    {{end}}
+    </tbody>
+  </table>
+  </div>
+  {{else}}
+  <p class="empty">The Ledger records no Status change of it: it wasn't created or moved through jfl.</p>
+  {{end}}
+  <p>Agent time {{if .Agent}}{{duration .Agent}}{{else}}<span class="muted">none</span>{{end}}</p>
+  <p class="muted small">Times as of <time datetime="{{.AsOf.UTC.Format "2006-01-02T15:04:05Z07:00"}}">{{.AsOf.Local.Format "2 Jan 2006 15:04:05"}}</time>, from jfl's own clock.</p>
+</section>
+<section class="panel" id="body">
+  <h2>Body</h2>
+  {{if .Body}}<div class="prose">{{.Body}}</div>{{else}}<p class="empty">No body yet.</p>{{end}}
+</section>
+{{with .Comments}}
+<section class="panel" id="comments">
+  <h2>Comments</h2>
+  {{range .}}<div class="prose comment">{{.}}</div>{{end}}
+</section>
+{{end}}
+{{end}}
+{{/* A list of linked Artifacts, each linked to its page. */}}
+{{define "linked"}}<ul class="plain linked">{{range .}}<li><a class="id" href="/artifacts/{{.ID}}">{{.ID}}</a> {{if .Title}}{{.Title}} <span class="muted">{{.Status}}</span>{{else}}<span class="muted">kept in no Store</span>{{end}}</li>{{end}}</ul>{{end}}

@@ -28,7 +28,7 @@
     <thead><tr><th>Id</th><th>Title</th><th>Type</th><th>Status</th>{{if $act}}<th>Human Transitions</th>{{end}}</tr></thead>
     <tbody>
     {{range .Queue}}
-      <tr><td class="id"><a href="#{{.ID}}">{{.ID}}</a></td><td>{{.Title}}</td><td>{{.Type}}</td><td>{{.Status}}</td>{{if $act}}<td>{{template "moves" .}}</td>{{end}}</tr>
+      <tr><td class="id"><a href="/artifacts/{{.ID}}">{{.ID}}</a></td><td>{{.Title}}</td><td>{{.Type}}</td><td>{{.Status}}</td>{{if $act}}<td>{{template "moves" .}}</td>{{end}}</tr>
     {{end}}
     </tbody>
   </table>
@@ -46,7 +46,7 @@
     <form method="post" action="/proposals/{{.ID}}/approve">
       <ol class="items">
       {{range .Items}}
-        <li>{{.Text}}{{if .Create}}
+        <li>{{.Text}}{{template "named" .Artifacts}}{{if .Create}}
           <div class="edit">
             <label>Title <input type="text" name="item-{{.N}}-title" value="{{.Title}}" required></label>
             <label>in <select name="item-{{.N}}-status">{{range .Statuses}}<option value="{{.Value}}"{{if .Selected}} selected{{end}}>{{.Value}}</option>{{end}}</select></label>
@@ -61,7 +61,7 @@
       <button type="submit">Reject</button>
     </form>
     {{else}}
-    <ol class="items">{{range .Items}}<li>{{.Text}}</li>{{end}}</ol>
+    <ol class="items">{{range .Items}}<li>{{.Text}}{{template "named" .Artifacts}}</li>{{end}}</ol>
     {{end}}
   </div>
   {{else}}
@@ -79,12 +79,12 @@
     <tbody>
     {{range .Artifacts}}
       <tr id="{{.ID}}">
-        <td class="id">{{.ID}}</td>
+        <td class="id"><a href="/artifacts/{{.ID}}">{{.ID}}</a></td>
         <td>{{.Title}}</td>
         <td>{{.Status}}</td>
         <td>{{template "work" .Work}}{{with .Note}}<div class="muted small">{{.}}</div>{{end}}</td>
         <td>{{with .Claim}}agent session {{.}}{{else}}<span class="muted">none</span>{{end}}</td>
-        <td>{{range .Links}}<div class="small">{{.Name}} {{range .IDs}}<a href="#{{.}}">{{.}}</a> {{end}}</div>{{end}}</td>
+        <td>{{range .Links}}<div class="small">{{.Name}} {{range .IDs}}<a href="/artifacts/{{.}}">{{.}}</a> {{end}}</div>{{end}}</td>
         {{if $act}}<td>{{template "moves" .}}</td>{{end}}
       </tr>
     {{end}}
@@ -97,5 +97,3 @@
 </section>
 {{end}}
 {{end}}
-{{define "moves"}}{{$id := .ID}}{{range .Moves}}<form method="post" action="/artifacts/{{$id}}/move" class="move"><input type="hidden" name="to" value="{{.}}"><button type="submit">→ {{.}}</button></form>{{end}}{{end}}
-{{define "work"}}<span class="pill {{if eq . "agent work"}}agent{{else if eq . "human work"}}human{{else}}finished{{end}}">{{.}}</span>{{end}}

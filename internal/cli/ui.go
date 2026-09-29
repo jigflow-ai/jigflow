@@ -40,8 +40,8 @@ var uiPages = func() map[string]*template.Template {
 	// since is the version of the project a page shows, which writePage
 	// gives each page it writes.
 	funcs := template.FuncMap{"duration": duration, "tokens": tokens, "since": func() string { return "" }}
-	for _, name := range []string{"backlog", "workflows", "ledger", "problem"} {
-		pages[name] = template.Must(template.New("layout.html").Funcs(funcs).ParseFS(uiFiles, "ui/layout.html", "ui/"+name+".html"))
+	for _, name := range []string{"backlog", "workflows", "ledger", "artifact", "problem"} {
+		pages[name] = template.Must(template.New("layout.html").Funcs(funcs).ParseFS(uiFiles, "ui/layout.html", "ui/parts.html", "ui/"+name+".html"))
 	}
 	return pages
 }()
@@ -140,13 +140,16 @@ func (d *dashboard) handler() http.Handler {
 			d.open(w, r)
 			return
 		}
-		d.render(w, http.StatusOK, "backlog", d.backlogView(r, nil))
+		d.render(w, http.StatusOK, "backlog", "", d.backlogView(r, nil))
 	})
 	mux.HandleFunc("GET /workflows", func(w http.ResponseWriter, r *http.Request) {
-		d.render(w, http.StatusOK, "workflows", d.e.workflowsView)
+		d.render(w, http.StatusOK, "workflows", "", d.e.workflowsView)
 	})
 	mux.HandleFunc("GET /ledger", func(w http.ResponseWriter, r *http.Request) {
-		d.render(w, http.StatusOK, "ledger", d.e.ledgerView)
+		d.render(w, http.StatusOK, "ledger", "", d.e.ledgerView)
+	})
+	mux.HandleFunc("GET /artifacts/{id}", func(w http.ResponseWriter, r *http.Request) {
+		d.render(w, http.StatusOK, "artifact", r.URL.Path, d.artifactView(r, r.PathValue("id")))
 	})
 	mux.HandleFunc("GET /changes", d.stream)
 	mux.HandleFunc("POST /proposals/{id}/approve", d.act(func(c *env, r *http.Request) error {
@@ -184,6 +187,27 @@ func (d *dashboard) handler() http.Handler {
 	})
 }
 
+// humanMoves returns the Statuses the Human Transitions of the Artifact
+// Type t lead to from the Status of a.
+func humanMoves(t *engine.ArtifactType, a engine.Artifact) []string {
+	var to []string
+	for _, tr := range t.Transitions {
+		if tr.Human && tr.From == a.Status {
+			to = append(to, tr.To)
+		}
+	}
+	return to
+}
+
+// byID indexes the Artifacts by their id.
+func byID(all []engine.Artifact) map[string]engine.Artifact {
+	m := make(map[string]engine.Artifact, len(all))
+	for _, a := range all {
+		m[a.ID] = a
+	}
+	return m
+}
+
 // loopback reports whether host names this machine: localhost or a
 // loopback IP address.
 func loopback(host string) bool {
@@ -195,8 +219,9 @@ func loopback(host string) bool {
 }
 
 // render writes the page built by view inside the layout, with the status
-// given, or why view failed.
-func (d *dashboard) render(w http.ResponseWriter, status int, page string, view func() (any, error)) {
+// given, or why view failed. path is the page's own path, when it isn't the
+// one its name gives, which the page loads again when the project changes.
+func (d *dashboard) render(w http.ResponseWriter, status int, page, path string, view func() (any, error)) {
 	// Before view reads the project, so that a change written meanwhile
 	// is signalled to the page.
 	since := d.changes.version()
@@ -205,11 +230,14 @@ func (d *dashboard) render(w http.ResponseWriter, status int, page string, view 
 		// A Connector failing is a problem with the tracker, which the
 		// person must tell apart from the Playbook or the state being wrong.
 		status = http.StatusInternalServerError
+		if errors.Is(err, store.ErrNotFound) {
+			status = http.StatusNotFound
+		}
 		if _, ok := errors.AsType[*store.ConnectorError](err); ok {
 			err = fmt.Errorf("tracker problem, not a workflow refusal: %w", err)
 			status = http.StatusBadGateway
 		}
-		page, data = "problem", problem{chrome: chrome{Page: page}, Problem: err.Error()}
+		page, data = "problem", problem{chrome: chrome{Page: page, Path: path}, Problem: err.Error()}
 	}
 	writePage(w, status, page, data, since)
 }
@@ -266,13 +294,15 @@ type pendingProposal struct {
 // proposalItem is an item of a pending Proposal, and, for a creation, the
 // fields a person may edit before approving.
 type proposalItem struct {
-	N        int // its number in the Proposal, from 1
-	Text     string
-	Create   bool
-	Type     string // the Artifact Type of a creation
-	Title    string
-	Statuses []option    // the Statuses it may be created in
-	Links    []linkField // the Links its Type declares
+	N    int // its number in the Proposal, from 1
+	Text string
+	// Artifacts are the ids of the Artifacts it names, each with a page.
+	Artifacts []string
+	Create    bool
+	Type      string // the Artifact Type of a creation
+	Title     string
+	Statuses  []option    // the Statuses it may be created in
+	Links     []linkField // the Links its Type declares
 }
 
 // option is one choice of a select.
@@ -292,11 +322,18 @@ type linkField struct {
 type chrome struct {
 	Playbook string
 	Page     string
+	// Path is the page's own path, for a page that isn't one of the
+	// navigation's, such as an Artifact's.
+	Path string
 }
 
 // Here is the path of the page, which it loads again when the project
-// changes: after a decision, or a refusal, the backlog.
+// changes: its own Path, when it has one, and otherwise the page its name
+// gives; after a decision, or a refusal, the backlog.
 func (c chrome) Here() string {
+	if c.Path != "" {
+		return c.Path
+	}
 	switch c.Page {
 	case "workflows", "ledger":
 		return "/" + c.Page
@@ -368,19 +405,14 @@ func (e *env) backlog() (backlog, error) {
 			notes[s.Artifact.ID] = s.Reason
 		}
 	}
-	v := backlog{chrome: chrome{pb.Name, "backlog"}, FormHooks: adapter.FormHookWarnings(e.dir, e.getenv)}
+	v := backlog{chrome: chrome{Playbook: pb.Name, Page: "backlog"}, FormHooks: adapter.FormHookWarnings(e.dir, e.getenv)}
 	for _, t := range pb.Types {
 		ta := typeArtifacts{Name: t.Name}
 		for _, a := range engine.InOrder(pb, all) {
 			if a.Type != t.Name {
 				continue
 			}
-			r := artifactRow{Artifact: a, Work: pb.WorkOf(a)}
-			for _, tr := range t.Transitions {
-				if tr.Human && tr.From == a.Status {
-					r.Moves = append(r.Moves, tr.To)
-				}
-			}
+			r := artifactRow{Artifact: a, Work: pb.WorkOf(a), Moves: humanMoves(t, a)}
 			for _, name := range slices.Sorted(maps.Keys(a.Links)) {
 				r.Links = append(r.Links, link{name, a.Links[name]})
 			}
@@ -394,20 +426,18 @@ func (e *env) backlog() (backlog, error) {
 		}
 		v.Types = append(v.Types, ta)
 	}
+	kept := byID(all)
 	for _, p := range proposals {
 		if p.Status != engine.Pending {
 			continue
 		}
-		pp := pendingProposal{ID: p.ID, By: "a person", Summary: p.Summary}
-		if p.By != "" {
-			pp.By = "agent session " + p.By
-		}
+		pp := pendingProposal{ID: p.ID, By: p.ProposedBy(), Summary: p.Summary}
 		pp.Approve = "Approve"
 		if len(p.Items) > 1 {
 			pp.Approve = "Approve all " + plural(len(p.Items), "change")
 		}
 		for i, it := range p.Items {
-			pp.Items = append(pp.Items, itemView(pb, i, it))
+			pp.Items = append(pp.Items, itemView(pb, i, it, kept))
 		}
 		v.Proposals = append(v.Proposals, pp)
 	}
@@ -443,7 +473,7 @@ func (e *env) ledgerView() (any, error) {
 	sum := engine.Summarise(pb, l, now)
 	return ledgerPage{
 		AsOf:          now,
-		chrome:        chrome{pb.Name, "ledger"},
+		chrome:        chrome{Playbook: pb.Name, Page: "ledger"},
 		LedgerSummary: sum,
 		Empty:         len(sum.Artifacts) == 0 && sum.Unattributed == 0 && !sum.Usage,
 	}, nil
@@ -475,7 +505,7 @@ func (e *env) workflowsView() (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	v := workflows{chrome: chrome{pb.Name, "workflows"}}
+	v := workflows{chrome: chrome{Playbook: pb.Name, Page: "workflows"}}
 	for _, t := range pb.Types {
 		w := workflow{Name: t.Name, Store: t.Store, Diagram: layout(t)}
 		for _, s := range t.Statuses {

@@ -78,7 +78,7 @@ func (d *dashboard) act(do func(c *env, r *http.Request) error) http.HandlerFunc
 				status = http.StatusBadGateway
 			}
 		}
-		d.render(w, status, "backlog", d.backlogView(r, o))
+		d.render(w, status, "backlog", "", d.backlogView(r, o))
 	}
 }
 
@@ -95,9 +95,16 @@ func (e *env) clickedBy(out *bytes.Buffer) *env {
 	return &c
 }
 
-// itemView is the i-th item of a pending Proposal as the Dashboard shows it.
-func itemView(pb *engine.Playbook, i int, it engine.ProposalItem) proposalItem {
+// itemView is the i-th item of a pending Proposal as the Dashboard shows it;
+// kept is every Artifact the Stores keep, by id.
+func itemView(pb *engine.Playbook, i int, it engine.ProposalItem, kept map[string]engine.Artifact) proposalItem {
 	v := proposalItem{N: i + 1, Text: it.String()}
+	// The Artifacts it names, as against refs to creations of the Proposal.
+	for _, id := range it.Names() {
+		if _, ok := kept[id]; ok {
+			v.Artifacts = append(v.Artifacts, id)
+		}
+	}
 	t := pb.Type(it.Create)
 	if t == nil {
 		return v

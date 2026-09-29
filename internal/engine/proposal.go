@@ -57,6 +57,29 @@ type ProposalItem struct {
 	Text      string
 }
 
+// Names returns the ids and refs the item names: the Artifact it moves and
+// those its Links point to, each once, sorted.
+func (it ProposalItem) Names() []string {
+	var names []string
+	if it.Move != "" {
+		names = append(names, it.Move)
+	}
+	for _, ids := range it.Links {
+		names = append(names, ids...)
+	}
+	slices.Sort(names)
+	return slices.Compact(names)
+}
+
+// ProposedBy says who put the Proposal forward: an agent session, or a
+// person.
+func (p Proposal) ProposedBy() string {
+	if p.By != "" {
+		return "agent session " + p.By
+	}
+	return "a person"
+}
+
 // ChangesPlaybook reports whether the item changes the Playbook rather
 // than an Artifact.
 func (it ProposalItem) ChangesPlaybook() bool {

@@ -1,0 +1,4 @@
+{{/* Parts more than one page shows. */}}
+{{define "moves"}}{{$id := .ID}}{{range .Moves}}<form method="post" action="/artifacts/{{$id}}/move" class="move"><input type="hidden" name="to" value="{{.}}"><button type="submit">→ {{.}}</button></form>{{end}}{{end}}
+{{define "work"}}<span class="pill {{if eq . "agent work"}}agent{{else if eq . "human work"}}human{{else}}finished{{end}}">{{.}}</span>{{end}}
+{{define "named"}}{{with .}} <span class="muted small">({{range $i, $id := .}}{{if $i}}, {{end}}<a href="/artifacts/{{$id}}">{{$id}}</a>{{end}})</span>{{end}}{{end}}

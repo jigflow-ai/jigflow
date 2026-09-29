@@ -149,12 +149,18 @@ func TestAChangeWrittenBeforeThePageListensIsSignalledAtOnce(t *testing.T) {
 
 func TestEveryPageListensToTheStreamToUpdateItself(t *testing.T) {
 	p := ticketPlaybook(t)
+	p.MustRun("create", "Ticket", "--title", "Login page")
 	ui := p.StartUI()
 
-	for _, path := range []string{"/", "/workflows", "/ledger"} {
+	for _, path := range []string{"/", "/workflows", "/ledger", "/artifacts/T-1"} {
 		if !listens(get(t, ui, path)) {
 			t.Errorf("%s doesn't listen to the change stream", path)
 		}
+	}
+	// An Artifact's page that can't be shown yet loads itself again, not
+	// the backlog, once it can.
+	if page := ui.Get("/artifacts/T-2"); !listens(page.HTML) || !strings.Contains(page.HTML, `var here = "/artifacts/T-2"`) {
+		t.Errorf("the page saying T-2 isn't there (status %d) should reload itself when the project changes:\n%s", page.Status, page.HTML)
 	}
 	// A page that can't be shown now updates once it can.
 	p.Write(".jigflow/playbook.yaml", "name: [broken\n")

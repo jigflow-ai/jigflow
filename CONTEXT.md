@@ -99,8 +99,12 @@ An external executable, written in any language, through which the CLI reads and
 _Avoid_: Integration, plugin, sync
 
 **Dashboard**:
-The local web view of a project's Artifacts, human queue, pending Proposals, Ledger and Status machines, served only on the developer's machine, and the preferred place to approve or reject Proposals and perform Human Transitions. It never edits an Artifact's body.
+The local web view of a project's Artifacts, each on a page of its own with its body, Links and history, and of its human queue, pending Proposals, Ledger and Status machines, served only on the developer's machine, and the preferred place to approve or reject Proposals and perform Human Transitions. It never edits an Artifact's body, except to add a person's comment to it through jfl.
 _Avoid_: UI, console, admin panel
+
+**Mockup**:
+A file in the repository, such as an HTML page or an image, that shows what a piece of work should look like, kept in the one folder the Playbook declares for them and referenced from an Artifact's body. It is reference material, not workflow state: it has no Status and is not an Artifact.
+_Avoid_: Design, wireframe, prototype
 
 ### Agent guidance
 
