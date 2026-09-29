@@ -219,8 +219,10 @@ Commands:
                           Status, so far in the one it is in, and the agent
                           session time and tokens charged to it while it was
                           in Focus; the time every Artifact of a Type spent in
-                          each Status; and agent time and tokens with nothing
-                          in Focus, which are unattributed. Every create,
+                          each Status; agent time and tokens with nothing in
+                          Focus, which are unattributed; and each Status
+                          change a Confirmation made, with the channel it
+                          came through: terminal or dashboard. Every create,
                           Transition, approved Proposal and migration, and
                           every change of a session's Focus, adds an entry of
                           its own to the committed .jigflow/ledger, timed by
@@ -410,7 +412,7 @@ func cmdCreate(e *env, args []string) error {
 	if a, err = st.Create(a, e.actor); err != nil {
 		return err
 	}
-	if err := e.recordStatus(a, ""); err != nil {
+	if err := e.recordStatus(a, "", ""); err != nil {
 		return err
 	}
 	fmt.Fprintf(e.stdout, "created %s %q in %s\n", a.ID, a.Title, a.Status)
@@ -458,8 +460,9 @@ func (e *env) move(id, to string) error {
 	if err != nil {
 		return err
 	}
+	var via engine.Channel
 	if tr.Human {
-		if err := e.confirmHuman(a, tr); err != nil {
+		if via, err = e.confirmHuman(a, tr); err != nil {
 			return err
 		}
 	}
@@ -479,7 +482,7 @@ func (e *env) move(id, to string) error {
 	if err := st.Save(moved); err != nil {
 		return err
 	}
-	if err := e.recordStatus(moved, a.Status); err != nil {
+	if err := e.recordStatus(moved, a.Status, via); err != nil {
 		return err
 	}
 	if err := e.unfocus(pb, moved); err != nil {

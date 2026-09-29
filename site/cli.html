@@ -112,7 +112,7 @@
 <p class="label">Example</p><pre><code>jfl ui --addr 127.0.0.1:8080</code></pre>
 <h3 id="ledger"><code>ledger</code></h3>
 <pre><code>jfl ledger</code></pre>
-<p>Sum the Ledger: the time each Artifact spent in each Status, so far in the one it is in, and the agent session time and tokens charged to it while it was in Focus; the time every Artifact of a Type spent in each Status; and agent time and tokens with nothing in Focus, which are unattributed. Every create, Transition, approved Proposal and migration, and every change of a session's Focus, adds an entry of its own to the committed .jigflow/ledger, timed by jfl's clock; tokens come only from the agent's own records, and agents without any record time only.</p>
+<p>Sum the Ledger: the time each Artifact spent in each Status, so far in the one it is in, and the agent session time and tokens charged to it while it was in Focus; the time every Artifact of a Type spent in each Status; agent time and tokens with nothing in Focus, which are unattributed; and each Status change a Confirmation made, with the channel it came through: terminal or dashboard. Every create, Transition, approved Proposal and migration, and every change of a session's Focus, adds an entry of its own to the committed .jigflow/ledger, timed by jfl's clock; tokens come only from the agent's own records, and agents without any record time only.</p>
 <p class="label">Example</p><pre><code>jfl ledger</code></pre>
 <h2 id="agent-integration">Agent integration</h2>
 <h3 id="mcp"><code>mcp</code></h3>

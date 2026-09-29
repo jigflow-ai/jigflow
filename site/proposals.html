@@ -70,7 +70,7 @@ jfl simulate Ticket --proposal P-3</code></pre>
 <h2 id="deciding">Approving and rejecting</h2>
 <pre><code>jfl approve P-3        <span class="c"># lists every item, then asks: Approve all 3 changes as one unit? [y/N]</span>
 jfl reject P-3</code></pre>
-<p>Only a person may approve or reject, at an interactive terminal or in the Dashboard. An agent session is refused, and the MCP server doesn't offer these commands at all. If an item makes a Transition that the Playbook marks <code>human: dashboard</code>, the Proposal can only be approved in the Dashboard.</p>
+<p>Only a person may approve or reject, at an interactive terminal or in the Dashboard. An agent session is refused, and the MCP server doesn't offer these commands at all. If an item makes a Transition that the Playbook marks <code>human: dashboard</code>, the Proposal can only be approved in the Dashboard. The <a href="ledger.html#confirmations">Ledger</a> records which of the two each approval, and each Human Transition, came through.</p>
 
 <h2 id="dashboard">The Dashboard</h2>
 <pre><code>jfl ui</code></pre>

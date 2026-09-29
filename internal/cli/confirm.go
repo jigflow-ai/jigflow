@@ -39,35 +39,36 @@ func (e *env) interactive() bool {
 }
 
 // confirmHuman asks the person at the terminal to confirm the Human
-// Transition tr of a. In the Dashboard, the person's click is the
-// confirmation; one the Playbook requires the Dashboard for is refused
-// anywhere else.
-func (e *env) confirmHuman(a engine.Artifact, tr engine.Transition) error {
+// Transition tr of a, and returns the channel their Confirmation came
+// through. In the Dashboard, the person's click is the confirmation; one the
+// Playbook requires the Dashboard for is refused anywhere else.
+func (e *env) confirmHuman(a engine.Artifact, tr engine.Transition) (engine.Channel, error) {
 	if e.clicked {
-		return nil
+		return engine.ViaDashboard, nil
 	}
 	to := tr.To
 	if tr.Dashboard {
-		return fmt.Errorf("%s and make it there", dashboardOnly(a.ID, tr))
+		return "", fmt.Errorf("%s and make it there", dashboardOnly(a.ID, tr))
 	}
 	ok, err := e.confirm(fmt.Sprintf("%s %q: %q → %q is a Human Transition. Make it?", a.ID, a.Title, a.Status, to))
 	if errors.Is(err, errNoTerminal) {
-		return fmt.Errorf("%s: %q → %q is a Human Transition and needs confirming in an interactive terminal, but stdin isn't one", a.ID, a.Status, to)
+		return "", fmt.Errorf("%s: %q → %q is a Human Transition and needs confirming in an interactive terminal, but stdin isn't one", a.ID, a.Status, to)
 	}
 	if err != nil {
-		return fmt.Errorf("%s: not moved: %v", a.ID, err)
+		return "", fmt.Errorf("%s: not moved: %v", a.ID, err)
 	}
 	if !ok {
-		return fmt.Errorf("%s: not moved: the Human Transition wasn't confirmed", a.ID)
+		return "", fmt.Errorf("%s: not moved: the Human Transition wasn't confirmed", a.ID)
 	}
-	return nil
+	return engine.ViaTerminal, nil
 }
 
-// confirmApproval asks the person at the terminal to confirm approving p.
-// In the Dashboard, the person's click is the confirmation.
-func (e *env) confirmApproval(p engine.Proposal) error {
+// confirmApproval asks the person at the terminal to confirm approving p,
+// and returns the channel their Confirmation came through. In the
+// Dashboard, the person's click is the confirmation.
+func (e *env) confirmApproval(p engine.Proposal) (engine.Channel, error) {
 	if e.clicked {
-		return nil
+		return engine.ViaDashboard, nil
 	}
 	by := "a person"
 	if p.By != "" {
@@ -75,15 +76,15 @@ func (e *env) confirmApproval(p engine.Proposal) error {
 	}
 	ok, err := e.confirm(fmt.Sprintf("%s from %s: %s\n%sApprove all %s as one unit?", p.ID, by, p.Summary, listItems(p), plural(len(p.Items), "change")))
 	if errors.Is(err, errNoTerminal) {
-		return fmt.Errorf("approving %s needs confirming in an interactive terminal, but stdin isn't one", p.ID)
+		return "", fmt.Errorf("approving %s needs confirming in an interactive terminal, but stdin isn't one", p.ID)
 	}
 	if err != nil {
-		return fmt.Errorf("%s: not approved: %v", p.ID, err)
+		return "", fmt.Errorf("%s: not approved: %v", p.ID, err)
 	}
 	if !ok {
-		return fmt.Errorf("%s: not approved: the approval wasn't confirmed", p.ID)
+		return "", fmt.Errorf("%s: not approved: the approval wasn't confirmed", p.ID)
 	}
-	return nil
+	return engine.ViaTerminal, nil
 }
 
 // dashboardOnly says that the Transition tr of the Artifact id is one the

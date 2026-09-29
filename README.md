@@ -80,7 +80,7 @@ From there `/spec` turns the PRD into Requirements, `/plan` into Stories and Tas
 | `jfl propose`, `approve`, `reject` | Proposals: changes a person approves as one unit |
 | `jfl check`, `simulate`, `migrate` | validate a Playbook, walk an Artifact Type through it, migrate Artifacts after a change |
 | `jfl publish <adapter>` | publish the Skills for `claude-code` or `agents-md` |
-| `jfl ui`, `ledger` | the local Dashboard; time and tokens per Artifact |
+| `jfl ui`, `ledger` | the local Dashboard; time and tokens per Artifact, and where each Confirmation came from |
 | `jfl mcp` | the agent-safe commands as an MCP server |
 
 Run `jfl` with no arguments for every flag, or read the [CLI reference](site/cli.html).

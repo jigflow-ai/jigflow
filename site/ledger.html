@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Ledger · JigFlow</title>
-<meta name="description" content="Time per Status and tokens per Artifact, committed with the code.">
+<meta name="description" content="Time per Status and tokens per Artifact, and where each Confirmation came from, committed with the code.">
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -54,9 +54,29 @@ Agent time unattributed: 0s</code></pre>
 <ul>
   <li><strong>Time per Status</strong>: every create, Transition, approved Proposal and migration adds an entry, so <code>jfl ledger</code> can sum how long each Artifact spent in each Status, and how long it has been in the current one.</li>
   <li><strong>Agent session time</strong>: every change of a session's Focus adds an entry. The time between two changes is charged to the Artifact in Focus, or to <em>unattributed</em> when nothing was.</li>
+  <li><strong>Confirmations</strong>: every Status change a Human Transition or an approved Proposal makes records the channel of the person's Confirmation behind it. See <a href="#confirmations">below</a>.</li>
   <li><strong>Tokens</strong>, where the agent's own records expose them. With Claude Code, the hooks <code>jfl publish claude-code</code> installs read Claude Code's session transcripts after each turn, each sub-agent and at the end of the session. They charge each message's tokens to the Artifact that was in Focus when the message was written.</li>
 </ul>
 <p>Agents without such records, like those reading <code>AGENTS.md</code>, get time only. <code>jfl ledger</code> shows tokens once some have been recorded.</p>
+
+<h2 id="confirmations">Where each Confirmation came from</h2>
+<p>A Human Transition, or a Proposal, needs a person's Confirmation, given somewhere the agent can't answer for them. The Ledger entry of every Status change it makes says where, in a <code>via</code> field:</p>
+<ul>
+  <li><code>terminal</code>: the person answered <code>y</code> to <code>jfl move</code> or <code>jfl approve</code> at an interactive terminal;</li>
+  <li><code>dashboard</code>: the person clicked in the Dashboard.</li>
+</ul>
+<p>An approved Proposal records its channel on every Status change it makes, each creation and each move. Status changes that need no Confirmation, such as an ordinary Transition, an agent's move or a migration, have no <code>via</code>, nor do entries written before <code>jfl</code> recorded channels. They still read as before.</p>
+<pre><code>at: 2026-09-29T06:53:34.363870877Z
+artifact: T-1
+type: Ticket
+title: Add login page
+from: ready-to-merge
+to: done
+via: terminal</code></pre>
+<p><code>jfl ledger</code> lists them under <em>Confirmations</em>, in the order they happened, each with its time in UTC, the Artifact, the change and the channel:</p>
+<pre class="out"><code>Confirmations:
+  2026-09-29 06:53  T-1  ready-to-merge → done  via terminal</code></pre>
+<p class="label">A Human Transition confirmed in a terminal.</p>
 
 <h2 id="storage">Where it lives</h2>
 <p>The Ledger is <code>.jigflow/ledger/</code>, one file per entry, named by when it was written and a random id of the process that wrote it. Entries are only ever added. Parallel sessions, on one machine or on branches merged later, never touch the same file, so git never has a conflict to report. It is committed whichever Store keeps the Artifacts.</p>

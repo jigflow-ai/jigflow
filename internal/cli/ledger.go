@@ -30,9 +30,10 @@ func clock(getenv func(string) string) (func() time.Time, error) {
 }
 
 // recordStatus adds to the Ledger that a entered its Status, leaving from,
-// or none when it was created.
-func (e *env) recordStatus(a engine.Artifact, from string) error {
-	return e.ledger().RecordStatus(engine.StatusChange{At: e.now(), Artifact: a.ID, Type: a.Type, Title: a.Title, From: from, To: a.Status})
+// or none when it was created, through a Confirmation given via that
+// channel, or none when it needed none.
+func (e *env) recordStatus(a engine.Artifact, from string, via engine.Channel) error {
+	return e.ledger().RecordStatus(engine.StatusChange{At: e.now(), Artifact: a.ID, Type: a.Type, Title: a.Title, From: from, To: a.Status, Via: via})
 }
 
 // setFocus makes id the agent session's Focus, none when it is empty, and
@@ -108,6 +109,16 @@ func cmdLedger(e *env, args []string) error {
 				now = fmt.Sprintf(", %d there now", s.Now)
 			}
 			fmt.Fprintf(w, "    %s\t%s over %s%s\n", s.Status, duration(s.Time), plural(s.Artifacts, "Artifact"), now)
+		}
+	}
+	if len(sum.Confirmations) > 0 {
+		fmt.Fprintln(w, "Confirmations:")
+		for _, c := range sum.Confirmations {
+			change := "created in " + c.To
+			if c.From != "" {
+				change = c.From + " → " + c.To
+			}
+			fmt.Fprintf(w, "  %s\t%s\t%s\tvia %s\n", c.At.UTC().Format("2006-01-02 15:04"), c.Artifact, change, c.Via)
 		}
 	}
 	if err := w.Flush(); err != nil {

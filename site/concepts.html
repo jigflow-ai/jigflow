@@ -76,6 +76,8 @@
 <dd>A user-declared command run after a Transition succeeds (e.g. commit, open a branch, notify).<br><span class="avoid">Not: Hook, effect, callback</span></dd>
 <dt id="human-transition">Human Transition</dt>
 <dd>A Transition that only a human may perform; the agent can propose it but never make it. Creating an Artifact directly into a Status that has a Binding also counts as a Human Transition, unless that Status is an Inbox. A Playbook may require one to be made in the Dashboard. It guards against accidents, not against a determined agent.<br><span class="avoid">Not: Approval step, manual step</span></dd>
+<dt id="confirmation">Confirmation</dt>
+<dd>A person's yes to a Human Transition or a Proposal, given through a channel the agent can't answer for them: today an interactive terminal or the Dashboard. The <a href="ledger.html#confirmations">Ledger</a> records which one.<br><span class="avoid">Not: Approval, consent, sign-off</span></dd>
 <dt id="focus">Focus</dt>
 <dd>The Artifact a session is currently working on; set by <code>next</code> and moved by Transitions. It lives only in the session, never in git.<br><span class="avoid">Not: Claim, current task, active item</span></dd>
 <dt id="proposal">Proposal</dt>
@@ -86,7 +88,7 @@
 <h2 id="section-visibility">Visibility</h2>
 <dl class="terms">
 <dt id="ledger">Ledger</dt>
-<dd>The committed record of the time each Artifact spends in each Status, and of agent session time, and tokens where the agent's own records expose them (never numbers the agent reports), charged to the Artifact in Focus or to unattributed.<br><span class="avoid">Not: Usage log, metrics, telemetry</span></dd>
+<dd>The committed record of the time each Artifact spends in each Status, and of agent session time, and tokens where the agent's own records expose them (never numbers the agent reports), charged to the Artifact in Focus or to unattributed; and the channel of the Confirmation behind each Human Transition or approved Proposal.<br><span class="avoid">Not: Usage log, metrics, telemetry</span></dd>
 <dt id="connector">Connector</dt>
 <dd>An external executable, written in any language, through which the CLI reads and writes Artifacts kept in an outside tracker, mapping Statuses to that tracker's labels or states.<br><span class="avoid">Not: Integration, plugin, sync</span></dd>
 <dt id="dashboard">Dashboard</dt>

@@ -156,7 +156,8 @@ func (e *env) approve(id string, edit func(pb *engine.Playbook, p *engine.Propos
 			return notApplied(fmt.Errorf("item %d (%s): %s and approve %s there", c.Item+1, p.Items[c.Item], dashboardOnly(c.Artifact.ID, c.Transition), p.ID))
 		}
 	}
-	if err := e.confirmApproval(p); err != nil {
+	via, err := e.confirmApproval(p)
+	if err != nil {
 		return err
 	}
 
@@ -211,7 +212,7 @@ func (e *env) approve(id string, edit func(pb *engine.Playbook, p *engine.Propos
 		} else if err := st.Save(c.Artifact); err != nil {
 			return err
 		}
-		if err := e.recordStatus(c.Artifact, c.From); err != nil {
+		if err := e.recordStatus(c.Artifact, c.From, via); err != nil {
 			return err
 		}
 		if err := e.unfocus(pb, c.Artifact); err != nil {

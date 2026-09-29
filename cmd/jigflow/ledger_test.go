@@ -1,12 +1,16 @@
 package main_test
 
 import (
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/jigflow-ai/jigflow/internal/clitest"
+	"go.yaml.in/yaml/v3"
 )
 
 // block returns the lines of out indented under the line reading header,
@@ -287,5 +291,163 @@ func TestAStoppedAutopilotEndsTheTimeChargedToItsFocus(t *testing.T) {
 	}
 	if !slices.Contains(ledgerLines(r.Stdout), "Agent time unattributed: 15m") {
 		t.Errorf("jfl ledger should charge the 15m after autopilot stopped to unattributed:\n%s", r.Stdout)
+	}
+}
+
+// ledgerEntries returns the Ledger's entry files, by name.
+func ledgerEntries(t *testing.T, p *clitest.Project) map[string]string {
+	t.Helper()
+	dirents, err := os.ReadDir(filepath.Join(p.Dir, ".jigflow/ledger"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	out := map[string]string{}
+	for _, d := range dirents {
+		out[d.Name()] = p.Read(".jigflow/ledger/" + d.Name())
+	}
+	return out
+}
+
+// entriesVia returns the Ledger's Status-change entries that move into the
+// Status to, split by the channel of their Confirmation: "" for none.
+func entriesVia(t *testing.T, p *clitest.Project, to string) map[string]int {
+	t.Helper()
+	out := map[string]int{}
+	for name, text := range ledgerEntries(t, p) {
+		var e struct{ To, Via string }
+		if err := yaml.Unmarshal([]byte(text), &e); err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		if e.To == to {
+			out[e.Via]++
+		}
+	}
+	return out
+}
+
+func TestAHumanTransitionConfirmedInATerminalIsRecordedAsConfirmedThere(t *testing.T) {
+	p := mergePlaybook(t)
+	p.At("2026-09-28T10:00:00Z")
+
+	term := p.StartInTerminal("move", "T-1", "done")
+	term.Expect("[y/N] ")
+	term.Type("y\n")
+	if r := term.Wait(); r.ExitCode != 0 {
+		t.Fatalf("the confirmed Human Transition exited %d; terminal:\n%s", r.ExitCode, r.Output)
+	}
+
+	if got := entriesVia(t, p, "done"); got["terminal"] != 1 || len(got) != 1 {
+		t.Errorf("entries moving T-1 to done, by channel = %v, want one via terminal", got)
+	}
+	// The creation and the ordinary Transition before it needed no
+	// Confirmation.
+	for _, to := range []string{"in-review", "ready-to-merge"} {
+		if got := entriesVia(t, p, to); got[""] != 1 || len(got) != 1 {
+			t.Errorf("entries into %s, by channel = %v, want one with none", to, got)
+		}
+	}
+	wantBlock(t, p.MustRun("ledger").Stdout, "Confirmations:",
+		"2026-09-28 10:00 T-1 ready-to-merge → done via terminal",
+	)
+}
+
+func TestEveryStatusChangeOfAProposalApprovedInATerminalIsRecordedAsConfirmedThere(t *testing.T) {
+	p := pocockPlaybook(t)
+	p.At("2026-09-28T09:00:00Z")
+	p.MustRun("create", "Spec", "--title", "Password reset by email")
+	p.Write("breakdown.yaml", "summary: one ticket\nitems:\n  - {create: Ticket, ref: a, title: Reset-token table, links: {part_of: [S-1]}}\n  - {move: S-1, to: ticketed}\n")
+	p.RunInSession("A", "propose", "breakdown.yaml")
+	p.At("2026-09-28T10:00:00Z")
+	approveInTerminal(t, p, "P-1")
+
+	if got := entriesVia(t, p, "ticketed"); got["terminal"] != 1 || len(got) != 1 {
+		t.Errorf("entries moving S-1 to ticketed, by channel = %v, want one via terminal", got)
+	}
+	// The Spec, created by a person, and the Ticket, created by the
+	// Proposal, both start in ready-for-agent.
+	if got := entriesVia(t, p, "ready-for-agent"); got["terminal"] != 1 || got[""] != 1 || len(got) != 2 {
+		t.Errorf("entries into ready-for-agent, by channel = %v, want the Proposal's via terminal and the person's creation with none", got)
+	}
+	wantBlock(t, p.MustRun("ledger").Stdout, "Confirmations:",
+		"2026-09-28 10:00 T-1 created in ready-for-agent via terminal",
+		"2026-09-28 10:00 S-1 ready-for-agent → ticketed via terminal",
+	)
+}
+
+func TestAHumanTransitionMadeInTheDashboardIsRecordedAsConfirmedThere(t *testing.T) {
+	p := mergePlaybook(t)
+	p.At("2026-09-28T10:00:00Z")
+	ui := p.StartUI()
+
+	if page := submit(t, ui, rowHTML(t, get(t, ui, "/"), "T-1"), "→ done", nil); page.Status != http.StatusOK {
+		t.Fatalf("moving T-1 to done: status %d\n%s", page.Status, text(page.HTML))
+	}
+
+	if got := entriesVia(t, p, "done"); got["dashboard"] != 1 || len(got) != 1 {
+		t.Errorf("entries moving T-1 to done, by channel = %v, want one via dashboard", got)
+	}
+	wantBlock(t, p.MustRun("ledger").Stdout, "Confirmations:",
+		"2026-09-28 10:00 T-1 ready-to-merge → done via dashboard",
+	)
+}
+
+func TestEveryStatusChangeOfAProposalApprovedInTheDashboardIsRecordedAsConfirmedThere(t *testing.T) {
+	p := proposedBreakdown(t)
+	p.At("2026-09-28T10:00:00Z")
+	ui := p.StartUI()
+
+	page := submit(t, ui, section(t, get(t, ui, "/"), "Pending Proposals"), "Approve all 4 changes", nil)
+	if page.Status != http.StatusOK {
+		t.Fatalf("approving P-1: status %d\n%s", page.Status, text(page.HTML))
+	}
+
+	if got := entriesVia(t, p, "ticketed"); got["dashboard"] != 1 || len(got) != 1 {
+		t.Errorf("entries moving S-1 to ticketed, by channel = %v, want one via dashboard", got)
+	}
+	wantBlock(t, p.MustRun("ledger").Stdout, "Confirmations:",
+		"2026-09-28 10:00 T-1 created in ready-for-agent via dashboard",
+		"2026-09-28 10:00 T-2 created in ready-for-agent via dashboard",
+		"2026-09-28 10:00 T-3 created in ready-for-agent via dashboard",
+		"2026-09-28 10:00 S-1 ready-for-agent → ticketed via dashboard",
+	)
+}
+
+func TestLedgerEntriesWrittenBeforeChannelsWereRecordedStillRead(t *testing.T) {
+	p := ticketPlaybook(t)
+	p.Write(".jigflow/ledger/20260928T090000.000000000Z-0000cafe-0001.yaml",
+		"at: 2026-09-28T09:00:00Z\nartifact: T-1\ntype: Ticket\ntitle: Login page\nto: ready-for-agent\n")
+	p.Write(".jigflow/ledger/20260928T100000.000000000Z-0000cafe-0002.yaml",
+		"at: 2026-09-28T10:00:00Z\nartifact: T-1\ntype: Ticket\ntitle: Login page\nfrom: ready-for-agent\nto: in-progress\n")
+	p.At("2026-09-28T10:30:00Z")
+
+	r := p.MustRun("ledger")
+	wantBlock(t, r.Stdout, `T-1 Ticket "Login page"`,
+		"ready-for-agent 1h",
+		"in-progress 30m so far",
+	)
+	if strings.Contains(r.Stdout, "Confirmations:") {
+		t.Errorf("no entry records a Confirmation, but jfl ledger lists some:\n%s", r.Stdout)
+	}
+}
+
+func TestRecordingConfirmationsKeepsTheLedgerOneFilePerEntryOnlyEverAdded(t *testing.T) {
+	p := mergePlaybook(t)
+	before := ledgerEntries(t, p)
+
+	term := p.StartInTerminal("move", "T-1", "done")
+	term.Expect("[y/N] ")
+	term.Type("y\n")
+	if r := term.Wait(); r.ExitCode != 0 {
+		t.Fatalf("the confirmed Human Transition exited %d; terminal:\n%s", r.ExitCode, r.Output)
+	}
+
+	after := ledgerEntries(t, p)
+	if len(after) != len(before)+1 {
+		t.Errorf("the Ledger holds %d entries after the move, want %d: one more", len(after), len(before)+1)
+	}
+	for name, e := range before {
+		if after[name] != e {
+			t.Errorf("entry %s changed:\n%s\nwas:\n%s", name, after[name], e)
+		}
 	}
 }

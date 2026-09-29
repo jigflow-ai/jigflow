@@ -20,7 +20,22 @@ type StatusChange struct {
 	Type     string
 	Title    string
 	From, To string
+	// Via is the channel of the Confirmation behind the change, for a Human
+	// Transition or an approved Proposal's; empty for a change that needed
+	// none, and for every change recorded before channels were.
+	Via Channel
 }
+
+// Channel is where a person gave a Confirmation: somewhere the agent can't
+// answer for them.
+type Channel string
+
+// The channels a Confirmation comes through so far; the agent's client is
+// to follow (ADR 0024).
+const (
+	ViaTerminal  Channel = "terminal"  // answered y at an interactive terminal
+	ViaDashboard Channel = "dashboard" // clicked in the Dashboard
+)
 
 // FocusChange is a Ledger entry: an agent session's Focus becoming the
 // Artifact Focus, or none when it is empty.
@@ -79,6 +94,9 @@ type LedgerSummary struct {
 	// Usage is whether the Ledger records any tokens: where no agent's
 	// records expose them, it records time only.
 	Usage bool
+	// Confirmations are the Status changes a Confirmation made, in the
+	// order they happened.
+	Confirmations []StatusChange
 }
 
 // ArtifactTime is the time one Artifact spent in each Status, and the agent
@@ -147,6 +165,9 @@ func Summarise(pb *Playbook, l Ledger, now time.Time) LedgerSummary {
 	changes := map[string][]StatusChange{}
 	for _, c := range l.Statuses {
 		changes[c.Artifact] = append(changes[c.Artifact], c)
+		if c.Via != "" {
+			sum.Confirmations = append(sum.Confirmations, c)
+		}
 	}
 	for id, cs := range changes {
 		a := artifact(id)

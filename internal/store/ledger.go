@@ -52,6 +52,7 @@ type ledgerEntry struct {
 	Title    string `yaml:"title,omitempty"`
 	From     string `yaml:"from,omitempty"`
 	To       string `yaml:"to,omitempty"`
+	Via      string `yaml:"via,omitempty"` // the channel of its Confirmation, if it needed one
 	// A Focus change.
 	Session string `yaml:"session,omitempty"`
 	Focus   string `yaml:"focus,omitempty"`
@@ -72,7 +73,7 @@ type usageEntry struct {
 
 // RecordStatus adds a Status change to the Ledger.
 func (l *Ledger) RecordStatus(c engine.StatusChange) error {
-	return l.write(ledgerEntry{At: c.At, Artifact: c.Artifact, Type: c.Type, Title: c.Title, From: c.From, To: c.To})
+	return l.write(ledgerEntry{At: c.At, Artifact: c.Artifact, Type: c.Type, Title: c.Title, From: c.From, To: c.To, Via: string(c.Via)})
 }
 
 // RecordFocus adds a Focus change to the Ledger.
@@ -164,7 +165,7 @@ func (l *Ledger) Read() (engine.Ledger, error) {
 					Tokens: engine.Tokens{Input: u.Input, Output: u.Output, CacheRead: u.CacheRead, CacheWrite: u.CacheWrite}})
 			}
 		case e.Artifact != "":
-			out.Statuses = append(out.Statuses, engine.StatusChange{At: e.At, Artifact: e.Artifact, Type: e.Type, Title: e.Title, From: e.From, To: e.To})
+			out.Statuses = append(out.Statuses, engine.StatusChange{At: e.At, Artifact: e.Artifact, Type: e.Type, Title: e.Title, From: e.From, To: e.To, Via: engine.Channel(e.Via)})
 		case e.Session != "":
 			out.Focuses = append(out.Focuses, engine.FocusChange{At: e.At, Session: e.Session, Focus: e.Focus})
 		}
