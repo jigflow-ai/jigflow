@@ -10,8 +10,8 @@ personas:
 Plan the Requirement in Focus.
 
 1. Read the Requirement's body, its **Done means**, and the PRD it is part of, in their files in .jigflow/state. If its priority is `wont`, don't plan it: put forward a Proposal of `{move: <id>, to: dropped}` for the person to confirm, as step 5 does, and stop.
-2. Read the code the Requirement touches and the conventions Guideline.
-3. Split the Requirement into Stories: slices a user can try on their own, together meeting every check under Done means. Give each Story acceptance criteria.
+2. Read the code the Requirement touches and the conventions Guideline. Open the Mockups linked from the `## Mockups` sections of the Requirement and the PRD, if they have any: the screens the design shows, which the Stories and Tasks follow.
+3. Split the Requirement into Stories: slices a user can try on their own, together meeting every check under Done means. Give each Story acceptance criteria, and note which Mockups it needs.
 4. Split each Story into Tasks. A Task is one change, small enough to review in one sitting and commit as one commit, that leaves the tests passing. Say which Tasks must wait for others (blocked_by).
 5. Propose the plan as one unit, with the Requirement's move to planned, in a Proposal file:
 
@@ -33,5 +33,7 @@ Plan the Requirement in Focus.
    - **Design**: the parts it adds or changes and how they fit together;
    - **Conventions**: the conventions Guideline's rules and the patterns in the code it follows;
    - **Testing**: how it will be tested, and at which boundary.
+
+   When the Requirement or the PRD links Mockups, end each Story's body with a `## Mockups` section listing the Mockups that Story needs, linked by the same path the Requirement or PRD links them by, from the project root, such as `.jigflow/mockups/REQ-3/sign-up.html`. A Story that needs none has no such section.
 
    The approved Proposal is the person's approval of the plan: writing it needs no further Confirmation. A Task's body says what to change, where, and how to know it works, the way its Story's technical plan says.

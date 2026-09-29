@@ -176,7 +176,7 @@ func TestAPersonAcceptingAReviewedTaskCommitsItAsOneCommit(t *testing.T) {
 	}
 }
 
-func TestTheLarapilotStylePlaybookShipsSixGenericPersonasAndNothingLaravelSpecific(t *testing.T) {
+func TestTheLarapilotStylePlaybookShipsSevenGenericPersonasAndNothingLaravelSpecific(t *testing.T) {
 	p := larapilot(t)
 
 	p.MustRun("publish", "claude-code")
@@ -187,7 +187,7 @@ func TestTheLarapilotStylePlaybookShipsSixGenericPersonasAndNothingLaravelSpecif
 		}
 	}
 	slices.Sort(personas)
-	if want := "architect engineer product-owner reviewer security-reviewer tester"; strings.Join(personas, " ") != want {
+	if want := "architect designer engineer product-owner reviewer security-reviewer tester"; strings.Join(personas, " ") != want {
 		t.Errorf("published Personas = %v, want %s", personas, want)
 	}
 	for rel, content := range tree(t, p) {
@@ -245,6 +245,69 @@ func TestTheLarapilotStyleSkillsWriteFollowAndCheckEachStorysTechnicalPlan(t *te
 			if !strings.Contains(content, want) {
 				t.Errorf("the %s Skill should contain %q:\n%s", skill, want, content)
 			}
+		}
+	}
+}
+
+// Mockups come from a design Skill only a person starts, on an Artifact
+// they name: it has no Binding, so it moves nothing and the loop is the
+// same without it. It adopts the designer Persona, asks the person for the
+// style, and writes the Mockups where the Dashboard finds them (ADR 0027):
+// in the subfolder of the Mockup folder named after the Artifact, linked
+// from a `## Mockups` section of its body by their path from the project
+// root.
+func TestTheLarapilotStyleDesignSkillIsAPersonsAndWritesMockupsWhereTheDashboardFindsThem(t *testing.T) {
+	p := larapilot(t)
+	p.MustRun("publish", "claude-code")
+
+	design := p.Read(".claude/skills/design/SKILL.md")
+	if fm, _ := skillFrontmatter(t, design); fm["disable-model-invocation"] != true {
+		t.Errorf("design should be published as a Skill only a person starts: %v", fm)
+	}
+	for _, want := range []string{
+		"jfl check",        // which prints the Mockup folder the Playbook declares
+		"Mockups in <dir>", // its line
+		"<dir>/<id>/",
+		"## Mockups",
+		".jigflow/mockups/REQ-1/checkout.html", // a link by its path from the project root
+		"not relative to the body",
+		"Ask the person for the style",
+		"Don't pick a style for them",
+		"Don't move",
+		"[designer](personas/designer.md)",
+	} {
+		if !strings.Contains(design, want) {
+			t.Errorf("the design Skill should contain %q:\n%s", want, design)
+		}
+	}
+	if got := p.Read(".claude/skills/design/personas/designer.md"); !strings.HasPrefix(got, "# Designer") {
+		t.Errorf("design should publish the designer Persona next to it:\n%s", got)
+	}
+	if router := p.Read(".claude/skills/jigflow/SKILL.md"); !strings.Contains(router, "\n- /design: ") {
+		t.Errorf("the router should name /design among the Skills a person starts:\n%s", router)
+	}
+	for _, typ := range []string{"PRD", "Requirement", "Story", "Task"} {
+		if r := p.MustRun("simulate", typ); strings.Contains(r.Stdout, "/design") {
+			t.Errorf("no Status of %s should be bound to design:\n%s", typ, r.Stdout)
+		}
+	}
+}
+
+// plan follows the design: it reads the Mockups the Requirement and its PRD
+// link, and each Story's body lists the ones that Story needs, by the same
+// path, so its page shows them next to its criteria.
+func TestTheLarapilotStylePlanSkillReadsMockupsAndListsEachStorysOwn(t *testing.T) {
+	p := larapilot(t)
+	p.MustRun("publish", "claude-code")
+
+	plan := p.Read(".claude/skills/plan/SKILL.md")
+	for _, want := range []string{
+		"the Mockups linked from the `## Mockups` sections of the Requirement and the PRD",
+		"a `## Mockups` section listing the Mockups that Story needs",
+		"by the same path",
+	} {
+		if !strings.Contains(plan, want) {
+			t.Errorf("the plan Skill should contain %q:\n%s", want, plan)
 		}
 	}
 }

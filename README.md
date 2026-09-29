@@ -74,7 +74,7 @@ From there `/spec` turns the PRD into Requirements, `/plan` into Stories and Tas
 
 `jfl init` asks which Playbook to use, and there is no default.
 
-- **Larapilot-style** (`--playbook larapilot`), built into `jfl`: PRD → Requirements with MoSCoW priorities → Stories → Tasks, one commit per Task. Artifacts are Markdown files in the repository.
+- **Larapilot-style** (`--playbook larapilot`), built into `jfl`: PRD → Requirements with MoSCoW priorities → Stories → Tasks, one commit per Task. Artifacts are Markdown files in the repository. `/design`, which only you start, draws the Mockups of a PRD or a Requirement in the style you describe, and `/plan` follows them.
 - **Pocock** (`--playbook pocock`): [Matt Pocock's skills](https://github.com/mattpocock/skills) (triage, to-spec, to-tickets, tdd, code-review, wayfinder, …) with their human checkpoints enforced, and Specs, Tickets and Issues kept in GitHub Issues. It lives in its own repository, which isn't published yet: point `init` at a local checkout with `JFL_POCOCK_GIT=/path/to/jigflow-playbook-pocock`.
 - **Your own** (`--playbook own`): `init` publishes the `/playbook-author` Skill, which interviews you about how you work and proposes a Playbook. It shows you `jfl check` and `jfl simulate` of the proposed Playbook before you approve it.
 

@@ -103,7 +103,7 @@ The local web view of a project's Artifacts, each on a page of its own with its 
 _Avoid_: UI, console, admin panel
 
 **Mockup**:
-A file in the repository, such as an HTML page or an image, that shows what a piece of work should look like, kept in the one folder the Playbook declares for them, in a subfolder named after the Artifact it belongs to, and referenced from an Artifact's body. It is reference material, not workflow state: it has no Status and is not an Artifact.
+A file in the repository, such as an HTML page or an image, that shows what a piece of work should look like, kept in the one folder the Playbook declares for them, in a subfolder named after the Artifact it belongs to, and referenced from an Artifact's body by its path from the project root. The Larapilot-style Playbook's `design` Skill, which only a person starts, writes them. It is reference material, not workflow state: it has no Status and is not an Artifact.
 _Avoid_: Design, wireframe, prototype
 
 ### Agent guidance
