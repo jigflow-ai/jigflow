@@ -258,3 +258,23 @@ func TestPlaybookAuthorAsksThroughJflsToolsAndTellsAuthorsToEndSkillsSo(t *testi
 		})
 	}
 }
+
+// playbook-author tells authors that a Skill naming several Personas can
+// have the agent attribute its comments to each with --persona (ADR 0028).
+func TestPlaybookAuthorTellsAuthorsASkillWithSeveralPersonasCanAttributeItsComments(t *testing.T) {
+	p := larapilot(t)
+	p.MustRun("publish", "claude-code")
+
+	skill := p.Read(".claude/skills/playbook-author/SKILL.md")
+	for _, want := range []string{
+		"names several Personas",
+		"`jfl comment <id> --persona <name> <text>`",
+		"one comment per Persona",
+		"says what it checked",
+		"without `--persona`",
+	} {
+		if !strings.Contains(skill, want) {
+			t.Errorf("playbook-author should contain %q:\n%s", want, skill)
+		}
+	}
+}

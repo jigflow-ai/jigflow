@@ -311,3 +311,46 @@ func TestTheLarapilotStylePlanSkillReadsMockupsAndListsEachStorysOwn(t *testing.
 		}
 	}
 }
+
+// The Skills naming two or more Personas leave one comment per Persona they
+// apply, attributed with --persona on the Artifact in Focus (ADR 0028), so
+// a developer sees that each point of view was taken and what it said.
+func TestTheLarapilotStyleSkillsWithSeveralPersonasCommentOncePerPersona(t *testing.T) {
+	p := larapilot(t)
+	p.MustRun("publish", "claude-code")
+
+	for skill, own := range map[string][]string{
+		"adopt":     {"`--persona architect`", "`--persona product-owner`", "on the PRD in Focus"},
+		"spec":      {"`--persona product-owner`", "`--persona tester`", "on the PRD in Focus"},
+		"implement": {"`--persona engineer`", "`--persona tester`", "on the Task in Focus"},
+		"review":    {"`--persona reviewer`", "`--persona security-reviewer`", "on the Task in Focus", "each problem with its file and line"},
+	} {
+		content := p.Read(".claude/skills/" + skill + "/SKILL.md")
+		wants := []string{
+			"one comment per Persona",
+			"`jfl comment <id> --persona <name> <text>`",
+			"A Persona that found nothing says what it checked",
+			"isn't usable",
+			"a plain `jfl comment <id> <text>`, without `--persona`",
+			"couldn't be applied",
+		}
+		for _, want := range append(wants, own...) {
+			if !strings.Contains(content, want) {
+				t.Errorf("the %s Skill should contain %q:\n%s", skill, want, content)
+			}
+		}
+	}
+}
+
+// inception and plan name one Persona each, so a lone point of view isn't
+// labelled for nothing: they leave no attributed comment.
+func TestTheLarapilotStyleSkillsWithOnePersonaAttributeNoComment(t *testing.T) {
+	p := larapilot(t)
+	p.MustRun("publish", "claude-code")
+
+	for _, skill := range []string{"inception", "plan"} {
+		if content := p.Read(".claude/skills/" + skill + "/SKILL.md"); strings.Contains(content, "--persona") {
+			t.Errorf("the %s Skill, with one Persona, shouldn't attribute comments:\n%s", skill, content)
+		}
+	}
+}

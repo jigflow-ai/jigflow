@@ -16,7 +16,8 @@ Specify the PRD in Focus, which a person has approved, as Requirements.
    - has a MoSCoW priority: `must` (the product is useless without it), `should` (important, but it can ship without it), `could` (if time allows) or `wont` (agreed not to do this time);
    - says under **Done means** how a person can tell it is met: observable checks, each one pass or fail.
 3. Add a **Requirements** section to the PRD's body listing each draft: its title, priority and Done means. This is what the person reads while deciding.
-4. Propose them as one unit, with the PRD's move to specified, in a Proposal file:
+4. Leave one comment per Persona you applied, on the PRD in Focus, with `jfl comment <id> --persona <name> <text>`: as `--persona product-owner`, why each Requirement has its priority; as `--persona tester`, how the Done means checks can each be run, and what they leave unchecked. A Persona that found nothing says what it checked. If jfl refuses a Persona because it isn't usable in the project, say so in a plain `jfl comment <id> <text>`, without `--persona`: which Persona couldn't be applied.
+5. Propose them as one unit, with the PRD's move to specified, in a Proposal file:
 
    ```yaml
    summary: specify PRD-1 as 5 Requirements
@@ -27,4 +28,4 @@ Specify the PRD in Focus, which a person has approved, as Requirements.
    ```
 
    Put it forward and ask the person for their Confirmation. If jfl's MCP tools include `approve`, use the `propose` tool on the file: it asks them at once, in a form only they see, and its result says what they decided. Otherwise run `jfl propose <file>`. While it still waits, tell them the Proposal's id and where: `jfl approve <id>` or `jfl reject <id>` in their own terminal, or the Dashboard (`jfl ui`). Wait for their decision.
-5. Once it is approved, write each Requirement's body in its file in .jigflow/state: what it asks for, then **Done means** with its checks, as the PRD's Requirements section says. If it is rejected, ask the person why and propose again.
+6. Once it is approved, write each Requirement's body in its file in .jigflow/state: what it asks for, then **Done means** with its checks, as the PRD's Requirements section says. If it is rejected, ask the person why and propose again.
