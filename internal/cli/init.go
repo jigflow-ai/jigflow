@@ -76,7 +76,7 @@ var offers = []offer{
 	// follow upstream without a release of jfl (ADR 0009); a fork or a
 	// mirror can stand in for it.
 	{key: "pocock", name: "Pocock", about: "Matt Pocock's workflow: triage, specs broken into tickets, implement, review, wayfinder maps",
-		git: "https://github.com/jigflow-ai/jigflow-playbook-pocock", ref: "v0.3.0", env: "JFL_POCOCK"},
+		git: "https://github.com/jigflow-ai/jigflow-playbook-pocock", ref: "v0.4.0", env: "JFL_POCOCK"},
 	{key: own, name: "Build my own", about: "describe how you work to the " + playbookAuthor + " Skill, which proposes a Playbook"},
 }
 

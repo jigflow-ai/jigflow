@@ -360,7 +360,7 @@ func TestWalkthroughTriage(t *testing.T) {
 		t.Errorf("agent B's next = %q, want /triage on I-1", first)
 	}
 	// Agent A marks I-1 ready-for-agent itself.
-	if r := agentMove(t, p, "I-1", "ready-for-agent", 1); !strings.Contains(r.Stderr, "is a Human Transition. An agent can only propose it.") {
+	if r := agentMove(t, p, "I-1", "ready-for-agent", 1); !strings.Contains(r.Stderr, "is a Human Transition. An agent can only propose it") {
 		t.Errorf("marking I-1 ready-for-agent should be refused as a Human Transition:\n%s", r.Stderr)
 	}
 	// You mark I-1 ready-for-human.

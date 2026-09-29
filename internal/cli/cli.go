@@ -55,6 +55,9 @@ type env struct {
 	// once about the Proposal it puts forward, and on an agent's move,
 	// which asks the person to make a Human Transition.
 	form func(message string, choices ...string) (string, error)
+	// tool is set when the command is a tool call of jfl mcp: an agent
+	// refused there is already using jfl's tools, so a refusal names none.
+	tool bool
 }
 
 // Run executes one command in the project rooted at dir and returns the
@@ -150,7 +153,8 @@ Commands:
                           a Human Transition asks a person to confirm it in
                           an interactive terminal, or in the form the agent's
                           client shows them through jfl mcp, and is otherwise
-                          refused to agents, and one the Playbook marks
+                          refused to agents, naming the MCP tool that asks
+                          the person, and one the Playbook marks
                           human: dashboard is made only in the Dashboard
                           (jfl ui);
                           a body edited outside jfl is re-validated, and a
@@ -194,9 +198,11 @@ Commands:
                           items may then make Human Transitions and create
                           into Statuses with a Binding; one making a
                           Transition the Playbook requires the Dashboard for
-                          is approved only there
+                          is approved only there; an agent session is
+                          refused, and told the MCP tool that asks the person
   reject <proposal>       drop a pending Proposal, changing nothing; only a
-                          person may
+                          person may, and an agent session is told the MCP
+                          tool that asks them
   check [--proposal <proposal>]
                           validate the Playbook, merged over the Base Playbook
                           it extends, listing every problem, or the Artifacts
@@ -290,7 +296,7 @@ Environment:
                           the git repository and ref jfl init --playbook pocock
                           extends, for a fork or a mirror (default
                           https://github.com/jigflow-ai/jigflow-playbook-pocock
-                          at v0.3.0)
+                          at v0.4.0)
 
 Exit status:
   0 done, 1 refused or failed, 2 malformed command line, 3 a Connector failed:
@@ -489,10 +495,14 @@ func (e *env) move(id, to string) error {
 	// Human Transition is the person's to make, confirmed in the form, as
 	// they would make it in a terminal (ADR 0024).
 	actor := e.actor
-	if actor.Agent() && e.form != nil && humanTransition(pb, a, to) {
+	human, isHuman := humanTransition(pb, a, to)
+	if actor.Agent() && e.form != nil && isHuman {
 		actor = engine.Actor{}
 	}
 	moved, tr, err := engine.Move(pb, actor, a, to, all)
+	if err != nil && actor.Agent() && isHuman {
+		return fmt.Errorf("%w %s", err, e.askInstead(a.ID, human))
+	}
 	if err != nil {
 		return err
 	}
@@ -537,13 +547,37 @@ func (e *env) move(id, to string) error {
 	return nil
 }
 
-// humanTransition reports whether moving a to the Status to is a declared
-// Human Transition.
-func humanTransition(pb *engine.Playbook, a engine.Artifact, to string) bool {
+// humanTransition returns the declared Human Transition moving a to the
+// Status to, and whether there is one.
+func humanTransition(pb *engine.Playbook, a engine.Artifact, to string) (engine.Transition, bool) {
 	t := pb.Type(a.Type)
-	return t != nil && slices.ContainsFunc(t.Transitions, func(tr engine.Transition) bool {
+	if t == nil {
+		return engine.Transition{}, false
+	}
+	i := slices.IndexFunc(t.Transitions, func(tr engine.Transition) bool {
 		return tr.From == a.Status && tr.To == to && tr.Human
 	})
+	if i < 0 {
+		return engine.Transition{}, false
+	}
+	return t.Transitions[i], true
+}
+
+// askInstead tells an agent session refused the Human Transition tr of the
+// Artifact id how the person is asked for it instead, so that an agent that
+// shelled out finds the way (ADR 0024): through jfl's MCP tools, in a form
+// their client shows only to them, or where it waits for them. One the
+// Playbook requires the Dashboard for waits only there. Refused in a tool
+// call of jfl mcp, whose client can't show a form, it names no tool.
+func (e *env) askInstead(id string, tr engine.Transition) string {
+	if tr.Dashboard {
+		return "An agent can only propose it, and the Playbook requires making it in the Dashboard: tell the person it waits for them there (jfl ui)."
+	}
+	waits := fmt.Sprintf("tell the person it waits for them: jfl move %s %s in a terminal, or the Dashboard (jfl ui).", id, tr.To)
+	if e.tool {
+		return "An agent can only propose it, or " + waits
+	}
+	return "An agent can only propose it, or ask the person for it: if jfl's MCP tools include approve, the move tool asks them in a form only they see. Otherwise " + waits
 }
 
 func cmdComment(e *env, args []string) error {

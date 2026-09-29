@@ -97,6 +97,8 @@ Implement the Task in Focus. ...
 
 A bound Skill reads its Artifact with `jfl show <id>` and moves it on with `jfl move <id> <status>`. It writes in a tracker only through jfl (`jfl comment`, `jfl create`, `jfl propose`), never with the tracker's own CLI. When it creates Artifacts into a Status that has a Binding, it puts them in a Proposal for the person to approve. Don't write a router Skill: `jfl publish` generates one from the Playbook.
 
+A Skill that ends in a Proposal or a Human Transition ends by asking the person for their Confirmation. If jfl's MCP tools include `approve`, the agent asks them in a form only they see: with the `propose` tool, which asks at once, for a Proposal, or the `approve` tool for one already pending, as section 5 does; with the `move` tool for a Human Transition. Otherwise it tells them what waits for them and where: `jfl approve <id>` or `jfl reject <id>` for a Proposal, `jfl move <id> <status>` for a Human Transition, in their own terminal, or the Dashboard (`jfl ui`). Write that into the step where the Skill's work ends, naming the Status or the Proposal.
+
 ## 4. Propose it
 
 Put the whole Playbook, or the whole change, in one Proposal file. Use one item per Type and per Skill, and add Guidelines and Gate commands if they are needed:
@@ -121,7 +123,7 @@ items:
 
 A `type` item replaces the whole Type of that name, so to change a Type the Base Playbook declares, copy its file from `jfl simulate <Type> --source` and change that copy. A `skill` item replaces the whole Skill. A Guideline the project already has can't be replaced by a Proposal: the person edits that file. Propose only what changes.
 
-Run `jfl propose <file>`. jfl refuses a Proposal whose Playbook would fail `jfl check`, listing every problem. Fix each problem and propose again.
+Run `jfl propose <file>`, the command rather than jfl's `propose` tool, which would ask the person before they have seen section 5. jfl refuses a Proposal whose Playbook would fail `jfl check`, listing every problem. Fix each problem and propose again.
 
 ## 5. Show it before asking for approval
 
@@ -130,9 +132,9 @@ With the Proposal pending as `P-<n>`:
 1. Run `jfl check --proposal P-<n>`.
 2. Run `jfl simulate <Type> --proposal P-<n>` for every Type the Proposal declares or changes.
 3. Show the person that output as it is. Then walk them through each path in their own words: who works each Status, where they decide, what must pass. Ask whether it matches how they work.
-4. Only then ask them to approve it with `jfl approve P-<n>` in their own terminal, or in the Dashboard (`jfl ui`). Tell them they can read every item in `.jigflow/proposals/P-<n>.yaml`. You can't approve it, and must not try.
+4. Only then ask them for their Confirmation. Tell them they can read every item in `.jigflow/proposals/P-<n>.yaml`. If jfl's MCP tools include `approve`, use the `approve` tool on P-<n>: it asks them to approve or reject it in a form only they see, and its result says what they decided. Otherwise tell them it waits for them: `jfl approve P-<n>` or `jfl reject P-<n>` in their own terminal, or the Dashboard (`jfl ui`). You can't approve it, and must not try.
 
-If they want changes, revise the draft, propose again, check and simulate the new Proposal, and ask them to `jfl reject` the old one. After approval, tell them to run `jfl init` again. It sets up the Connectors of tracker-kept Types, proposes the Gates' commands, and republishes the Skills. If they reject the Proposal, ask why and go back to the interview.
+If they want changes, revise the draft, propose again, check and simulate the new Proposal, and ask them to reject the old one, in the same way. After approval, tell them to run `jfl init` again. It sets up the Connectors of tracker-kept Types, proposes the Gates' commands, and republishes the Skills. If they reject the Proposal, ask why and go back to the interview.
 
 ## Rules the Playbook must respect
 

@@ -19,4 +19,4 @@ Review the Task in Focus. You didn't write it: read it as its next maintainer.
    - it follows the conventions Guideline and the code around it;
    - nothing in it is unsafe: untrusted input, secrets, permissions, data exposed.
 4. Write what you found with `jfl comment <id> <text>`: each problem with its file and line, and what to do about it.
-5. If anything must change, run `jfl move <id> in-progress`, and the Task goes back to implement. Otherwise run `jfl move <id> reviewed` and tell the person: accepting it, `jfl move <id> done`, is a Human Transition, and commits the Task as one commit.
+5. If anything must change, run `jfl move <id> in-progress`, and the Task goes back to implement. Otherwise run `jfl move <id> reviewed`. Accepting it, the Human Transition to `done`, commits the Task as one commit and is the person's: ask them for it. If jfl's MCP tools include `approve`, use the `move` tool to move it to `done`: it asks them in a form only they see, and its result says whether they made or refused it. Otherwise tell them it waits for them: `jfl move <id> done` in their own terminal, or the Dashboard (`jfl ui`).

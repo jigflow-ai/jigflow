@@ -66,10 +66,16 @@ func TestTheMCPServerRefusesAHumanTransitionAsTheCLIDoes(t *testing.T) {
 	m := p.StartMCP("A")
 
 	r := m.MustCallTool("move", map[string]any{"id": "T-1", "status": "done"})
-	if !r.IsError || r.Text != cli.Stderr {
-		t.Errorf("move = %+v, want an error with the CLI's refusal %q", r, cli.Stderr)
+	refusal, _, _ := strings.Cut(cli.Stderr, " An agent can only propose it")
+	if !r.IsError || !strings.HasPrefix(r.Text, refusal) {
+		t.Errorf("move = %+v, want an error with the CLI's refusal %q", r, refusal)
 	}
-	if !strings.Contains(r.Text, `"built" → "done" is a Human Transition. An agent can only propose it.`) {
+	// This client can't show a form, so it isn't sent to the move tool it
+	// just called, only told where the Transition waits.
+	if want := "An agent can only propose it, or tell the person it waits for them: jfl move T-1 done in a terminal, or the Dashboard (jfl ui)."; !strings.Contains(r.Text, want) || strings.Contains(r.Text, "move tool") {
+		t.Errorf("refusal = %q, want %q and no move tool", r.Text, want)
+	}
+	if !strings.Contains(r.Text, `"built" → "done" is a Human Transition. An agent can only propose it`) {
 		t.Errorf("refusal = %q, want it to say it is a Human Transition", r.Text)
 	}
 	if got := frontmatter(t, p.Read(".jigflow/state/T-1.md"))["status"]; got != "built" {

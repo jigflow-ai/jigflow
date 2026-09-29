@@ -90,11 +90,15 @@ Set JFL_SESSION to one id of your own for the whole session, e.g. ` + "`export J
 ### Rules
 
 - Never edit an Artifact's frontmatter: only jfl writes Statuses and frontmatter. You may edit an Artifact's body.
-- A Human Transition is a person's to make: propose it, never try to make it.
+- A Human Transition is a person's to make, never yours: ask them for it, as Asking a person below says, or propose it.
 - Creating an Artifact into a Status with a Binding, other than an Inbox, needs a Proposal.
 - Only a person may approve or reject a Proposal, or migrate Artifacts.
 - Work only on what jfl next hands you, and leave alone the Artifacts other sessions claim.
 - A failing Gate refuses the Transition: fix the work, never the Gate.
+
+### Asking a person
+
+` + confirmations + `
 
 ### What works on each Status
 %s

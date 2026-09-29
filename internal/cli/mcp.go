@@ -423,7 +423,7 @@ func (s *mcpServer) callTool(params json.RawMessage) (any, *rpcError) {
 		return ""
 	}
 	var out bytes.Buffer
-	cmd := &env{dir: s.e.dir, actor: engine.Actor{Session: session}, stdout: &out, stderr: &out, getenv: getenv}
+	cmd := &env{dir: s.e.dir, actor: engine.Actor{Session: session}, stdout: &out, stderr: &out, getenv: getenv, tool: true}
 	if s.forms && (tool.confirms || tool.asks) {
 		cmd.form = s.elicit
 	}

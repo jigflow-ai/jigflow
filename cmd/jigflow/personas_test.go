@@ -29,7 +29,7 @@ func TestAnAgentProposesAPersonaAndOnlyAPersonActivatesIt(t *testing.T) {
 		t.Fatalf("an agent proposing a Persona: exit %d, stdout %q, stderr %q", r.ExitCode, r.Stdout, r.Stderr)
 	}
 	r = p.RunInSession("A", "move", "PERSONA-1", "active")
-	if want := `"proposed" → "active" is a Human Transition. An agent can only propose it.`; r.ExitCode != 1 || !strings.Contains(r.Stderr, want) {
+	if want := `"proposed" → "active" is a Human Transition. An agent can only propose it`; r.ExitCode != 1 || !strings.Contains(r.Stderr, want) {
 		t.Errorf("an agent activating a Persona: exit %d, stderr %q; want %q", r.ExitCode, r.Stderr, want)
 	}
 

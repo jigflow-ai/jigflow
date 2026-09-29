@@ -265,7 +265,7 @@ func Move(pb *Playbook, actor Actor, a Artifact, to string, all []Artifact) (Art
 	}
 	tr := t.Transitions[i]
 	if tr.Human && actor.Agent() {
-		return Artifact{}, Transition{}, fmt.Errorf("%s: %q → %q is a Human Transition. An agent can only propose it.", a.ID, a.Status, to)
+		return Artifact{}, Transition{}, fmt.Errorf("%s: %q → %q is a Human Transition.", a.ID, a.Status, to)
 	}
 	if actor.Agent() && a.Claim != "" && a.Claim != actor.Session {
 		return Artifact{}, Transition{}, fmt.Errorf("%s is claimed by agent session %s.", a.ID, a.Claim)

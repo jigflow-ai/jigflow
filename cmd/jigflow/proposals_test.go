@@ -275,8 +275,15 @@ func TestOnlyAHumanCanApproveOrRejectAProposal(t *testing.T) {
 		if r.ExitCode != 1 {
 			t.Fatalf("an agent's %s exited %d, want 1", cmd, r.ExitCode)
 		}
-		if want := "Only a human can " + cmd + " P-1."; !strings.Contains(r.Stderr, want) {
-			t.Errorf("refusal %q should contain %q", r.Stderr, want)
+		for _, want := range []string{
+			"Only a human can " + cmd + " P-1.",
+			// An agent that shelled out finds the tool that asks the person.
+			"Ask the person for it: if jfl's MCP tools include approve, the approve tool asks them to approve or reject it in a form only they see.",
+			"Otherwise tell them P-1 waits for a person to approve or reject it with jfl approve P-1 or jfl reject P-1 in a terminal, or in the Dashboard (jfl ui).",
+		} {
+			if !strings.Contains(r.Stderr, want) {
+				t.Errorf("refusal %q should contain %q", r.Stderr, want)
+			}
 		}
 		tr := p.StartInTerminalInSession("A", cmd, "P-1").Wait()
 		if tr.ExitCode != 1 || strings.Contains(tr.Output, "[y/N]") {
@@ -505,7 +512,7 @@ func TestWalkthroughAgentTriesToSkipYou(t *testing.T) {
 	}
 	assertNoArtifact(t, p, "T-2")
 	// Agent A tries to merge T-1 itself.
-	if r := agentMove(t, p, "T-1", "done", 1); !strings.Contains(r.Stderr, "is a Human Transition. An agent can only propose it.") {
+	if r := agentMove(t, p, "T-1", "done", 1); !strings.Contains(r.Stderr, "is a Human Transition. An agent can only propose it") {
 		t.Errorf("merging on its own should be refused as a Human Transition:\n%s", r.Stderr)
 	}
 	// Agent A proposes merging T-1 instead.

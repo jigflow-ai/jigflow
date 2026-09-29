@@ -61,7 +61,7 @@
 <p class="label">Example</p><pre><code>jfl create Task --title &quot;Token table&quot; --field priority=must --link part_of=ST-1</code></pre>
 <h3 id="move"><code>move</code> <span class="tag agent">MCP</span></h3>
 <pre><code>jfl move &lt;id&gt; &lt;status&gt;</code></pre>
-<p>Move an Artifact through a declared Transition, running its Gates before and its Actions after; a Human Transition asks a person to confirm it in an interactive terminal, or in the form the agent's client shows them through <a href="#mcp"><code>jfl mcp</code></a>, and is otherwise refused to agents, and one the Playbook marks human: dashboard is made only in the Dashboard (jfl ui); a body edited outside jfl is re-validated, and a Status or frontmatter changed outside jfl is refused; an agent session's move Claims the Artifact, and is refused on one another session claims; entering a Status with no Binding, or a final one, releases it.</p>
+<p>Move an Artifact through a declared Transition, running its Gates before and its Actions after; a Human Transition asks a person to confirm it in an interactive terminal, or in the form the agent's client shows them through <a href="#mcp"><code>jfl mcp</code></a>, and is otherwise refused to agents, naming the MCP tool that asks the person, and one the Playbook marks human: dashboard is made only in the Dashboard (jfl ui); a body edited outside jfl is re-validated, and a Status or frontmatter changed outside jfl is refused; an agent session's move Claims the Artifact, and is refused on one another session claims; entering a Status with no Binding, or a final one, releases it.</p>
 <p class="label">Example</p><pre><code>jfl move T-1 in-review</code></pre>
 <h3 id="comment"><code>comment</code></h3>
 <pre><code>jfl comment &lt;id&gt; &lt;text&gt;</code></pre>
@@ -86,11 +86,11 @@
 <p class="label">Example</p><pre><code>jfl propose breakdown.yaml</code></pre>
 <h3 id="approve"><code>approve</code> <span class="tag human">person</span></h3>
 <pre><code>jfl approve &lt;proposal&gt;</code></pre>
-<p>Apply every change in a pending Proposal, or none; only a person may, confirming it in an interactive terminal, in the Dashboard, or in the form the agent's client shows them through <a href="#mcp"><code>jfl mcp</code></a>, and its items may then make Human Transitions and create into Statuses with a Binding; one making a Transition the Playbook requires the Dashboard for is approved only there.</p>
+<p>Apply every change in a pending Proposal, or none; only a person may, confirming it in an interactive terminal, in the Dashboard, or in the form the agent's client shows them through <a href="#mcp"><code>jfl mcp</code></a>, and its items may then make Human Transitions and create into Statuses with a Binding; one making a Transition the Playbook requires the Dashboard for is approved only there; an agent session is refused, and told the MCP tool that asks the person.</p>
 <p class="label">Example</p><pre><code>jfl approve P-2</code></pre>
 <h3 id="reject"><code>reject</code> <span class="tag human">person</span></h3>
 <pre><code>jfl reject &lt;proposal&gt;</code></pre>
-<p>Drop a pending Proposal, changing nothing; only a person may.</p>
+<p>Drop a pending Proposal, changing nothing; only a person may, and an agent session is told the MCP tool that asks them.</p>
 <p class="label">Example</p><pre><code>jfl reject P-2</code></pre>
 <h2 id="the-playbook">The Playbook</h2>
 <h3 id="check"><code>check</code></h3>
@@ -129,7 +129,7 @@
 <h2 id="environment">Environment</h2><div class="table-wrap"><table><tr><th>Variable</th><th>Meaning</th></tr>
 <tr><td><code>JFL_SESSION</code></td><td>The agent session's id, set by Adapters; without it the command is a person's.</td></tr>
 <tr><td><code>XDG_CONFIG_HOME</code></td><td>Where the user's Persona Library is, under jigflow/personas (default ~/.config).</td></tr>
-<tr><td><code>JFL_POCOCK_GIT, JFL_POCOCK_REF</code></td><td>The git repository and ref jfl init --playbook pocock extends, for a fork or a mirror (default https://github.com/jigflow-ai/jigflow-playbook-pocock at v0.3.0).</td></tr>
+<tr><td><code>JFL_POCOCK_GIT, JFL_POCOCK_REF</code></td><td>The git repository and ref jfl init --playbook pocock extends, for a fork or a mirror (default https://github.com/jigflow-ai/jigflow-playbook-pocock at v0.4.0).</td></tr>
 </table></div>
 <h2 id="exit-status">Exit status</h2><div class="table-wrap"><table><tr><th>Code</th><th>Meaning</th></tr>
 <tr><td><code>0</code></td><td>Done.</td></tr>

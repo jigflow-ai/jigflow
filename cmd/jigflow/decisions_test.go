@@ -323,6 +323,24 @@ func TestAProposalMakingATransitionThatRequiresTheDashboardIsApprovedOnlyThere(t
 	}
 }
 
+// An agent that shells out to decide on such a Proposal is sent to the
+// Dashboard, not to the approve tool, which would refuse it without asking.
+func TestAnAgentSessionsRefusedDecisionOnADashboardProposalNamesOnlyTheDashboard(t *testing.T) {
+	p := dashboardMergePlaybook(t)
+	p.Write("merge.yaml", "summary: merge T-1\nitems:\n  - {move: T-1, to: done}\n")
+	if r := p.RunInSession("A", "propose", "merge.yaml"); r.ExitCode != 0 {
+		t.Fatalf("propose exited %d; stderr: %s", r.ExitCode, r.Stderr)
+	}
+
+	for _, cmd := range []string{"approve", "reject"} {
+		r := p.RunInSession("A", cmd, "P-1")
+		want := `Only a human can ` + cmd + ` P-1. P-1 waits for a person in the Dashboard: T-1: "ready-to-merge" → "done" is a Human Transition the Playbook requires making in the Dashboard: run jfl ui and approve P-1 there.`
+		if r.ExitCode != 1 || !strings.Contains(r.Stderr, want) || strings.Contains(r.Stderr, "approve tool") {
+			t.Errorf("an agent's %s: exit %d, stderr %q; want %q, naming no tool", cmd, r.ExitCode, r.Stderr, want)
+		}
+	}
+}
+
 func TestTheWorkflowSaysWhichTransitionsTheDashboardIsRequiredFor(t *testing.T) {
 	p := dashboardMergePlaybook(t)
 

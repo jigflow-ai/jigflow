@@ -457,3 +457,22 @@ func TestUpstreamRecordsWhereEverySkillUpstreamShipsWent(t *testing.T) {
 		}
 	}
 }
+
+// Each Skill of the Pocock Playbook that ends in a Proposal or a Human
+// Transition asks the person for their Confirmation where the work ends:
+// through jfl's MCP tools, or by telling them what waits and where.
+func TestThePocockSkillsEndingInAConfirmationAskThroughJflsTools(t *testing.T) {
+	p, _ := pocock(t)
+
+	for skill, tools := range map[string][]string{
+		"to-spec":          {"propose"},
+		"to-tickets":       {"propose"},
+		"wayfinder":        {"propose", "move"}, // chart, then clear the Map
+		"resolve-decision": {"propose"},
+		"code-review":      {"move"}, // ready-to-merge → done
+		"triage":           {"move"}, // every decision past needs-info
+		"domain-modeling":  {"move"}, // an ADR, proposed → accepted
+	} {
+		assertAsksThroughJflsTools(t, "the "+skill+" Skill", p.Read(".claude/skills/"+skill+"/SKILL.md"), tools...)
+	}
+}

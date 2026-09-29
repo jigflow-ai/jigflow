@@ -198,3 +198,21 @@ func TestTheLarapilotStylePlaybookShipsSixGenericPersonasAndNothingLaravelSpecif
 		}
 	}
 }
+
+// Each Skill that ends in a Proposal or a Human Transition asks the person
+// for their Confirmation where the work ends: through jfl's MCP tools, or
+// by telling them what waits and where.
+func TestTheLarapilotStyleSkillsEndingInAConfirmationAskThroughJflsTools(t *testing.T) {
+	p := larapilot(t)
+	p.MustRun("publish", "claude-code")
+
+	for skill, tool := range map[string]string{
+		"inception": "move", // in-review → approved, the person's
+		"adopt":     "move",
+		"spec":      "propose",
+		"plan":      "propose",
+		"review":    "move", // reviewed → done, accepting the review
+	} {
+		assertAsksThroughJflsTools(t, "the "+skill+" Skill", p.Read(".claude/skills/"+skill+"/SKILL.md"), tool)
+	}
+}

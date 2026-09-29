@@ -52,7 +52,7 @@ jfl next
 run /inception on PRD-1 "Todo app"
 ```
 
-Now open Claude Code in the project and run `/inception`, or ask it to follow the `jigflow` Skill, which is the router `jfl publish` generated. The agent writes the PRD and moves it to `in-review`, and there it stops, since approving a PRD is a Human Transition:
+Now open Claude Code in the project and run `/inception`, or ask it to follow the `jigflow` Skill, which is the router `jfl publish` generated. The agent writes the PRD and moves it to `in-review`. Approving a PRD is a Human Transition, yours to make, so the agent asks you: in a form Claude Code shows only to you, through jfl's MCP server, which `jfl init` registered. Put the form off, and it waits for you:
 
 ```sh
 jfl next                        # nothing for an agent to do — PRD-1: "in-review" has no Binding, so it's human work

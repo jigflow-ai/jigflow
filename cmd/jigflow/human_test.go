@@ -49,7 +49,7 @@ func TestAnAgentSessionCanOnlyProposeAHumanTransition(t *testing.T) {
 	if r.ExitCode != 1 {
 		t.Fatalf("an agent's Human Transition exited %d, want 1; stdout: %s", r.ExitCode, r.Stdout)
 	}
-	want := `T-1: "ready-to-merge" → "done" is a Human Transition. An agent can only propose it.`
+	want := `T-1: "ready-to-merge" → "done" is a Human Transition. An agent can only propose it`
 	if !strings.Contains(r.Stderr, want) {
 		t.Errorf("refusal %q should contain %q", r.Stderr, want)
 	}
@@ -57,6 +57,37 @@ func TestAnAgentSessionCanOnlyProposeAHumanTransition(t *testing.T) {
 		t.Errorf("a refused move changed the Artifact file:\n%s", after)
 	}
 	assertNothingRan(t, p)
+}
+
+// An agent that shells out to jfl move finds the way to ask the person: the
+// refusal names jfl's MCP tool that asks them in their client, and where the
+// Transition waits for them otherwise.
+func TestAnAgentSessionsRefusedHumanTransitionNamesTheToolThatAsksThePerson(t *testing.T) {
+	p := mergePlaybook(t)
+
+	r := p.RunInSession("A", "move", "T-1", "done")
+	for _, want := range []string{
+		"An agent can only propose it, or ask the person for it: if jfl's MCP tools include approve, the move tool asks them in a form only they see.",
+		"Otherwise tell the person it waits for them: jfl move T-1 done in a terminal, or the Dashboard (jfl ui).",
+	} {
+		if r.ExitCode != 1 || !strings.Contains(r.Stderr, want) {
+			t.Errorf("refusal: exit %d, stderr %q; want it to contain %q", r.ExitCode, r.Stderr, want)
+		}
+	}
+}
+
+// A Transition the Playbook requires the Dashboard for isn't asked about in
+// the agent's client, so its refusal names only the Dashboard.
+func TestAnAgentSessionsRefusedDashboardTransitionNamesOnlyTheDashboard(t *testing.T) {
+	p := dashboardMergePlaybook(t)
+
+	r := p.RunInSession("A", "move", "T-1", "done")
+	if want := "An agent can only propose it, and the Playbook requires making it in the Dashboard: tell the person it waits for them there (jfl ui)."; r.ExitCode != 1 || !strings.Contains(r.Stderr, want) {
+		t.Errorf("refusal: exit %d, stderr %q; want it to contain %q", r.ExitCode, r.Stderr, want)
+	}
+	if strings.Contains(r.Stderr, "move tool") {
+		t.Errorf("the refusal of a Dashboard-only Transition shouldn't name the move tool: %q", r.Stderr)
+	}
 }
 
 // assertNothingRan fails if a Gate or Action recorded itself in ran.log.
@@ -134,7 +165,7 @@ func TestAnAgentSessionInATerminalIsRefusedWithoutBeingAsked(t *testing.T) {
 	if r.ExitCode != 1 {
 		t.Fatalf("an agent's Human Transition in a terminal exited %d, want 1; terminal:\n%s", r.ExitCode, r.Output)
 	}
-	if want := "An agent can only propose it."; !strings.Contains(r.Output, want) {
+	if want := "An agent can only propose it"; !strings.Contains(r.Output, want) {
 		t.Errorf("terminal should say %q; it showed:\n%s", want, r.Output)
 	}
 	if strings.Contains(r.Output, "[y/N]") {

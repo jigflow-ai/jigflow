@@ -29,6 +29,8 @@ func routerPrompt(pb *engine.Playbook) string {
 
 `+autopilot+`
 
+`+confirmations+`
+
 What works on each Status of each Artifact Type:
 `, pb.Name)
 	b.WriteString(statuses(pb, "##"))
@@ -60,6 +62,13 @@ func personStarted(pb *engine.Playbook) string {
 // autopilot tells an agent how to run autopilot, which it drives: jfl runs
 // no agent loop (ADR 0001).
 const autopilot = "When a person asks you to work on your own, run autopilot: run `jfl next --autopilot` instead of `jfl next`, run the Skill it names on that Artifact, and repeat. Stop as soon as it says `autopilot stopped`, and tell the person why it stopped and what is waiting for a person, as it lists them. A refused `jfl move` you can't fix within the Skill, such as a Human Transition, ends the run at the next step."
+
+// confirmations tells an agent how to ask a person for the Confirmation a
+// Proposal or a Human Transition waits for: through jfl's MCP tools, in a
+// form the client shows only to the person, where the client can show one,
+// and otherwise by telling them what waits and where (ADR 0024). jfl mcp
+// lists approve only to a client that can show a form.
+const confirmations = "A Proposal and a Human Transition wait for a person's Confirmation, which you can never give: a yes in chat isn't one. If jfl's MCP tools include `approve`, your client can ask the person in a form only they see, so ask them there: put a Proposal forward with the `propose` tool, which asks them at once; ask about one still pending with the `approve` tool; and ask them to make a Human Transition with the `move` tool. Each tool's result says what they decided. A Transition the Playbook requires the Dashboard for, and a Proposal making one, wait for the person there: the tools refuse them without asking. Otherwise, or when they put the form off, tell the person what waits for them and where: `jfl approve <id>` or `jfl reject <id>` for a Proposal, `jfl move <id> <status>` for a Human Transition, in their own terminal, or the Dashboard (`jfl ui`)."
 
 // statuses lists, under a heading of the given level per Artifact Type,
 // what works on each of its Statuses.

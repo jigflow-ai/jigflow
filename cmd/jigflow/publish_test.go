@@ -422,6 +422,35 @@ func TestTheRouterNamesTheSkillsOnlyAPersonStarts(t *testing.T) {
 	}
 }
 
+// assertAsksThroughJflsTools fails unless the published text tells the agent
+// to ask the person for a Confirmation through jfl's MCP tools, naming each
+// of tools, and otherwise to tell them what waits for them and where.
+func assertAsksThroughJflsTools(t *testing.T, what, content string, tools ...string) {
+	t.Helper()
+	wants := []string{"jfl's MCP tools", "a form only they see", "in their own terminal, or the Dashboard (`jfl ui`)"}
+	for _, tool := range tools {
+		wants = append(wants, "the `"+tool+"` tool")
+	}
+	for _, want := range wants {
+		if !strings.Contains(content, want) {
+			t.Errorf("%s should tell the agent to ask the person through jfl's tools, containing %q:\n%s", what, want, content)
+		}
+	}
+}
+
+func TestTheRouterAndAGENTSmdTellTheAgentToAskThePersonThroughJflsTools(t *testing.T) {
+	p := published(t)
+	p.MustRun("publish", "claude-code")
+	p.MustRun("publish", "agents-md")
+
+	assertAsksThroughJflsTools(t, "the router Skill", p.Read(".claude/skills/jigflow/SKILL.md"), "propose", "approve", "move")
+	agents := p.Read("AGENTS.md")
+	assertAsksThroughJflsTools(t, "AGENTS.md", agents, "propose", "approve", "move")
+	if strings.Contains(agents, "propose it, never try to make it") {
+		t.Errorf("AGENTS.md should no longer say only to propose a Human Transition:\n%s", agents)
+	}
+}
+
 // mcpServers returns the servers a project's .mcp.json registers, by name.
 func mcpServers(t *testing.T, content string) map[string]map[string]any {
 	t.Helper()

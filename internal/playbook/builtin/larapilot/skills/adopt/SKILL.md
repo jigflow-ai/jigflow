@@ -23,4 +23,4 @@ Write the PRD in Focus for a codebase that already exists. Its body is its file 
    - **Out of scope**: what the change won't touch.
    - **Open questions**: what the person still has to decide.
 5. Read the PRD back to the person and fix what they correct.
-6. Run `jfl move <id> in-review`. A person reads it there and approves it, or sends it back to you.
+6. Run `jfl move <id> in-review`. Approving it, the Human Transition to `approved`, is the person's: ask them for it. If jfl's MCP tools include `approve`, use the `move` tool to move it to `approved`: it asks them in a form only they see, and its result says whether they made or refused it. Otherwise tell them it waits for them: `jfl move <id> approved` in their own terminal, or the Dashboard (`jfl ui`). If they refuse it, ask what to change.

@@ -58,13 +58,7 @@ func cmdPropose(e *env, args []string) error {
 	if err != nil {
 		return fmt.Errorf("not proposed: %w", err)
 	}
-	dashboard := ""
-	for _, c := range changes {
-		if c.Transition.Dashboard {
-			dashboard = dashboardOnly(c.Artifact.ID, c.Transition)
-			break
-		}
-	}
+	dashboard := dashboardChange(changes)
 	if err := ps.Save(p); err != nil {
 		return err
 	}
@@ -112,6 +106,54 @@ func (e *env) waiting(id, dashboard string) string {
 	return fmt.Sprintf("%s waits for a person to approve or reject it %s", id, where)
 }
 
+// refuseDecision refuses an agent session approving or rejecting, as verb
+// says, the Proposal id, and tells it how the person is asked to decide on
+// it instead, so that an agent that shelled out finds the way (ADR 0024):
+// through jfl's MCP tools, in a form their client shows only to them, or
+// where it waits for them, the Dashboard only when it makes a Transition
+// the Playbook requires the Dashboard for.
+func (e *env) refuseDecision(verb, id string) error {
+	refused := fmt.Sprintf("Only a human can %s %s.", verb, id)
+	if dashboard := e.dashboardOnlyIn(id); dashboard != "" {
+		return fmt.Errorf("%s %s.", refused, e.waiting(id, dashboard))
+	}
+	return fmt.Errorf("%s Ask the person for it: if jfl's MCP tools include approve, the approve tool asks them to approve or reject it in a form only they see. Otherwise tell them %s.", refused, e.waiting(id, ""))
+}
+
+// dashboardOnlyIn says which Transition the Proposal id makes that the
+// Playbook requires the Dashboard for, or nothing when it makes none, or
+// when it can't be read: then the refusal says where it waits as for any.
+func (e *env) dashboardOnlyIn(id string) string {
+	pb, st, err := e.load()
+	if err != nil {
+		return ""
+	}
+	p, err := store.NewProposals(e.dir).Get(id)
+	if err != nil {
+		return ""
+	}
+	all, err := st.List()
+	if err != nil {
+		return ""
+	}
+	changes, err := engine.Approve(pb, p, all)
+	if err != nil {
+		return ""
+	}
+	return dashboardChange(changes)
+}
+
+// dashboardChange says which of changes makes a Transition the Playbook
+// requires the Dashboard for, or nothing when none does.
+func dashboardChange(changes []engine.Change) string {
+	for _, c := range changes {
+		if c.Transition.Dashboard {
+			return dashboardOnly(c.Artifact.ID, c.Transition)
+		}
+	}
+	return ""
+}
+
 // listItems lists a Proposal's items, one numbered line each.
 func listItems(p engine.Proposal) string {
 	s := ""
@@ -150,7 +192,7 @@ func (e *env) decide(id string) error {
 // first when edit isn't nil; the Proposal is kept as approved, with them.
 func (e *env) approve(id string, edit func(pb *engine.Playbook, p *engine.Proposal) error) error {
 	if e.actor.Agent() {
-		return fmt.Errorf("Only a human can approve %s.", id)
+		return e.refuseDecision("approve", id)
 	}
 	pb, st, err := e.load()
 	if err != nil {
@@ -322,7 +364,7 @@ func cmdReject(e *env, args []string) error {
 // reject drops the pending Proposal id, changing nothing.
 func (e *env) reject(id string) error {
 	if e.actor.Agent() {
-		return fmt.Errorf("Only a human can reject %s.", id)
+		return e.refuseDecision("reject", id)
 	}
 	// Rejecting changes no Artifact, but no command runs on an invalid
 	// Playbook.

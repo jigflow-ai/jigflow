@@ -9,7 +9,7 @@ personas:
 ---
 Plan the Requirement in Focus.
 
-1. Read the Requirement's body, its **Done means**, and the PRD it is part of, in their files in .jigflow/state. If its priority is `wont`, don't plan it: propose `{move: <id>, to: dropped}` for the person to confirm, and stop.
+1. Read the Requirement's body, its **Done means**, and the PRD it is part of, in their files in .jigflow/state. If its priority is `wont`, don't plan it: put forward a Proposal of `{move: <id>, to: dropped}` for the person to confirm, as step 5 does, and stop.
 2. Read the code the Requirement touches and the conventions Guideline.
 3. Split the Requirement into Stories: slices a user can try on their own, together meeting every check under Done means. Give each Story acceptance criteria.
 4. Split each Story into Tasks. A Task is one change, small enough to review in one sitting and commit as one commit, that leaves the tests passing. Say which Tasks must wait for others (blocked_by).
@@ -24,5 +24,5 @@ Plan the Requirement in Focus.
      - {move: REQ-3, to: planned}
    ```
 
-   Run `jfl propose <file>`, tell the person the Proposal's id, and wait for them to approve or reject it.
+   Put it forward and ask the person for their Confirmation. If jfl's MCP tools include `approve`, use the `propose` tool on the file: it asks them at once, in a form only they see, and its result says what they decided. Otherwise run `jfl propose <file>`. While it still waits, tell them the Proposal's id and where: `jfl approve <id>` or `jfl reject <id>` in their own terminal, or the Dashboard (`jfl ui`). Wait for their decision.
 6. Once it is approved, write each Story's body (its acceptance criteria) and each Task's body (what to change, where, and how to know it works) in their files in .jigflow/state. If it is rejected, ask the person why and propose again.

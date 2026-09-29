@@ -26,5 +26,5 @@ Specify the PRD in Focus, which a person has approved, as Requirements.
      - {move: PRD-1, to: specified}
    ```
 
-   Run `jfl propose <file>`, tell the person the Proposal's id, and wait for them to approve or reject it.
+   Put it forward and ask the person for their Confirmation. If jfl's MCP tools include `approve`, use the `propose` tool on the file: it asks them at once, in a form only they see, and its result says what they decided. Otherwise run `jfl propose <file>`. While it still waits, tell them the Proposal's id and where: `jfl approve <id>` or `jfl reject <id>` in their own terminal, or the Dashboard (`jfl ui`). Wait for their decision.
 5. Once it is approved, write each Requirement's body in its file in .jigflow/state: what it asks for, then **Done means** with its checks, as the PRD's Requirements section says. If it is rejected, ask the person why and propose again.

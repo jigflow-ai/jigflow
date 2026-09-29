@@ -58,6 +58,7 @@ jfl publish agents-md</code></pre>
 - in-review: /review, in a fresh session
 - reviewed: human work, never an agent's
 - done: final</code></pre>
+<p id="asking">It also tells the agent how to ask you for a Confirmation, which it can never give itself. Where <a href="#mcp">jfl's MCP tools</a> include <code>approve</code>, your client can show you a form only you see, so the agent puts a Proposal forward with the <code>propose</code> tool, which asks you at once, asks again about a pending one with <code>approve</code>, and asks you to make a Human Transition with <code>move</code>. Otherwise, or when you put the form off, it tells you what waits for you and where: <code>jfl approve</code>, <code>jfl reject</code> or <code>jfl move</code> in your own terminal, or the Dashboard. The <code>AGENTS.md</code> section says the same, and every Skill of the <a href="playbooks.html">shipped Playbooks</a> that ends in a Proposal or a Human Transition asks the same way at the step where its work ends. An agent that runs <code>jfl move</code>, <code>jfl approve</code> or <code>jfl reject</code> itself is refused, and the refusal names the tool to use.</p>
 
 <h2 id="sessions">Agent sessions</h2>
 <p><code>jfl</code> tells an agent from a person by <code>JFL_SESSION</code>. A command run with it set is an agent session's, and one run without it is a person's. The Claude Code hooks set it at the start of each session. With <code>agents-md</code>, <code>AGENTS.md</code> tells the agent to export one id of its own and keep it.</p>
@@ -101,7 +102,7 @@ jfl publish agents-md</code></pre>
 (for Codex; in another agent, add a stdio MCP server named jfl that runs jfl mcp)</code></pre>
 
 <h2 id="skills-rules">What a Skill may do</h2>
-<p>A Skill tells the agent how to do one piece of work. It reads and changes workflow state only through <code>jfl</code>: <code>show</code> and <code>query</code> to read, <code>create</code>, <code>comment</code>, <code>move</code> and <code>propose</code> to change. It edits code and an Artifact's body directly. If the body of an Artifact kept in a file changes outside <code>jfl</code>, the next move re-validates it. A changed Status or frontmatter is refused. Text an agent writes to a tracker is marked as AI-generated.</p>
+<p>A Skill tells the agent how to do one piece of work. It reads and changes workflow state only through <code>jfl</code>: <code>show</code> and <code>query</code> to read, <code>create</code>, <code>comment</code>, <code>move</code> and <code>propose</code> to change. It edits code and an Artifact's body directly. If the body of an Artifact kept in a file changes outside <code>jfl</code>, the next move re-validates it. A changed Status or frontmatter is refused. Text an agent writes to a tracker is marked as AI-generated. A Skill that ends in a Proposal or a Human Transition ends by <a href="#asking">asking you for the Confirmation</a>, as the shipped ones do; <code>/playbook-author</code> writes yours that way.</p>
 <footer class="page-footer"><a href="playbooks.html">← Shipped Playbooks</a><a href="proposals.html">Proposals and the Dashboard →</a></footer>
 </main>
 </div>

@@ -233,3 +233,28 @@ func TestBothShippedPlaybooksShipPlaybookAuthorForAPersonToStart(t *testing.T) {
 		})
 	}
 }
+
+// playbook-author asks for the Confirmation of the Proposal it shows the
+// person through jfl's tools, and tells authors to end their own Skills the
+// same way.
+func TestPlaybookAuthorAsksThroughJflsToolsAndTellsAuthorsToEndSkillsSo(t *testing.T) {
+	for name, p := range map[string]func(*testing.T) string{
+		"Larapilot-style": func(t *testing.T) string {
+			p := larapilot(t)
+			p.MustRun("publish", "claude-code")
+			return p.Read(".claude/skills/playbook-author/SKILL.md")
+		},
+		"Pocock": func(t *testing.T) string {
+			p, _ := pocock(t)
+			return p.Read(".claude/skills/playbook-author/SKILL.md")
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			skill := p(t)
+			assertAsksThroughJflsTools(t, "playbook-author", skill, "approve")
+			if want := "A Skill that ends in a Proposal or a Human Transition ends by asking the person for their Confirmation"; !strings.Contains(skill, want) {
+				t.Errorf("playbook-author should tell authors to end such Skills by asking, containing %q:\n%s", want, skill)
+			}
+		})
+	}
+}
