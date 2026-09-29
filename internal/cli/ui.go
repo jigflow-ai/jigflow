@@ -77,7 +77,7 @@ func cmdUI(e *env, args []string) error {
 	if err != nil {
 		return err
 	}
-	d := &dashboard{e: e, changes: newChanges(projectFiles(e.dir), gitHead(e.dir), trackers(e.dir, every)), closing: make(chan struct{})}
+	d := &dashboard{e: e, changes: newChanges(projectFiles(e.dir), gitHead(e.dir), trackers(e.dir, every))}
 	_, port, _ := net.SplitHostPort(ln.Addr().String())
 	d.cookie = "jfl-dashboard-" + port
 	if !e.actor.Agent() {
@@ -86,11 +86,7 @@ func cmdUI(e *env, args []string) error {
 		// can read the Dashboard, but not approve (ADR 0003).
 		d.key = rand.Text()
 	}
-	// No WriteTimeout: a page's change stream lasts as long as the page.
 	srv := &http.Server{Handler: d.handler(), ReadHeaderTimeout: 10 * time.Second}
-	// Shutting down waits for requests in flight, which change streams
-	// never finish of their own accord: they end on it.
-	srv.RegisterOnShutdown(func() { close(d.closing) })
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	shutDown := make(chan struct{})
@@ -129,10 +125,8 @@ type dashboard struct {
 	cookie string
 	// mu lets one decision at a time change the project.
 	mu sync.Mutex
-	// changes tells the pages listening that the project changed.
+	// changes tells the pages asking whether the project changed.
 	changes *changes
-	// closing is closed when jfl ui stops, ending the change streams.
-	closing chan struct{}
 }
 
 func (d *dashboard) handler() http.Handler {
@@ -171,7 +165,7 @@ func (d *dashboard) handler() http.Handler {
 	mux.HandleFunc("GET /mockups/{name...}", func(w http.ResponseWriter, r *http.Request) {
 		d.serveMockup(w, r, r.PathValue("name"))
 	})
-	mux.HandleFunc("GET /changes", d.stream)
+	mux.HandleFunc("GET /changes", d.ask)
 	mux.HandleFunc("POST /proposals/{id}/approve", d.act(func(c *env, r *http.Request) error {
 		return c.approve(r.PathValue("id"), func(pb *engine.Playbook, p *engine.Proposal) error {
 			return editItems(pb, p, r.PostForm)

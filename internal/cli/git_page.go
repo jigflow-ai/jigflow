@@ -153,10 +153,10 @@ func (e *env) gitView(r *http.Request) func() (any, error) {
 // commit is made, the branch changes or the project becomes a repository,
 // whether through jfl or not.
 func gitHead(dir string) look {
-	return look{due: func() time.Duration { return filesEvery }, fingerprint: func() string {
+	return func() string {
 		// Outside a repository, or on a branch with no commit yet, what
 		// git says is as stable as its answer.
 		out, _ := exec.Command("git", "-C", dir, "rev-parse", "HEAD", "--absolute-git-dir", "--symbolic-full-name", "HEAD").CombinedOutput()
 		return string(out)
-	}}
+	}
 }

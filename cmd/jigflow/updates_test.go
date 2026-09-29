@@ -3,8 +3,13 @@ package main_test
 import (
 	"net/http"
 	"net/url"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"regexp"
+	"runtime"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -13,41 +18,91 @@ import (
 	"github.com/jigflow-ai/jigflow/internal/clitest/fakelinear"
 )
 
-// The Dashboard's pages update themselves (ADR 0025): each listens to a
-// stream on which jfl ui says only that the project changed.
+// The Dashboard's pages update themselves (ADR 0025): each asks jfl ui,
+// every 2 seconds while it is visible, whether the project changed since
+// the version it shows (ADR 0029).
 
-// signalWithin is how long a change jfl writes may take to be signalled on
-// the stream: about a second, with room for a slow machine.
+// signalWithin is how long a change jfl writes may take to show on
+// /changes: about a second, with room for a slow machine.
 const signalWithin = 3 * time.Second
 
-// listen opens the Dashboard's change stream as a page's script does.
-func listen(t *testing.T, ui *clitest.UI) *clitest.Stream {
-	t.Helper()
-	s := ui.Listen(ui.NewRequest(http.MethodGet, "/changes", nil))
-	if s.Status != http.StatusOK || s.ContentType != "text/event-stream" {
-		t.Fatalf("GET /changes: status %d, Content-Type %q, want 200 and an event stream", s.Status, s.ContentType)
-	}
-	return s
+// asking is a page asking /changes whether the project changed since the
+// version it shows.
+type asking struct {
+	ui    *clitest.UI
+	since string
 }
 
-// wantSignal fails the test unless the stream says the project changed
-// within signalWithin, and then waits until it has said all it will about
-// that change, so the next change is signalled on its own.
-func wantSignal(t *testing.T, s *clitest.Stream, change string) {
+// askOf is the version an inline script of a page asks /changes about.
+var askOf = regexp.MustCompile(`(?s)<script>.*?var asks = "(/changes\?since=[^"]*)".*?</script>`)
+
+// listens reports whether the page carries an inline script that asks
+// /changes whether the project changed.
+func listens(page string) bool { return askOf.MatchString(page) }
+
+// listenAsPage asks /changes as the page's script does, about the version
+// the page shows.
+func listenAsPage(t *testing.T, ui *clitest.UI, page string) *asking {
 	t.Helper()
-	e, ok := s.Next(signalWithin)
-	if !ok {
-		t.Fatalf("%s wasn't signalled on the stream within %s", change, signalWithin)
+	m := askOf.FindStringSubmatch(page)
+	if m == nil {
+		t.Fatal("the page doesn't ask /changes whether the project changed")
 	}
-	if e != "changed" {
-		t.Errorf("the stream said %q of %s, want only that something changed", e, change)
+	u, err := url.Parse(m[1])
+	if err != nil {
+		t.Fatal(err)
 	}
-	for ok {
-		_, ok = s.Next(1500 * time.Millisecond)
+	return &asking{ui: ui, since: u.Query().Get("since")}
+}
+
+// listen asks /changes as the backlog page, shown now, does.
+func listen(t *testing.T, ui *clitest.UI) *asking {
+	t.Helper()
+	return listenAsPage(t, ui, get(t, ui, "/"))
+}
+
+// ask asks /changes once, as any program on this machine, with no key, and
+// fails the test unless it answers at once.
+func (a *asking) ask(t *testing.T) int {
+	t.Helper()
+	start := time.Now()
+	page := a.ui.Curl(a.ui.NewRequest(http.MethodGet, "/changes?since="+url.QueryEscape(a.since), nil))
+	if took := time.Since(start); took > time.Second {
+		t.Errorf("/changes took %s to answer, want at once", took)
+	}
+	if page.Status != http.StatusOK && page.Status != http.StatusNoContent {
+		t.Fatalf("GET /changes: status %d, want 200 or 204\n%s", page.Status, page.HTML)
+	}
+	return page.Status
+}
+
+// wantSignal fails the test unless /changes answers 200, the project
+// changed, within signalWithin of the change, and then asks from what a
+// page shown now shows, as the page does once it loaded again.
+func wantSignal(t *testing.T, a *asking, change string) {
+	t.Helper()
+	deadline := time.Now().Add(signalWithin)
+	for a.ask(t) != http.StatusOK {
+		if time.Now().After(deadline) {
+			t.Fatalf("%s didn't show on /changes within %s", change, signalWithin)
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
+	*a = *listenAsPage(t, a.ui, get(t, a.ui, "/"))
+}
+
+// wantNoSignal fails the test if /changes answers anything but 204, nothing
+// changed, while it is asked for the time given.
+func wantNoSignal(t *testing.T, a *asking, within time.Duration, why string) {
+	t.Helper()
+	for deadline := time.Now().Add(within); time.Now().Before(deadline); time.Sleep(200 * time.Millisecond) {
+		if status := a.ask(t); status != http.StatusNoContent {
+			t.Fatalf("/changes answered %d %s, want 204", status, why)
+		}
 	}
 }
 
-func TestTheStreamSignalsEachChangeJflWritesToTheProject(t *testing.T) {
+func TestChangesAnswersEachChangeJflWritesToTheProject(t *testing.T) {
 	p := ticketPlaybook(t)
 	p.MustRun("create", "Ticket", "--title", "Login page")
 	ui := p.StartUI()
@@ -70,7 +125,7 @@ func TestTheStreamSignalsEachChangeJflWritesToTheProject(t *testing.T) {
 	wantSignal(t, s, "an approved change to the Playbook")
 }
 
-func TestTheStreamSignalsNothingWhileNothingChanges(t *testing.T) {
+func TestChangesAnswersNoContentWhileNothingChanges(t *testing.T) {
 	p := ticketPlaybook(t)
 	p.MustRun("create", "Ticket", "--title", "Login page")
 	ui := p.StartUI()
@@ -79,12 +134,10 @@ func TestTheStreamSignalsNothingWhileNothingChanges(t *testing.T) {
 	// Reading the project changes nothing, and neither does time passing.
 	get(t, ui, "/ledger")
 	p.MustRun("query")
-	if e, ok := s.Next(2500 * time.Millisecond); ok {
-		t.Errorf("the stream said %q while nothing changed", e)
-	}
+	wantNoSignal(t, s, 2500*time.Millisecond, "while nothing changed")
 }
 
-func TestTheStreamNeedsNoKeyAndServesOnlyThisMachine(t *testing.T) {
+func TestChangesNeedsNoKeyAndServesOnlyThisMachine(t *testing.T) {
 	p := ticketPlaybook(t)
 	// A Dashboard an agent session started, only to look at, updates too.
 	ui := p.StartUIInSession("A")
@@ -93,79 +146,104 @@ func TestTheStreamNeedsNoKeyAndServesOnlyThisMachine(t *testing.T) {
 	p.MustRun("create", "Ticket", "--title", "Login page")
 	wantSignal(t, s, "a new Artifact")
 
-	req := ui.NewRequest(http.MethodGet, "/changes", nil)
+	req := ui.NewRequest(http.MethodGet, "/changes?since="+s.since, nil)
 	req.Host = "attacker.example:80"
-	if s := ui.Listen(req); s.Status != http.StatusForbidden {
-		t.Errorf("a stream for attacker.example got status %d, want 403", s.Status)
+	if page := ui.Curl(req); page.Status != http.StatusForbidden {
+		t.Errorf("/changes for attacker.example got status %d, want 403", page.Status)
 	}
 }
 
-func TestTheStreamEndsWhenJflUiStops(t *testing.T) {
+func TestAPageThatAsksForAStreamIsToldOnceToLoadAgain(t *testing.T) {
+	p := ticketPlaybook(t)
+	ui := p.StartUI()
+
+	// A page shown before jfl ui was upgraded listens to a stream: it is
+	// told the project changed, so that it loads again into one that asks.
+	req := ui.NewRequest(http.MethodGet, "/changes?since="+listen(t, ui).since, nil)
+	req.Header.Set("Accept", "text/event-stream")
+	s := ui.Listen(req)
+	if s.Status != http.StatusOK || s.ContentType != "text/event-stream" {
+		t.Fatalf("GET /changes as a stream: status %d, Content-Type %q, want 200 and an event stream", s.Status, s.ContentType)
+	}
+	if e, ok := s.Next(signalWithin); !ok || e != "changed" {
+		t.Fatalf("the stream said %q (%v), want one changed event", e, ok)
+	}
+	if !s.Ended(time.Second) {
+		t.Error("the stream stayed open after its changed event, want it closed")
+	}
+}
+
+func TestJflUiStopsAtOnceWithPagesAsking(t *testing.T) {
 	p := ticketPlaybook(t)
 	ui := p.StartUI()
 	s := listen(t, ui)
+	s.ask(t)
 
 	start := time.Now()
 	ui.Stop()
-	if !s.Ended(time.Second) {
-		t.Error("the stream didn't end when jfl ui stopped")
-	}
 	if took := time.Since(start); took > 3*time.Second {
-		t.Errorf("jfl ui took %s to stop with a page listening, want it to stop at once", took)
+		t.Errorf("jfl ui took %s to stop with a page asking, want it to stop at once", took)
 	}
 }
 
-// streamOf is the change stream an inline script of a page listens to.
-var streamOf = regexp.MustCompile(`(?s)<script>.*?new EventSource\("(/changes\?since=[^"]*)"\).*?</script>`)
+// askScript is the inline script of a page, which asks /changes.
+var askScript = regexp.MustCompile(`(?s)<script>(.*?)</script>`)
 
-// listens reports whether the page carries an inline script that listens to
-// the change stream.
-func listens(page string) bool { return streamOf.MatchString(page) }
-
-// listenAsPage opens the change stream the page's script listens to.
-func listenAsPage(t *testing.T, ui *clitest.UI, page string) *clitest.Stream {
-	t.Helper()
-	m := streamOf.FindStringSubmatch(page)
+func TestPagesAskEveryTwoSecondsOnlyWhileVisible(t *testing.T) {
+	p := ticketPlaybook(t)
+	ui := p.StartUI()
+	m := askScript.FindStringSubmatch(get(t, ui, "/"))
 	if m == nil {
-		t.Fatal("the page doesn't listen to the change stream")
+		t.Fatal("the backlog page carries no script")
 	}
-	return ui.Listen(ui.NewRequest(http.MethodGet, m[1], nil))
-}
-
-func TestAChangeWrittenBeforeThePageListensIsSignalledAtOnce(t *testing.T) {
-	p := ticketPlaybook(t)
-	ui := p.StartUI()
-	page := get(t, ui, "/")
-
-	// The agent moves on while the page loads, before its script listens.
-	p.MustRun("create", "Ticket", "--title", "Login page")
-	wantSignal(t, listenAsPage(t, ui, page), "a change written since the page was shown")
-
-	// A page shown after the change has nothing to catch up on.
-	if e, ok := listenAsPage(t, ui, get(t, ui, "/")).Next(2500 * time.Millisecond); ok {
-		t.Errorf("the stream said %q to a page shown after the last change", e)
-	}
-}
-
-func TestEveryPageListensToTheStreamToUpdateItself(t *testing.T) {
-	p := ticketPlaybook(t)
-	p.MustRun("create", "Ticket", "--title", "Login page")
-	ui := p.StartUI()
-
-	for _, path := range []string{"/", "/timeline", "/workflows", "/ledger", "/artifacts/T-1"} {
-		if !listens(get(t, ui, path)) {
-			t.Errorf("%s doesn't listen to the change stream", path)
+	script := m[1]
+	for _, want := range []string{
+		"setTimeout(ask, 2000)", // every 2 seconds
+		"visibilitychange",      // once it becomes visible
+		"document.hidden",       // never while hidden
+	} {
+		if !strings.Contains(script, want) {
+			t.Errorf("the page's script has no %q:\n%s", want, script)
 		}
 	}
-	// An Artifact's page that can't be shown yet loads itself again, not
-	// the backlog, once it can.
-	if page := ui.Get("/artifacts/T-2"); !listens(page.HTML) || !strings.Contains(page.HTML, `var here = "/artifacts/T-2"`) {
-		t.Errorf("the page saying T-2 isn't there (status %d) should reload itself when the project changes:\n%s", page.Status, page.HTML)
+	if strings.Contains(script, "EventSource") {
+		t.Errorf("the page's script still holds a stream:\n%s", script)
 	}
-	// A page that can't be shown now updates once it can.
-	p.Write(".jigflow/playbook.yaml", "name: [broken\n")
-	if page := ui.Get("/"); page.Status == http.StatusOK || !listens(page.HTML) {
-		t.Errorf("the page saying why the backlog can't be shown (status %d) doesn't listen to the change stream", page.Status)
+}
+
+func TestFilesAndGitAreLookedAtAtMostOnceASecondHoweverManyPagesAsk(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("counts git's runs through a shell script")
+	}
+	real, err := exec.LookPath("git")
+	if err != nil {
+		t.Skip("no git")
+	}
+	p := ticketPlaybook(t)
+	// A git that notes each time it is asked where HEAD is.
+	bin, log := t.TempDir(), filepath.Join(t.TempDir(), "git.log")
+	script := "#!/bin/sh\ncase \"$*\" in *absolute-git-dir*) echo x >> " + log + ";; esac\nexec " + real + " \"$@\"\n"
+	if err := os.WriteFile(filepath.Join(bin, "git"), []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	p.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	ui := p.StartUI()
+	s := listen(t, ui)
+	looks := func() int { b, _ := os.ReadFile(log); return strings.Count(string(b), "x") }
+
+	// Ten pages, each asking many times a second, for 3 seconds.
+	before := looks()
+	var wg sync.WaitGroup
+	for range 10 {
+		wg.Go(func() {
+			for deadline := time.Now().Add(3 * time.Second); time.Now().Before(deadline); time.Sleep(50 * time.Millisecond) {
+				s.ask(t)
+			}
+		})
+	}
+	wg.Wait()
+	if n := looks() - before; n < 1 || n > 5 {
+		t.Errorf("git was asked %d times in 3 seconds by ten pages, want once a second at most", n)
 	}
 }
 
@@ -259,16 +337,16 @@ func TestAProposalEditedWhileItWasDecidedElsewhereIsRefusedSayingWhy(t *testing.
 }
 
 // askEvery is how often jfl ui asks a tracker Store for changes in these
-// tests, instead of every 30 seconds, while a page listens.
+// tests, instead of every 30 seconds, while pages ask it.
 const askEvery = 250 * time.Millisecond
 
 // askedEvery makes jfl ui, started from now on, ask the project's tracker
-// for changes every so often while a page listens.
+// for changes at most every so often.
 func askedEvery(p *clitest.Project, every time.Duration) {
 	p.Setenv(clitest.TrackerEveryEnv, every.String())
 }
 
-func TestTheStreamSignalsAnEditMadeInGitHubIssues(t *testing.T) {
+func TestChangesAnswersAnEditMadeInGitHubIssues(t *testing.T) {
 	p, gh := githubPlaybook(t)
 	gh.Add(fakegithub.Issue{Title: "Reset-token table", Labels: []string{"ticket", "ready-for-agent"}})
 	askedEvery(p, askEvery)
@@ -281,7 +359,7 @@ func TestTheStreamSignalsAnEditMadeInGitHubIssues(t *testing.T) {
 	wantSignal(t, s, "an issue filed in GitHub")
 }
 
-func TestTheStreamSignalsAnEditMadeInLinear(t *testing.T) {
+func TestChangesAnswersAnEditMadeInLinear(t *testing.T) {
 	p, ln := linearPlaybook(t)
 	ln.Add(fakelinear.Issue{Title: "Reset-token table", State: "Todo", Labels: []string{"ticket"}})
 	askedEvery(p, askEvery)
@@ -305,20 +383,22 @@ func lists(gh *fakegithub.Server) int {
 	return n
 }
 
-func TestTheTrackerIsAskedOnceForEveryPageListeningAndNotWhileNoneIs(t *testing.T) {
+func TestTheTrackerIsAskedAtMostEverySoOftenAndNotWhileNoPageAsks(t *testing.T) {
 	p, gh := githubPlaybook(t)
 	gh.Add(fakegithub.Issue{Title: "Reset-token table", Labels: []string{"ticket", "ready-for-agent"}})
 	askedEvery(p, askEvery)
 	ui := p.StartUI()
+	s := listen(t, ui)
 
 	before := lists(gh)
 	time.Sleep(6 * askEvery)
 	if n := lists(gh) - before; n != 0 {
-		t.Errorf("GitHub was asked %d times while no page listened, want none", n)
+		t.Errorf("GitHub was asked %d times while no page asked, want none", n)
 	}
 
 	// Pages shown one after another, as when each change reloads the page,
 	// don't ask again each: the Status machines page lists no issues itself.
+	time.Sleep(askEvery)
 	before = lists(gh)
 	for range 5 {
 		get(t, ui, "/workflows")
@@ -327,26 +407,26 @@ func TestTheTrackerIsAskedOnceForEveryPageListeningAndNotWhileNoneIs(t *testing.
 		t.Errorf("GitHub was asked %d times for 5 pages shown at once, want once at most", n)
 	}
 
-	var pages []*clitest.Stream
-	for range 3 {
-		pages = append(pages, listen(t, ui))
-	}
+	// Three pages asking again and again ask it once every askEvery
+	// together, with one to spare for timing, not once each.
 	before = lists(gh)
-	time.Sleep(12 * askEvery)
-	// Once every askEvery for the three pages together, with one to spare
-	// for timing, not once for each.
+	var wg sync.WaitGroup
+	for range 3 {
+		wg.Go(func() {
+			for deadline := time.Now().Add(12 * askEvery); time.Now().Before(deadline); time.Sleep(50 * time.Millisecond) {
+				s.ask(t)
+			}
+		})
+	}
+	wg.Wait()
 	if n := lists(gh) - before; n < 1 || n > 13 {
-		t.Errorf("GitHub was asked %d times in %s with three pages listening, want once every %s", n, 12*askEvery, askEvery)
+		t.Errorf("GitHub was asked %d times in %s with three pages asking, want once every %s", n, 12*askEvery, askEvery)
 	}
 
-	for _, s := range pages {
-		s.Close()
-	}
-	time.Sleep(4 * askEvery) // for jfl ui to see the pages go
 	before = lists(gh)
 	time.Sleep(6 * askEvery)
 	if n := lists(gh) - before; n != 0 {
-		t.Errorf("GitHub was asked %d times once every page stopped listening, want none", n)
+		t.Errorf("GitHub was asked %d times once every page stopped asking, want none", n)
 	}
 }
 
@@ -369,7 +449,7 @@ var trackers = []unreachable{
 	}},
 }
 
-func TestATrackerThatCantBeReachedSignalsNothingAndLeavesTheStreamOpen(t *testing.T) {
+func TestATrackerThatCantBeReachedChangesNothing(t *testing.T) {
 	for _, tr := range trackers {
 		t.Run(tr.name, func(t *testing.T) {
 			p, fail, edit := tr.tracker(t)
@@ -378,25 +458,24 @@ func TestATrackerThatCantBeReachedSignalsNothingAndLeavesTheStreamOpen(t *testin
 			s := listenAsPage(t, ui, get(t, ui, "/"))
 
 			fail(http.StatusBadGateway)
-			if e, ok := s.Next(8 * askEvery); ok {
-				t.Errorf("the stream said %q while %s couldn't be reached, want nothing", e, tr.name)
-			}
+			wantNoSignal(t, s, 8*askEvery, "while "+tr.name+" couldn't be reached")
 
-			// The stream is still open, and signals the tracker's next edit.
+			// The tracker's next edit shows once it can be reached.
 			fail(0)
 			edit()
 			wantSignal(t, s, "an issue edited in "+tr.name+" once it could be reached")
 		})
 	}
 }
-func TestATrackerEditMadeBeforeThePageListensIsSignalledToo(t *testing.T) {
+
+func TestATrackerEditMadeBeforeThePageAsksIsAnsweredToo(t *testing.T) {
 	p, gh := githubPlaybook(t)
 	gh.Add(fakegithub.Issue{Title: "Reset-token table", Labels: []string{"ticket", "ready-for-agent"}})
 	askedEvery(p, askEvery)
 	ui := p.StartUI()
 	page := get(t, ui, "/")
 
-	// A teammate edits the issue while the page loads, before it listens:
+	// A teammate edits the issue while the page loads, before it asks:
 	// the page is told once the tracker is next asked.
 	gh.Edit(41, func(i *fakegithub.Issue) { i.Labels = []string{"ticket", "status: doing"} })
 	wantSignal(t, listenAsPage(t, ui, page), "an issue edited in GitHub since the page was shown")

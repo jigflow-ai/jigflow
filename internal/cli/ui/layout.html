@@ -206,10 +206,10 @@ rect.hatched.s0 { fill: url(#hatch-s0); stroke: var(--s0); } rect.hatched.s1 { f
 {{template "content" .}}
 </main>
 <script>
-// The page updates itself when the project changes (ADR 0025): jfl ui says
-// only that something changed, on /changes, and the page loads again, where
-// the person was on it. With JavaScript off it works the same, reloaded by
-// hand.
+// The page updates itself when the project changes (ADR 0025): it asks jfl
+// ui on /changes whether something changed since what it shows (ADR 0029),
+// and loads again, where the person was on it. With JavaScript off it works
+// the same, reloaded by hand.
 (function () {
   var here = {{.Here}}, key = "jfl-dashboard-scroll";
   try {
@@ -246,14 +246,31 @@ rect.hatched.s0 { fill: url(#hatch-s0); stroke: var(--s0); } rect.hatched.s1 { f
   function changed() {
     if (edited()) bar.hidden = false; else reload();
   }
-  // The stream is told what the page shows, so that it signals a change
-  // written before it listened, or while jfl ui was stopped: the browser
-  // listens again once it serves again.
-  var changes = new EventSource({{printf "/changes?since=%s" since}});
-  changes.onmessage = changed;
+  // The page asks every 2 seconds while its tab is visible, and once as
+  // soon as it becomes visible again; a hidden tab doesn't ask, so that any
+  // number of tabs hold no connection. It asks about what it shows, with
+  // the same version while jfl ui doesn't answer, so that it catches up
+  // on a change written meanwhile once jfl ui answers again.
+  var asks = {{printf "/changes?since=%s" since}}, asking = true, inFlight = false, timer = null;
+  function ask() {
+    clearTimeout(timer);
+    timer = null;
+    if (!asking || inFlight || document.hidden) return;
+    inFlight = true;
+    fetch(asks, {cache: "no-store"}).then(function (r) {
+      if (asking && r.status === 200) { asking = false; changed(); }
+    }, function () {}).then(function () {
+      inFlight = false;
+      if (asking && !document.hidden) timer = setTimeout(ask, 2000);
+    });
+  }
+  addEventListener("visibilitychange", function () {
+    if (document.hidden) { clearTimeout(timer); timer = null; } else ask();
+  });
+  ask();
   // A decision submitted leaves for the page that says what it did, which
   // a change it makes itself must not replace.
-  addEventListener("submit", function () { changes.close(); });
+  addEventListener("submit", function () { asking = false; clearTimeout(timer); });
 })();
 </script>
 </body>

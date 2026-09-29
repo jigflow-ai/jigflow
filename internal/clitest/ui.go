@@ -178,8 +178,9 @@ func (u *UI) send(c *http.Client, req *http.Request) Page {
 	return Page{Status: resp.StatusCode, HTML: string(body), Header: resp.Header}
 }
 
-// Stream is the Dashboard's change stream, read as a page listens to it:
-// the events it sends, one at a time, until it ends.
+// Stream is an event stream the Dashboard sends, read as a page shown
+// before ADR 0029 listens to one: the events it sends, one at a time,
+// until it ends.
 type Stream struct {
 	// Status and ContentType are those of the response that opened it.
 	Status      int
@@ -188,10 +189,9 @@ type Stream struct {
 	close       func()
 }
 
-// Listen opens the change stream with the request, sent as any program on
-// this machine sends it, with no key: a page's script listens with what the
-// browser carries, which the stream doesn't need. The stream is closed when
-// the test ends.
+// Listen opens an event stream with the request, sent as any program on
+// this machine sends it, with no key. The stream is closed when the test
+// ends.
 func (u *UI) Listen(req *http.Request) *Stream {
 	u.t.Helper()
 	resp, err := http.DefaultClient.Do(req)
