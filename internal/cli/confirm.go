@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/jigflow-ai/jigflow/internal/engine"
@@ -63,10 +64,15 @@ func (e *env) confirmHuman(a engine.Artifact, tr engine.Transition) (engine.Chan
 	return engine.ViaTerminal, nil
 }
 
+// errRejectedInForm is returned by confirmApproval when the person chose to
+// reject the Proposal in the form they were asked.
+var errRejectedInForm = errors.New("rejected in the form")
+
 // confirmApproval asks the person at the terminal to confirm approving p,
 // and returns the channel their Confirmation came through. In the
-// Dashboard, the person's click is the confirmation.
-func (e *env) confirmApproval(p engine.Proposal) (engine.Channel, error) {
+// Dashboard, the person's click is the confirmation. In the agent's client,
+// the person is asked in a form jfl writes from p, and may reject it there.
+func (e *env) confirmApproval(pb *engine.Playbook, p engine.Proposal) (engine.Channel, error) {
 	if e.clicked {
 		return engine.ViaDashboard, nil
 	}
@@ -74,7 +80,20 @@ func (e *env) confirmApproval(p engine.Proposal) (engine.Channel, error) {
 	if p.By != "" {
 		by = "agent session " + p.By
 	}
-	ok, err := e.confirm(fmt.Sprintf("%s from %s: %s\n%sApprove all %s as one unit?", p.ID, by, p.Summary, listItems(p), plural(len(p.Items), "change")))
+	question := func(items, or string) string {
+		return fmt.Sprintf("%s from %s: %s\n%sApprove all %s as one unit%s?", p.ID, by, p.Summary, items, plural(len(p.Items), "change"), or)
+	}
+	if e.form != nil {
+		choice, err := e.form(question(formItems(pb, p), ", or reject "+p.ID), "approve", "reject")
+		if err != nil {
+			return "", fmt.Errorf("%s: not approved, still pending: %w", p.ID, err)
+		}
+		if choice == "reject" {
+			return "", errRejectedInForm
+		}
+		return engine.ViaAgent, nil
+	}
+	ok, err := e.confirm(question(listItems(p), ""))
 	if errors.Is(err, errNoTerminal) {
 		return "", fmt.Errorf("approving %s needs confirming in an interactive terminal, but stdin isn't one", p.ID)
 	}
@@ -85,6 +104,20 @@ func (e *env) confirmApproval(p engine.Proposal) (engine.Channel, error) {
 		return "", fmt.Errorf("%s: not approved: the approval wasn't confirmed", p.ID)
 	}
 	return engine.ViaTerminal, nil
+}
+
+// formItems lists a Proposal's items as listItems does, each creation with
+// the Status it would start in even where the Proposal leaves it to the
+// Type: the form must show every change in state.
+func formItems(pb *engine.Playbook, p engine.Proposal) string {
+	started := p
+	started.Items = slices.Clone(p.Items)
+	for i, it := range started.Items {
+		if t := pb.Type(it.Create); t != nil {
+			started.Items[i].Status = startStatus(it.Status, t.Initial)
+		}
+	}
+	return listItems(started)
 }
 
 // dashboardOnly says that the Transition tr of the Artifact id is one the

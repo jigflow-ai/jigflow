@@ -63,7 +63,8 @@ Agent time unattributed: 0s</code></pre>
 <p>A Human Transition, or a Proposal, needs a person's Confirmation, given somewhere the agent can't answer for them. The Ledger entry of every Status change it makes says where, in a <code>via</code> field:</p>
 <ul>
   <li><code>terminal</code>: the person answered <code>y</code> to <code>jfl move</code> or <code>jfl approve</code> at an interactive terminal;</li>
-  <li><code>dashboard</code>: the person clicked in the Dashboard.</li>
+  <li><code>dashboard</code>: the person clicked in the Dashboard;</li>
+  <li><code>agent</code>: the person answered a form the agent's client showed only to them, through <code>jfl mcp</code>.</li>
 </ul>
 <p>An approved Proposal records its channel on every Status change it makes, each creation and each move. Status changes that need no Confirmation, such as an ordinary Transition, an agent's move or a migration, have no <code>via</code>, nor do entries written before <code>jfl</code> recorded channels. They still read as before.</p>
 <pre><code>at: 2026-09-29T06:53:34.363870877Z

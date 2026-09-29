@@ -30,11 +30,11 @@ type StatusChange struct {
 // answer for them.
 type Channel string
 
-// The channels a Confirmation comes through so far; the agent's client is
-// to follow (ADR 0024).
+// The channels a Confirmation comes through (ADR 0024).
 const (
 	ViaTerminal  Channel = "terminal"  // answered y at an interactive terminal
 	ViaDashboard Channel = "dashboard" // clicked in the Dashboard
+	ViaAgent     Channel = "agent"     // answered a form the agent's client showed only to the person
 )
 
 // FocusChange is a Ledger entry: an agent session's Focus becoming the

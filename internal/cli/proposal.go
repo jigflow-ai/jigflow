@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -78,7 +79,12 @@ func cmdApprove(e *env, args []string) error {
 	if len(args) != 1 {
 		return fmt.Errorf("%w: jfl approve <proposal>", errUsage)
 	}
-	return e.approve(args[0], nil)
+	err := e.approve(args[0], nil)
+	// Asked in the agent's client, the person may reject it instead.
+	if errors.Is(err, errRejectedInForm) {
+		return e.reject(args[0])
+	}
+	return err
 }
 
 // approve applies every change of the pending Proposal id, or none. A
@@ -156,7 +162,7 @@ func (e *env) approve(id string, edit func(pb *engine.Playbook, p *engine.Propos
 			return notApplied(fmt.Errorf("item %d (%s): %s and approve %s there", c.Item+1, p.Items[c.Item], dashboardOnly(c.Artifact.ID, c.Transition), p.ID))
 		}
 	}
-	via, err := e.confirmApproval(p)
+	via, err := e.confirmApproval(pb, p)
 	if err != nil {
 		return err
 	}

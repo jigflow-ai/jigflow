@@ -48,35 +48,44 @@ type env struct {
 	// Dashboard, which confirms a Human Transition or an approval as a
 	// terminal's y would (ADR 0003).
 	clicked bool
+	// form, when set, asks the person for a Confirmation in a form the
+	// agent's client shows only to them, and returns their choice (ADR
+	// 0024). It is set only on a person's command jfl mcp runs.
+	form func(message string, choices ...string) (string, error)
 }
 
 // Run executes one command in the project rooted at dir and returns the
 // process exit code. getenv reads the process environment.
 func Run(args []string, dir string, getenv func(string) string, stdin *os.File, stdout, stderr io.Writer) int {
 	e := &env{dir: dir, actor: engine.Actor{Session: getenv(SessionEnv)}, stdin: stdin, stdout: stdout, stderr: stderr, getenv: getenv}
-	now, err := clock(getenv)
+	return e.run(args)
+}
+
+// run executes one command as e and returns the process exit code.
+func (e *env) run(args []string) int {
+	now, err := clock(e.getenv)
 	if err != nil {
-		fmt.Fprintf(stderr, "jfl: %v\n", err)
+		fmt.Fprintf(e.stderr, "jfl: %v\n", err)
 		return exitUsage
 	}
 	e.now = now
 	if len(args) == 0 {
-		fmt.Fprint(stderr, usage)
+		fmt.Fprint(e.stderr, usage)
 		return exitUsage
 	}
 	cmd, ok := commands[args[0]]
 	if !ok {
-		fmt.Fprintf(stderr, "jfl: unknown command %q\n\n%s", args[0], usage)
+		fmt.Fprintf(e.stderr, "jfl: unknown command %q\n\n%s", args[0], usage)
 		return exitUsage
 	}
 	if err := cmd(e, args[1:]); err != nil {
 		// A Connector failing is a problem with the tracker, which the
 		// person must tell apart from the workflow refusing the command.
 		if _, ok := errors.AsType[*store.ConnectorError](err); ok {
-			fmt.Fprintf(stderr, "jfl %s: tracker problem, not a workflow refusal: %v\n", args[0], err)
+			fmt.Fprintf(e.stderr, "jfl %s: tracker problem, not a workflow refusal: %v\n", args[0], err)
 			return exitConnector
 		}
-		fmt.Fprintf(stderr, "jfl %s: %v\n", args[0], err)
+		fmt.Fprintf(e.stderr, "jfl %s: %v\n", args[0], err)
 		if errors.Is(err, errUsage) {
 			return exitUsage
 		}
@@ -174,10 +183,12 @@ Commands:
                           Artifacts kept in a tracker through jfl too
   approve <proposal>      apply every change in a pending Proposal, or none;
                           only a person may, confirming it in an interactive
-                          terminal or in the Dashboard, and its items may then
-                          make Human Transitions and create into Statuses
-                          with a Binding; one making a Transition the Playbook
-                          requires the Dashboard for is approved only there
+                          terminal, in the Dashboard, or in the form the
+                          agent's client shows them through jfl mcp, and its
+                          items may then make Human Transitions and create
+                          into Statuses with a Binding; one making a
+                          Transition the Playbook requires the Dashboard for
+                          is approved only there
   reject <proposal>       drop a pending Proposal, changing nothing; only a
                           person may
   check [--proposal <proposal>]
@@ -222,12 +233,13 @@ Commands:
                           each Status; agent time and tokens with nothing in
                           Focus, which are unattributed; and each Status
                           change a Confirmation made, with the channel it
-                          came through: terminal or dashboard. Every create,
-                          Transition, approved Proposal and migration, and
-                          every change of a session's Focus, adds an entry of
-                          its own to the committed .jigflow/ledger, timed by
-                          jfl's clock; tokens come only from the agent's own
-                          records, and agents without any record time only
+                          came through: terminal, dashboard or agent. Every
+                          create, Transition, approved Proposal and
+                          migration, and every change of a session's Focus,
+                          adds an entry of its own to the committed
+                          .jigflow/ledger, timed by jfl's clock; tokens come
+                          only from the agent's own records, and agents
+                          without any record time only
   hook claude-code        run by the Claude Code hooks jfl publish sets up,
                           never by an agent session: at SessionStart, give the
                           session's commands JFL_SESSION; after each turn, and
@@ -236,9 +248,14 @@ Commands:
                           Ledger
   mcp                     serve the agent-safe commands as an MCP server over
                           stdio, as an agent session: next, move (never a
-                          Human Transition), propose, query, and create into
-                          an Inbox; never approve or reject. The session is
-                          JFL_SESSION, or a fresh one for the server's life
+                          Human Transition), propose, query, show, and create
+                          into an Inbox. The session is JFL_SESSION, or a
+                          fresh one for the server's life. To a client that
+                          declared elicitation, also approve: it asks the
+                          person to approve or reject a pending Proposal in a
+                          form the client shows only to them, which jfl
+                          writes; a dismissed or declined form leaves it
+                          pending
   ui [--addr <host:port>] serve the Dashboard on this machine, at 127.0.0.1:7457
                           unless --addr names another loopback address, until
                           interrupted: the Artifacts of each Type with their

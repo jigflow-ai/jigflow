@@ -70,7 +70,17 @@ jfl simulate Ticket --proposal P-3</code></pre>
 <h2 id="deciding">Approving and rejecting</h2>
 <pre><code>jfl approve P-3        <span class="c"># lists every item, then asks: Approve all 3 changes as one unit? [y/N]</span>
 jfl reject P-3</code></pre>
-<p>Only a person may approve or reject, at an interactive terminal or in the Dashboard. An agent session is refused, and the MCP server doesn't offer these commands at all. If an item makes a Transition that the Playbook marks <code>human: dashboard</code>, the Proposal can only be approved in the Dashboard. The <a href="ledger.html#confirmations">Ledger</a> records which of the two each approval, and each Human Transition, came through.</p>
+<p>Only a person may approve or reject: at an interactive terminal, in the Dashboard, or in a form the agent's client shows only to them. An agent session running <code>jfl approve</code> or <code>jfl reject</code> is refused. If an item makes a Transition that the Playbook marks <code>human: dashboard</code>, the Proposal can only be approved in the Dashboard. The <a href="ledger.html#confirmations">Ledger</a> records which of the three each approval, and each Human Transition, came through.</p>
+
+<h3 id="in-the-agent">Approving in the agent's client</h3>
+<p>If your agent's client supports MCP elicitation, the <a href="cli.html#mcp"><code>jfl mcp</code></a> server offers the agent an <code>approve</code> tool. The agent calls it with a pending Proposal's id, and your client shows you a form that the model never sees:</p>
+<pre class="out"><code>P-3 from agent session A: break S-1 into 2 tickets
+  1. create Ticket "Reset-token table" in ready-for-agent, part_of S-1
+  2. move S-1 → ticketed
+Approve all 2 changes as one unit, or reject P-3?
+
+Decision: ( ) approve  ( ) reject</code></pre>
+<p><code>jfl</code> writes the form from the Proposal itself, so what you approve is what will happen. You must pick one: <strong>approve</strong> applies the Proposal exactly as <code>jfl approve</code> at a terminal would, with its Gates, Actions, re-validated bodies and trackers, and <strong>reject</strong> drops it. Dismissing or declining the form changes nothing: the Proposal stays pending for the terminal, the Dashboard, or the agent asking again later. You can't edit items in the form; reject, and ask the agent to propose again, or edit them in the Dashboard. A Proposal that makes a <code>human: dashboard</code> Transition is refused without a form, with the same pointer to the Dashboard. The tool isn't offered to a client that can't show forms. See <a href="https://github.com/jigflow-ai/jigflow/blob/main/docs/adr/0024-confirmations-in-the-agents-client-through-mcp-elicitation.md">ADR 0024</a>.</p>
 
 <h2 id="dashboard">The Dashboard</h2>
 <pre><code>jfl ui</code></pre>
@@ -89,7 +99,7 @@ Open this link in your browser to approve Proposals and make Human Transitions t
 </div>
 
 <h2 id="guardrail">What Human Transitions protect against</h2>
-<p>Human Transitions and approvals guard against <em>accidents</em>: an agent that moves on too eagerly, a Skill that forgets to wait. An agent can run any shell command, so they can't stop a determined one. The CLI asks for confirmation at an interactive terminal, and the MCP server doesn't offer them at all. The Dashboard is the stronger channel, since an agent in a terminal can't click in your browser, and a Playbook can require it for a Transition with <code>human: dashboard</code> (<a href="https://github.com/jigflow-ai/jigflow/blob/main/docs/adr/0003-human-transitions-are-a-guardrail.md">ADR 0003</a>).</p>
+<p>Human Transitions and approvals guard against <em>accidents</em>: an agent that moves on too eagerly, a Skill that forgets to wait. An agent can run any shell command, so they can't stop a determined one. The CLI asks for confirmation at an interactive terminal, and the MCP server asks for it only in a form the agent's client shows to you, never to the model. The Dashboard is the stronger channel, since an agent in a terminal can't click in your browser, and a Playbook can require it for a Transition with <code>human: dashboard</code> (<a href="https://github.com/jigflow-ai/jigflow/blob/main/docs/adr/0003-human-transitions-are-a-guardrail.md">ADR 0003</a>).</p>
 <footer class="page-footer"><a href="agents.html">← Agents and Adapters</a><a href="connectors.html">Connectors →</a></footer>
 </main>
 </div>

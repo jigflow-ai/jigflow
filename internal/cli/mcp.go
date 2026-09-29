@@ -6,14 +6,21 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"maps"
 	"slices"
+	"strings"
+
+	"github.com/jigflow-ai/jigflow/internal/engine"
 )
 
-// mcpProtocol is the MCP version the server answers with when the client
-// asks for none.
-const mcpProtocol = "2025-06-18"
+// The MCP versions the server speaks. Both carry server-sent
+// elicitation/create in form mode (ADR 0024).
+const (
+	mcpProtocol       = "2025-06-18" // what a client offering any older version, or none, gets
+	mcpLatestProtocol = "2025-11-25" // what a client offering it, or a later one, gets
+)
 
 // JSON-RPC error codes.
 const (
@@ -30,11 +37,19 @@ type mcpTool struct {
 	InputSchema map[string]any `json:"inputSchema"`
 	// args turns the tool's arguments into the jfl command line it runs.
 	args func(json.RawMessage) ([]string, error)
+	// confirms is set on a tool whose command needs a person's
+	// Confirmation: it runs as the person, who gives it in a form the
+	// client shows only to them, so it is listed only to a client that
+	// declared elicitation (ADR 0024).
+	confirms bool
 }
 
-// mcpTools is the agent-safe surface of the CLI. Human Transitions, approve
-// and reject aren't in it, so an agent using MCP never sees them (ADR 0003);
-// the engine refuses a Human Transition asked of move, as it does in the CLI.
+// mcpTools is the agent-safe surface of the CLI, and approve, which asks the
+// person for a Confirmation in a form the agent's client shows only to them
+// (ADR 0024). A client that can't show the person a form isn't offered
+// approve, and no client is offered reject, so an agent using MCP can't
+// decide for the person (ADR 0003); the engine refuses a Human Transition
+// asked of move, as it does in the CLI.
 var mcpTools = []mcpTool{
 	{
 		Name:        "next",
@@ -79,6 +94,21 @@ var mcpTools = []mcpTool{
 			}
 			return []string{"propose", in.File}, nil
 		},
+	},
+	{
+		Name:        "approve",
+		Description: "Ask the person to approve or reject a pending Proposal, in a form your client shows only to them; jfl writes the form from the Proposal itself. Approved, it is applied as one unit, as `jfl approve <proposal>` confirmed in a terminal applies it; rejected, it is dropped, as `jfl reject <proposal>` drops it. A form the person dismisses or declines leaves the Proposal pending. A Proposal making a Transition the Playbook requires the Dashboard for is refused without asking.",
+		InputSchema: schema([]string{"proposal"}, map[string]any{
+			"proposal": map[string]any{"type": "string", "description": "the pending Proposal's id, e.g. P-1"},
+		}),
+		args: func(raw json.RawMessage) ([]string, error) {
+			var in struct{ Proposal string }
+			if err := decodeArgs(raw, &in, "proposal"); err != nil {
+				return nil, err
+			}
+			return []string{"approve", in.Proposal}, nil
+		},
+		confirms: true,
 	},
 	{
 		Name:        "query",
@@ -179,7 +209,7 @@ func decodeArgs(raw json.RawMessage, v any, required ...string) error {
 	return nil
 }
 
-// cmdMcp runs the commands of its tools through Run, which dispatches
+// cmdMcp runs the commands of its tools through run, which dispatches
 // through commands, so it joins commands here rather than in their
 // declaration, which would be an initialization cycle.
 func init() { commands["mcp"] = cmdMcp }
@@ -187,7 +217,10 @@ func init() { commands["mcp"] = cmdMcp }
 // cmdMcp serves the agent-safe surface of the CLI as an MCP server over
 // stdio: newline-delimited JSON-RPC 2.0 on stdin and stdout, until stdin
 // closes. Each tool call runs its jfl command as the CLI does, so it is
-// decided, and refused, exactly as there.
+// decided, and refused, exactly as there. A tool that needs a Confirmation
+// asks the client, while the call is in flight, to show the person a form
+// (elicitation/create), and runs its command as the person, confirmed by
+// their answer (ADR 0024).
 //
 // The server is always an agent session: JFL_SESSION's id when it is set,
 // so its Claims are shared with the session's jfl commands, and otherwise a
@@ -204,24 +237,68 @@ func cmdMcp(e *env, args []string) error {
 		}
 		session = "mcp-" + hex.EncodeToString(b)
 	}
-	s := &mcpServer{e: e, session: session, out: json.NewEncoder(e.stdout)}
 	in := bufio.NewScanner(e.stdin)
 	in.Buffer(make([]byte, 64*1024), 16*1024*1024)
-	for in.Scan() {
-		if len(bytes.TrimSpace(in.Bytes())) == 0 {
-			continue
+	s := &mcpServer{e: e, session: session, in: in, out: json.NewEncoder(e.stdout)}
+	for {
+		line, ok := s.read()
+		if !ok {
+			return in.Err()
 		}
-		if err := s.handle(in.Bytes()); err != nil {
+		if err := s.handle(line); err != nil {
 			return err
 		}
 	}
-	return in.Err()
 }
 
 type mcpServer struct {
-	e       *env
-	session string
-	out     *json.Encoder
+	e        *env
+	session  string
+	in       *bufio.Scanner
+	out      *json.Encoder
+	protocol string // the MCP version negotiated at initialize
+	// forms is whether the client declared elicitation in form mode at
+	// initialize: whether it can show the person a form.
+	forms bool
+	// queued are the client's messages that came while the server waited
+	// for the person's answer to a form, to handle once the tool call is
+	// done.
+	queued [][]byte
+	// requests counts the requests the server has sent the client, giving
+	// each its id.
+	requests int
+	// inFlight is the id of the tools/call being answered, and cancelled is
+	// set once the client cancels it, so that it gets no response.
+	inFlight  json.RawMessage
+	cancelled bool
+}
+
+// read returns the client's next message: one queued, or else the next one
+// on stdin. It reports false when stdin has closed.
+func (s *mcpServer) read() ([]byte, bool) {
+	if len(s.queued) > 0 {
+		line := s.queued[0]
+		s.queued = s.queued[1:]
+		return line, true
+	}
+	return s.readClient()
+}
+
+// readClient returns the client's next line on stdin that isn't blank,
+// never a queued one. It reports false when stdin has closed.
+func (s *mcpServer) readClient() ([]byte, bool) {
+	for s.in.Scan() {
+		if len(bytes.TrimSpace(s.in.Bytes())) > 0 {
+			return bytes.Clone(s.in.Bytes()), true
+		}
+	}
+	return nil, false
+}
+
+// tools are the tools the client may call: those that ask for a
+// Confirmation only when it can show the person a form.
+func (s *mcpServer) tools() []mcpTool {
+	return slices.DeleteFunc(slices.Clone(mcpTools), func(t mcpTool) bool { return t.confirms && !s.forms })
 }
 
 type rpcRequest struct {
@@ -229,6 +306,9 @@ type rpcRequest struct {
 	ID      json.RawMessage `json:"id"`
 	Method  string          `json:"method"`
 	Params  json.RawMessage `json:"params"`
+	// Result and Error make it a response, to a request the server sent.
+	Result json.RawMessage `json:"result"`
+	Error  json.RawMessage `json:"error"`
 }
 
 type rpcError struct {
@@ -242,13 +322,20 @@ func (s *mcpServer) handle(line []byte) error {
 	if err := json.Unmarshal(line, &req); err != nil {
 		return s.reply(json.RawMessage("null"), nil, &rpcError{rpcParseError, err.Error()})
 	}
-	if len(req.ID) == 0 {
+	// A notification gets no answer, nor does a response: one to a form
+	// the server stopped waiting for.
+	if len(req.ID) == 0 || req.Method == "" && (req.Result != nil || req.Error != nil) {
 		return nil
 	}
 	if req.JSONRPC != "2.0" || req.Method == "" {
 		return s.reply(req.ID, nil, &rpcError{rpcInvalidRequest, "not a JSON-RPC 2.0 request"})
 	}
+	s.inFlight, s.cancelled = req.ID, false
 	result, rerr := s.call(req.Method, req.Params)
+	s.inFlight = nil
+	if s.cancelled {
+		return nil
+	}
 	return s.reply(req.ID, result, rerr)
 }
 
@@ -257,12 +344,24 @@ func (s *mcpServer) call(method string, params json.RawMessage) (any, *rpcError)
 	case "initialize":
 		var in struct {
 			ProtocolVersion string `json:"protocolVersion"`
+			Capabilities    struct {
+				// Form and URL are the modes of 2025-11-25; a client
+				// declaring neither supports form mode.
+				Elicitation *struct {
+					Form *struct{} `json:"form"`
+					URL  *struct{} `json:"url"`
+				} `json:"elicitation"`
+			} `json:"capabilities"`
 		}
 		_ = json.Unmarshal(params, &in)
-		version := in.ProtocolVersion
-		if version == "" {
-			version = mcpProtocol
+		el := in.Capabilities.Elicitation
+		s.forms = el != nil && (el.Form != nil || el.URL == nil)
+		// Versions are dates, so they sort as strings.
+		version := mcpProtocol
+		if in.ProtocolVersion >= mcpLatestProtocol {
+			version = mcpLatestProtocol
 		}
+		s.protocol = version
 		return map[string]any{
 			"protocolVersion": version,
 			"capabilities":    map[string]any{"tools": map[string]any{}},
@@ -271,7 +370,7 @@ func (s *mcpServer) call(method string, params json.RawMessage) (any, *rpcError)
 	case "ping":
 		return map[string]any{}, nil
 	case "tools/list":
-		return map[string]any{"tools": mcpTools}, nil
+		return map[string]any{"tools": s.tools()}, nil
 	case "tools/call":
 		return s.callTool(params)
 	}
@@ -289,29 +388,128 @@ func (s *mcpServer) callTool(params json.RawMessage) (any, *rpcError) {
 	if err := json.Unmarshal(params, &in); err != nil {
 		return nil, &rpcError{rpcInvalidParams, err.Error()}
 	}
-	i := slices.IndexFunc(mcpTools, func(t mcpTool) bool { return t.Name == in.Name })
+	tools := s.tools()
+	i := slices.IndexFunc(tools, func(t mcpTool) bool { return t.Name == in.Name })
 	if i < 0 {
 		return nil, &rpcError{rpcInvalidParams, fmt.Sprintf("unknown tool %q", in.Name)}
 	}
-	args, err := mcpTools[i].args(in.Arguments)
+	args, err := tools[i].args(in.Arguments)
 	if err != nil {
 		return nil, &rpcError{rpcInvalidParams, fmt.Sprintf("%s: %v", in.Name, err)}
+	}
+	// A tool that asks for a Confirmation runs its command as the person,
+	// who gives it in the form; any other runs it as this session.
+	tool := tools[i]
+	session := s.session
+	if tool.confirms {
+		session = ""
 	}
 	getenv := func(key string) string {
 		switch key {
 		case SessionEnv:
-			return s.session
+			return session
 		case clockEnv:
 			return s.e.getenv(key)
 		}
 		return ""
 	}
 	var out bytes.Buffer
-	code := Run(args, s.e.dir, getenv, nil, &out, &out)
+	cmd := &env{dir: s.e.dir, actor: engine.Actor{Session: session}, stdout: &out, stderr: &out, getenv: getenv}
+	if tool.confirms {
+		cmd.form = s.elicit
+	}
+	code := cmd.run(args)
 	return map[string]any{
 		"content": []map[string]any{{"type": "text", "text": out.String()}},
 		"isError": code != exitOK,
 	}, nil
+}
+
+// elicit asks the client to show the person a form with message and one
+// required field, decision, to choose among choices, and waits for their
+// answer. Only an accepted form with one of the choices is an answer: a
+// declined or cancelled one, or the client failing to show it, is an error,
+// which leaves everything pending (ADR 0024). While it waits, it answers
+// pings, and keeps the client's other messages for after the tool call, so
+// that the person is asked one form at a time.
+func (s *mcpServer) elicit(message string, choices ...string) (string, error) {
+	s.requests++
+	id, err := json.Marshal(fmt.Sprintf("jfl-%d", s.requests))
+	if err != nil {
+		return "", err
+	}
+	params := map[string]any{
+		"message": message,
+		"requestedSchema": map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"decision": map[string]any{"type": "string", "title": "Decision", "enum": choices},
+			},
+			"required": []string{"decision"},
+		},
+	}
+	if s.protocol >= mcpLatestProtocol {
+		params["mode"] = "form"
+	}
+	if err := s.out.Encode(map[string]any{"jsonrpc": "2.0", "id": json.RawMessage(id), "method": "elicitation/create", "params": params}); err != nil {
+		return "", err
+	}
+	for {
+		line, ok := s.readClient()
+		if !ok {
+			return "", errors.New("the client closed the connection before the person answered")
+		}
+		var head struct {
+			ID     json.RawMessage `json:"id"`
+			Method string          `json:"method"`
+			Params struct {
+				RequestID json.RawMessage `json:"requestId"`
+			} `json:"params"`
+		}
+		if json.Unmarshal(line, &head) != nil || head.Method != "" || !bytes.Equal(head.ID, id) {
+			switch {
+			case head.Method == "ping" && len(head.ID) > 0:
+				if err := s.reply(head.ID, map[string]any{}, nil); err != nil {
+					return "", err
+				}
+			case head.Method == "notifications/cancelled" && len(s.inFlight) > 0 && bytes.Equal(head.Params.RequestID, s.inFlight):
+				// The client gave up on the tool call: it wants no result,
+				// and the person's answer, if one comes, is ignored.
+				s.cancelled = true
+				return "", errors.New("the client cancelled the tool call before the person answered")
+			default:
+				s.queued = append(s.queued, line)
+			}
+			continue
+		}
+		var msg struct {
+			Result *struct {
+				Action  string `json:"action"`
+				Content struct {
+					Decision string `json:"decision"`
+				} `json:"content"`
+			} `json:"result"`
+			Error *rpcError `json:"error"`
+		}
+		if json.Unmarshal(line, &msg) != nil {
+			return "", errors.New("the client's answer to the form doesn't decode")
+		}
+		switch {
+		case msg.Error != nil:
+			return "", fmt.Errorf("the client couldn't ask the person (%s)", msg.Error.Message)
+		case msg.Result == nil:
+			return "", errors.New("the client answered the form with nothing")
+		case msg.Result.Action == "decline":
+			return "", errors.New("the form was declined")
+		case msg.Result.Action == "cancel":
+			return "", errors.New("the form was dismissed")
+		case msg.Result.Action != "accept":
+			return "", fmt.Errorf("the client answered the form with %q", msg.Result.Action)
+		case !slices.Contains(choices, msg.Result.Content.Decision):
+			return "", fmt.Errorf("the form was submitted with decision %q, not one of %s", msg.Result.Content.Decision, strings.Join(choices, ", "))
+		}
+		return msg.Result.Content.Decision, nil
+	}
 }
 
 func (s *mcpServer) reply(id json.RawMessage, result any, rerr *rpcError) error {
