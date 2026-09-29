@@ -83,7 +83,7 @@ connectors:
 <pre><code>extends: {builtin: larapilot}                                <span class="c"># built into jfl</span>
 extends: {path: ../playbooks/ours}                           <span class="c"># a directory, relative to the project root</span>
 extends: {git: https://github.com/acme/playbook, ref: v2.1.0} <span class="c"># a git repository, pinned to a ref</span></code></pre>
-<p>The extending Playbook's parts override the base's parts <strong>by name</strong>: an Artifact Type, Skill, Guideline, Persona, Connector or Gate command of the same name replaces the base's one, and everything else is kept. A replaced Artifact Type keeps the base's place in the declaration order, and new ones come after the base's. For a git base, <code>jfl</code> records in <code>.jigflow/playbook.lock</code> the commit the ref resolved to, and keeps using it until you change the ref.</p>
+<p>The extending Playbook's parts override the base's parts <strong>by name</strong>: an Artifact Type, Skill, Guideline, Persona, Connector or Gate command of the same name replaces the base's one, and everything else is kept. A replaced Artifact Type keeps the base's place in the declaration order, and new ones come after the base's. The Dashboard's Playbook page (<code>jfl ui</code>) lists every part and says where it comes from: the Base Playbook, the project, or the project overriding the base's. For a git base, <code>jfl</code> records in <code>.jigflow/playbook.lock</code> the commit the ref resolved to, and keeps using it until you change the ref.</p>
 
 <h2 id="types">Artifact Types: <code>types/*.yaml</code></h2>
 <p>This is the Larapilot-style Task, complete:</p>

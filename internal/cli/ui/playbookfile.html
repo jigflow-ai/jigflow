@@ -1,0 +1,16 @@
+{{define "title"}}{{.Kind}} {{.Name}}{{end}}
+{{define "content"}}
+<p class="muted small"><a href="/playbook">Playbook</a></p>
+<h1><span class="id">{{.Kind}}</span> {{.Name}}</h1>
+{{with .Description}}<p>{{.}}</p>{{end}}
+<section class="panel" id="about">
+  <h2>About</h2>
+  <dl class="facts">
+    {{range .Facts}}<dt>{{.Name}}</dt><dd>{{if .Link}}<a href="{{.Link}}">{{.Value}}</a>{{else}}{{.Value}}{{end}}</dd>{{end}}
+  </dl>
+</section>
+<section class="panel" id="contents">
+  <h2>Contents</h2>
+  {{if .Contents}}<div class="prose">{{.Contents}}</div>{{else}}<p class="empty">Nothing written yet.</p>{{end}}
+</section>
+{{end}}

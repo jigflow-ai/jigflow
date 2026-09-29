@@ -1,0 +1,80 @@
+{{define "title"}}Playbook{{end}}
+{{define "content"}}
+<h1>Playbook</h1>
+<p class="muted small">What the project's Playbook is made of, and where each part comes from. The Playbook changes through Proposals, not here.</p>
+<section class="panel" id="types">
+  <h2>Artifact Types</h2>
+  <div class="scroll">
+  <table>
+    <thead><tr><th>Artifact Type</th><th>Prefix</th><th>Store</th><th>Comes from</th></tr></thead>
+    <tbody>{{range .Types}}<tr><td>{{.Name}}</td><td class="id">{{.Prefix}}</td><td>{{.Store}}</td><td class="small">{{.From}}</td></tr>{{end}}</tbody>
+  </table>
+  </div>
+</section>
+<section class="panel" id="bindings">
+  <h2>Bindings</h2>
+  {{if .Bindings}}
+  <div class="scroll">
+  <table>
+    <thead><tr><th>Artifact Type</th><th>Status</th><th>Skill</th><th>Comes from</th></tr></thead>
+    <tbody>{{range .Bindings}}<tr><td>{{.Type}}</td><td>{{.Status}}</td><td><a href="/playbook/skills/{{.Skill}}">/{{.Skill}}</a>{{range .Hints}} <span class="pill">{{.}}</span>{{end}}</td><td class="small">{{.From}}</td></tr>{{end}}</tbody>
+  </table>
+  </div>
+  {{else}}
+  <p class="empty">No Binding: every Status is human work.</p>
+  {{end}}
+</section>
+<section class="panel" id="skills">
+  <h2>Skills</h2>
+  {{if .Skills}}
+  <div class="scroll">
+  <table>
+    <thead><tr><th>Skill</th><th>Invocation Mode</th><th>Bound to</th><th>Comes from</th></tr></thead>
+    <tbody>{{range .Skills}}<tr><td><a href="/playbook/skills/{{.Name}}">{{.Name}}</a>{{with .Description}}<div class="muted small">{{.}}</div>{{end}}</td><td><span class="pill">{{.Invocation}}</span></td><td class="small">{{range $i, $b := .Bound}}{{if $i}}, {{end}}{{$b}}{{else}}<span class="muted">no Binding</span>{{end}}</td><td class="small">{{.From}}</td></tr>{{end}}</tbody>
+  </table>
+  </div>
+  {{else}}
+  <p class="empty">The Playbook declares no Skill.</p>
+  {{end}}
+</section>
+<section class="panel" id="guidelines">
+  <h2>Guidelines</h2>
+  {{if .Guidelines}}
+  <div class="scroll">
+  <table>
+    <thead><tr><th>Guideline</th><th>Comes from</th></tr></thead>
+    <tbody>{{range .Guidelines}}<tr><td><a href="/playbook/guidelines/{{.Name}}">{{.Name}}</a></td><td class="small">{{.From}}</td></tr>{{end}}</tbody>
+  </table>
+  </div>
+  {{else}}
+  <p class="empty">The Playbook declares no Guideline.</p>
+  {{end}}
+</section>
+<section class="panel" id="personas">
+  <h2>Personas</h2>
+  <p class="muted small">Shipped Personas and active ones are usable; a proposed one becomes usable once a person activates it.</p>
+  {{if .Personas}}
+  <div class="scroll">
+  <table>
+    <thead><tr><th>Persona</th><th>State</th><th>Comes from</th></tr></thead>
+    <tbody>{{range .Personas}}<tr><td><a href="/playbook/personas/{{.Name}}">{{.Name}}</a></td><td><span class="pill{{if or (eq .State "shipped") (eq .State "active")}} finished{{else if eq .State "proposed"}} human{{end}}">{{.State}}</span></td><td class="small">{{with .Artifact}}Persona Artifact <a class="id" href="/artifacts/{{.}}">{{.}}</a>{{else}}{{.From}}{{end}}{{with .Overrides}} (overriding {{.}}){{end}}{{with .Proposed}} <span class="muted">(<a class="id" href="/artifacts/{{.}}">{{.}}</a> proposed to replace it)</span>{{end}}</td></tr>{{end}}</tbody>
+  </table>
+  </div>
+  {{else}}
+  <p class="empty">No Persona yet.</p>
+  {{end}}
+</section>
+<section class="panel" id="gates">
+  <h2>Gates</h2>
+  {{if .Gates}}
+  <div class="scroll">
+  <table>
+    <thead><tr><th>Gate</th><th>Artifact Type</th><th>Transition</th><th>Command</th><th>Declared in</th></tr></thead>
+    <tbody>{{range .Gates}}<tr><td>{{.Name}}</td><td>{{.Type}}</td><td>{{.Transition}}</td><td>{{with .Cmd}}<code>{{.}}</code> {{end}}<span class="small{{if .Missing}} pill human{{else}} muted{{end}}">{{.CmdFrom}}</span></td><td class="small">{{.From}}</td></tr>{{end}}</tbody>
+  </table>
+  </div>
+  {{else}}
+  <p class="empty">No Transition has a Gate.</p>
+  {{end}}
+</section>
+{{end}}

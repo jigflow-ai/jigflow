@@ -25,6 +25,31 @@ type Playbook struct {
 	Guidelines map[string]string     // the Guidelines the project declares: name -> its Markdown
 	Connectors map[string]*Connector // the project's Connectors, by name
 	Gates      map[string]string     // the command the Playbook file gives each Gate, by the Gate's name
+	// Origins says where each part of the Playbook comes from, as the
+	// Dashboard shows it.
+	Origins Origins
+}
+
+// Origins says where each part of a Playbook comes from, by the part's
+// name: the Artifact Types, Skills, Personas and Guidelines it declares,
+// and the commands its Playbook file gives Gates.
+type Origins struct {
+	Types, Skills, Personas, Guidelines, Gates map[string]Origin
+}
+
+// Origin is where one part of a Playbook comes from: the project's own
+// Playbook, its Base Playbook, the project's overriding its Base
+// Playbook's, or jfl itself.
+type Origin struct {
+	// Base is the Base Playbook that declares the part, as the Playbook
+	// file names it (builtin:larapilot, a path, or a git URL@ref); empty
+	// when only the project declares it.
+	Base    string
+	Project bool // the project's own Playbook declares it, overriding Base's if any
+	Builtin bool // built into jfl, such as the Persona Type
+	// File is the file declaring it, named as its Playbook's author knows
+	// it: the project's when the project declares it.
+	File string
 }
 
 // Connector is how the project reaches an outside tracker that keeps the

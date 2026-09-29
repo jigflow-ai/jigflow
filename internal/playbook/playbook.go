@@ -248,17 +248,19 @@ func load(root string, fsys fs.FS) (*engine.Playbook, error) {
 		return nil, err
 	}
 	l := own
+	var base *layer
 	if own.extends != nil {
-		base, err := resolveBase(root, own.extends)
+		base, err = resolveBase(root, own.extends)
 		if err != nil {
 			return nil, fmt.Errorf("%s: %w", path.Join(Dir, "playbook.yaml"), err)
 		}
 		l = merge(base, own)
 	}
 	giveGatesCommands(l.types, l.gates)
-	pb := &engine.Playbook{Name: own.name, Types: l.types, Skills: l.skills, Personas: l.personas, Guidelines: l.guidelines, Connectors: l.connectors, Gates: l.gates}
+	pb := &engine.Playbook{Name: own.name, Types: l.types, Skills: l.skills, Personas: l.personas, Guidelines: l.guidelines, Connectors: l.connectors, Gates: l.gates, Origins: origins(base, own)}
 	problems := builtinTypeProblems(pb, l.typeFiles)
 	pb.Types = append(pb.Types, engine.PersonaArtifactType())
+	pb.Origins.Types[engine.PersonaType] = engine.Origin{Builtin: true}
 	migrationProblems, err := readMigrations(fsys, Dir, pb)
 	if err != nil {
 		return nil, err
@@ -271,6 +273,48 @@ func load(root string, fsys fs.FS) (*engine.Playbook, error) {
 		return nil, &Invalid{Problems: problems}
 	}
 	return pb, nil
+}
+
+// origins says where each part of the Playbook own, extending base, if
+// any, comes from.
+func origins(base, own *layer) engine.Origins {
+	// of says where each of the parts parts gives a layer comes from, by
+	// name, and the file declaring it.
+	of := func(parts func(*layer) map[string]string) map[string]engine.Origin {
+		m := map[string]engine.Origin{}
+		if base != nil {
+			for name, file := range parts(base) {
+				m[name] = engine.Origin{Base: base.label, File: file}
+			}
+		}
+		for name, file := range parts(own) {
+			o := m[name]
+			o.Project, o.File = true, file
+			m[name] = o
+		}
+		return m
+	}
+	// files names the file of each part a map of the layer holds, in dir.
+	files := func(parts map[string]string, l *layer, dir string) map[string]string {
+		m := map[string]string{}
+		for name := range parts {
+			m[name] = in(l.label, dir+"/"+name+".md")
+		}
+		return m
+	}
+	return engine.Origins{
+		Types:      of(func(l *layer) map[string]string { return l.typeFiles }),
+		Skills:     of(func(l *layer) map[string]string { return l.skillFiles }),
+		Personas:   of(func(l *layer) map[string]string { return files(l.personas, l, "personas") }),
+		Guidelines: of(func(l *layer) map[string]string { return files(l.guidelines, l, "guidelines") }),
+		Gates: of(func(l *layer) map[string]string {
+			m := map[string]string{}
+			for name := range l.gates {
+				m[name] = in(l.label, "playbook.yaml")
+			}
+			return m
+		}),
+	}
 }
 
 // builtinTypeProblems reports Artifact Types a Playbook declares that
@@ -298,6 +342,7 @@ func builtinTypeProblems(pb *engine.Playbook, typeFiles map[string]string) []str
 // the Playbook's author knows it by, for messages.
 type layer struct {
 	name       string
+	label      string // the directory the Playbook's author knows it by
 	extends    *baseRef
 	types      []*engine.ArtifactType // in declaration order
 	skills     map[string]*engine.Skill
@@ -319,6 +364,7 @@ func readLayer(fsys fs.FS, label string) (*layer, error) {
 	}
 	l := &layer{
 		name:           pf.Name,
+		label:          label,
 		skills:         map[string]*engine.Skill{},
 		personas:       map[string]string{},
 		guidelines:     map[string]string{},
