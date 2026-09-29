@@ -119,7 +119,7 @@ PRD-1: in-review → approved</code></pre>
 <p>From here the Playbook does the routing:</p>
 <ul>
   <li><code>/spec</code> proposes the PRD's Requirements, each with a MoSCoW priority. You approve the Proposal.</li>
-  <li><code>/plan</code> proposes Stories for each Requirement, broken into Tasks.</li>
+  <li><code>/plan</code> proposes Stories for each Requirement, broken into Tasks. Once you approve, it writes each Story's acceptance criteria and technical plan into its body.</li>
   <li><code>/implement</code> works a Task test-first. Moving it to <code>in-review</code> runs the <code>tests</code> and <code>lint</code> Gates, and a failing Gate refuses the move.</li>
   <li><code>/review</code> reviews it in a fresh session and sends it back, or leaves it <code>reviewed</code>.</li>
   <li>You accept it with <code>jfl move T-1 done</code>, a Human Transition whose Action commits the Task as one commit.</li>

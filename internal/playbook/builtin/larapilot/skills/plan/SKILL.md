@@ -25,4 +25,13 @@ Plan the Requirement in Focus.
    ```
 
    Put it forward and ask the person for their Confirmation. If jfl's MCP tools include `approve`, use the `propose` tool on the file: it asks them at once, in a form only they see, and its result says what they decided. Otherwise run `jfl propose <file>`. While it still waits, tell them the Proposal's id and where: `jfl approve <id>` or `jfl reject <id>` in their own terminal, or the Dashboard (`jfl ui`). Wait for their decision.
-6. Once it is approved, write each Story's body (its acceptance criteria) and each Task's body (what to change, where, and how to know it works) in their files in .jigflow/state. If it is rejected, ask the person why and propose again.
+6. Once it is approved, write each Story's body and each Task's body in their files in .jigflow/state. If it is rejected, ask the person why and propose again.
+
+   A Story's body holds its acceptance criteria, then a `## Technical plan` section saying how it will be built:
+
+   - **Context**: the code it touches and what is there today;
+   - **Design**: the parts it adds or changes and how they fit together;
+   - **Conventions**: the conventions Guideline's rules and the patterns in the code it follows;
+   - **Testing**: how it will be tested, and at which boundary.
+
+   The approved Proposal is the person's approval of the plan: writing it needs no further Confirmation. A Task's body says what to change, where, and how to know it works, the way its Story's technical plan says.

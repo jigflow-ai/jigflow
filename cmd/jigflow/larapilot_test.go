@@ -216,3 +216,35 @@ func TestTheLarapilotStyleSkillsEndingInAConfirmationAskThroughJflsTools(t *test
 		assertAsksThroughJflsTools(t, "the "+skill+" Skill", p.Read(".claude/skills/"+skill+"/SKILL.md"), tool)
 	}
 }
+
+// A Story's technical plan is a section of its body (ADR 0020): plan writes
+// it once the person approves, implement builds each Task the way it says,
+// and review sends back a Task that ignores it.
+func TestTheLarapilotStyleSkillsWriteFollowAndCheckEachStorysTechnicalPlan(t *testing.T) {
+	p := larapilot(t)
+	p.MustRun("publish", "claude-code")
+
+	for skill, wants := range map[string][]string{
+		"plan": {
+			"## Technical plan",
+			"Once it is approved",
+			"**Context**", "**Design**", "**Conventions**", "**Testing**",
+		},
+		"implement": {
+			"the Story's `## Technical plan`",
+			"before changing any code",
+		},
+		"review": {
+			"the Story's `## Technical plan`",
+			"the way the Story's technical plan says",
+			"its acceptance criteria",
+		},
+	} {
+		content := p.Read(".claude/skills/" + skill + "/SKILL.md")
+		for _, want := range wants {
+			if !strings.Contains(content, want) {
+				t.Errorf("the %s Skill should contain %q:\n%s", skill, want, content)
+			}
+		}
+	}
+}
