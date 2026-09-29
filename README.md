@@ -78,7 +78,7 @@ From there `/spec` turns the PRD into Requirements, `/plan` into Stories and Tas
 | `jfl next [--autopilot]` | which Skill to run on which Artifact |
 | `jfl create`, `move`, `comment`, `show`, `query` | work with Artifacts |
 | `jfl propose`, `approve`, `reject` | Proposals: changes a person approves as one unit |
-| `jfl check`, `simulate`, `migrate` | validate a Playbook, walk an Artifact Type through it, migrate Artifacts after a change |
+| `jfl check`, `simulate`, `migrate` | validate a Playbook (warning about agent hooks that could answer a Confirmation for you), walk an Artifact Type through it, migrate Artifacts after a change |
 | `jfl publish <adapter>` | publish the Skills for `claude-code` or `agents-md`, and register `jfl mcp` for the agent: in `.mcp.json` for Claude Code, or by printing the command for an `AGENTS.md` agent |
 | `jfl ui`, `ledger` | the local Dashboard; time and tokens per Artifact, and where each Confirmation came from |
 | `jfl mcp` | the agent-safe commands as an MCP server, and approving a Proposal, as soon as it is proposed or later, or making a Human Transition, in a form your agent's client shows only to you |

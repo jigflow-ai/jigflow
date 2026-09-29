@@ -8,7 +8,9 @@ import (
 )
 
 // cmdPublish publishes the Playbook's Skills, Guidelines and active
-// Personas through an Adapter, in the format its coding agent expects.
+// Personas through an Adapter, in the format its coding agent expects, then
+// warns about hooks that can answer the Confirmation form jfl's MCP server
+// asks for.
 func cmdPublish(e *env, args []string) error {
 	if len(args) != 1 {
 		return fmt.Errorf("%w: jfl publish <adapter> (%s)", errUsage, adapterNames())
@@ -17,7 +19,11 @@ func cmdPublish(e *env, args []string) error {
 	if a == nil {
 		return fmt.Errorf("unknown Adapter %q (want %s)", args[0], adapterNames())
 	}
-	return e.publish(a)
+	if err := e.publish(a); err != nil {
+		return err
+	}
+	e.warnFormHooks()
+	return nil
 }
 
 // publish publishes the Playbook through the Adapter a and reports what it

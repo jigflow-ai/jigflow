@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/jigflow-ai/jigflow/internal/adapter"
 	"github.com/jigflow-ai/jigflow/internal/engine"
 	"github.com/jigflow-ai/jigflow/internal/playbook"
 	"github.com/jigflow-ai/jigflow/internal/store"
@@ -136,7 +137,8 @@ Commands:
                           commands of the Gates tests and lint and a starter
                           Guideline, conventions, from the toolchain it
                           detects. Running it again keeps what is set up and
-                          asks only for what is missing
+                          asks only for what is missing. It warns about hooks
+                          that can answer the Confirmation form, as check does
   create <Type> --title <title> [--status <status>] [--field <field>=<value>]...
          [--link <link>=<id>]...
                           create an Artifact in one of the Type's initial Statuses,
@@ -209,7 +211,13 @@ Commands:
                           it leaves in an undeclared Status; every other
                           command refuses to run while there are any.
                           --proposal validates it as that pending Proposal
-                          would make it, writing nothing
+                          would make it, writing nothing. It warns, still
+                          succeeding, about each Claude Code Elicitation or
+                          ElicitationResult hook in .claude/settings.json,
+                          .claude/settings.local.json or the user's
+                          settings whose matcher matches jfl's MCP server:
+                          it can answer the Confirmation form in the
+                          person's place
   migrate                 apply the Playbook Migrations: move every Artifact in
                           a Status its Artifact Type no longer declares to the
                           Status a Migration maps it to, all of them or none;
@@ -239,7 +247,10 @@ Commands:
                           ($XDG_CONFIG_HOME/jigflow/personas, or
                           ~/.config/jigflow/personas) and of the Playbook,
                           and the active Persona Artifacts; the project's,
-                          active or retired, override the Library's by name
+                          active or retired, override the Library's by name.
+                          It warns about hooks that can answer the
+                          Confirmation form, as check does, whichever the
+                          Adapter, since any agent may run in Claude Code
   ledger                  sum the Ledger: the time each Artifact spent in each
                           Status, so far in the one it is in, and the agent
                           session time and tokens charged to it while it was
@@ -279,12 +290,13 @@ Commands:
                           interrupted: the Artifacts of each Type with their
                           Status, Claim and Links and who they wait on, the
                           human queue and pending Proposals first, the Ledger
-                          summed, and each Type's Status machine drawn. The
-                          browser that opens the link it prints may approve
-                          or reject Proposals, editing their creations first,
-                          and make Human Transitions; a Dashboard an agent
-                          session starts is only to look at. It never edits
-                          an Artifact's body
+                          summed, and each Type's Status machine drawn, with
+                          check's warning about hooks that can answer the
+                          Confirmation form. The browser that opens the link
+                          it prints may approve or reject Proposals, editing
+                          their creations first, and make Human Transitions;
+                          a Dashboard an agent session starts is only to look
+                          at. It never edits an Artifact's body
   version                 print the version
 
 Environment:
@@ -324,6 +336,7 @@ func cmdCheck(e *env, args []string) error {
 			return err
 		}
 		fmt.Fprintf(e.stdout, "Playbook %q, as %s would make it: no problems\n", pb.Name, *proposal)
+		e.warnFormHooks()
 		return nil
 	}
 	pb, _, err := e.load()
@@ -331,7 +344,17 @@ func cmdCheck(e *env, args []string) error {
 		return err
 	}
 	fmt.Fprintf(e.stdout, "Playbook %q: no problems\n", pb.Name)
+	e.warnFormHooks()
 	return nil
+}
+
+// warnFormHooks warns, on stderr, about each Claude Code hook in the
+// project's or the user's settings that can answer the Confirmation form in
+// the person's place. It never refuses anything (ADR 0003).
+func (e *env) warnFormHooks() {
+	for _, w := range adapter.FormHookWarnings(e.dir, e.getenv) {
+		fmt.Fprintf(e.stderr, "jfl: warning: %s\n", w)
+	}
 }
 
 // load loads the Playbook and the Store it applies to. A Playbook that

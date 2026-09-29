@@ -92,6 +92,10 @@ Decision: ( ) approve  ( ) reject</code></pre>
 
 Decision: ( ) make  ( ) refuse</code></pre>
 <p><strong>make</strong> makes it exactly as <code>jfl move</code> confirmed at a terminal would, with its Gates, Actions, Guards, re-validated body, Claim and tracker, and the Ledger records it <code>via: agent</code>. <strong>refuse</strong>, or dismissing or declining the form, leaves the Artifact where it is, and the agent is told so. Activating or retiring a Persona works the same way. A <code>human: dashboard</code> Transition is refused without a form, with the pointer to the Dashboard, and a client that can't show forms gets the usual refusal.</p>
+<h3 id="form-hooks">Hooks that answer the form</h3>
+<p>A Claude Code hook can reach the form before you do. An <code>Elicitation</code> hook whose matcher matches the <code>jfl</code> server answers the form without showing it to you, and an <code>ElicitationResult</code> hook can change the answer you gave. Either can approve Proposals and make Human Transitions in your place, and the <a href="ledger.html#confirmations">Ledger</a> records them <code>via: agent</code>, since it can't tell them from you. A hook written for another server with a broad matcher, such as <code>*</code> or <code>.*</code>, matches <code>jfl</code> too. <a href="cli.html#check"><code>jfl check</code></a> and <a href="cli.html#publish"><code>jfl publish</code></a> warn about each one in <code>.claude/settings.json</code>, <code>.claude/settings.local.json</code> or your user settings, and the Dashboard shows the same warning:</p>
+<pre class="out"><code>jfl: warning: .claude/settings.json has an Elicitation hook whose matcher "*" matches jfl's MCP server (runs auto-answer.sh): it can answer the Confirmation form without showing it to you, and so approve Proposals and make Human Transitions in your place; the Ledger records them as Confirmations given in the agent's client</code></pre>
+<p>It is only a warning, and the command still succeeds: a hook you added on purpose keeps working. Remove the hook, or narrow its matcher to the servers it's for, if you didn't mean it.</p>
 
 <h2 id="dashboard">The Dashboard</h2>
 <pre><code>jfl ui</code></pre>
@@ -102,7 +106,8 @@ Open this link in your browser to approve Proposals and make Human Transitions t
   <li>your <strong>human queue</strong> and <strong>pending Proposals</strong>, first;</li>
   <li>the Artifacts of each Type with their Status, Claim, Links and who they're waiting on;</li>
   <li>the <a href="ledger.html">Ledger</a>, summed;</li>
-  <li>each Artifact Type's Status machine, drawn.</li>
+  <li>each Artifact Type's Status machine, drawn;</li>
+  <li>a warning about <a href="#form-hooks">hooks that can answer the form</a> for you, when there are any.</li>
 </ul>
 <p>In the browser you can approve or reject Proposals, editing a proposed creation's title, starting Status and Links first, and make Human Transitions. It is the preferred place for these decisions, because you see the context next to the decision.</p>
 <div class="callout">

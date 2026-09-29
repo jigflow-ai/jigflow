@@ -106,12 +106,14 @@ func (p *Project) Setenv(key, value string) { p.extra = append(p.extra, key+"="+
 func (p *Project) At(clock string) { p.clock = clock }
 
 // NewProject creates an empty temporary project folder. Its commands see
-// an empty user configuration directory, so the Persona Library of the
-// person running the tests never reaches them.
+// an empty user configuration directory and an empty Claude Code
+// configuration directory, so neither the Persona Library nor the Claude
+// Code settings of the person running the tests reach them.
 func (b *Binary) NewProject(t testing.TB) *Project {
 	t.Helper()
 	p := &Project{t: t, bin: b, Dir: t.TempDir()}
 	p.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	p.Setenv("CLAUDE_CONFIG_DIR", t.TempDir())
 	return p
 }
 

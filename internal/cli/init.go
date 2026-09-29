@@ -144,6 +144,7 @@ func cmdInit(e *env, args []string) error {
 			return err
 		}
 	}
+	e.warnFormHooks()
 	if o.key == own {
 		if _, ok := playbook.BuiltinSkill(playbookAuthor); ok {
 			fmt.Fprintf(e.stdout, "Next, run the %s Skill in %s: it asks how you work and proposes your Playbook's Artifact Types, Statuses and Bindings for you to approve.\n", playbookAuthor, adapters[0].Agent)

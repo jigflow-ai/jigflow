@@ -66,6 +66,7 @@ Agent time unattributed: 0s</code></pre>
   <li><code>dashboard</code>: the person clicked in the Dashboard;</li>
   <li><code>agent</code>: the person answered a form the agent's client showed only to them, through <code>jfl mcp</code>.</li>
 </ul>
+<p>A hook in the agent's client that answers that form, or changes the answer, is recorded <code>via: agent</code> too: the Ledger can't tell it from the person. <code>jfl check</code>, <code>jfl publish</code> and the Dashboard warn about such hooks (see <a href="proposals.html#form-hooks">Hooks that answer the form</a>).</p>
 <p>An approved Proposal records its channel on every Status change it makes, each creation and each move. Status changes that need no Confirmation, such as an ordinary Transition, an agent's move or a migration, have no <code>via</code>, nor do entries written before <code>jfl</code> recorded channels. They still read as before.</p>
 <pre><code>at: 2026-09-29T06:53:34.363870877Z
 artifact: T-1

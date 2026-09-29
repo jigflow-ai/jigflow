@@ -9,6 +9,15 @@
 </section>
 {{end}}
 {{if not .CanAct}}<p class="muted small note">{{.Cannot}}.</p>{{end}}
+{{with .FormHooks}}
+<section class="panel attention" id="form-hooks">
+  <h2>Hooks that can answer for you</h2>
+  <p class="small">Your agent's form for approving a Proposal or making a Human Transition can be answered by these hooks in your place. jfl only warns: remove them, or narrow their matcher, if you didn't mean it.</p>
+  <ul class="small">
+  {{range .}}<li>{{.}}</li>{{end}}
+  </ul>
+</section>
+{{end}}
 {{$act := .CanAct}}
 <div class="attention-grid">
 <section class="panel attention" id="queue">

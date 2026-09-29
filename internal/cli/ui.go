@@ -22,6 +22,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/jigflow-ai/jigflow/internal/adapter"
 	"github.com/jigflow-ai/jigflow/internal/engine"
 	"github.com/jigflow-ai/jigflow/internal/store"
 )
@@ -223,6 +224,9 @@ type backlog struct {
 	Queue     []artifactRow // human work: what only a person moves on
 	Proposals []pendingProposal
 	Types     []typeArtifacts
+	// FormHooks warn about the agent's hooks that can answer the
+	// Confirmation form in the person's place, as jfl check does.
+	FormHooks []string
 }
 
 // pendingProposal is a Proposal waiting for a person's decision.
@@ -327,7 +331,7 @@ func (e *env) backlog() (backlog, error) {
 			notes[s.Artifact.ID] = s.Reason
 		}
 	}
-	v := backlog{chrome: chrome{pb.Name, "backlog"}}
+	v := backlog{chrome: chrome{pb.Name, "backlog"}, FormHooks: adapter.FormHookWarnings(e.dir, e.getenv)}
 	for _, t := range pb.Types {
 		ta := typeArtifacts{Name: t.Name}
 		for _, a := range engine.InOrder(pb, all) {
