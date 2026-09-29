@@ -1,13 +1,7 @@
 {{define "title"}}Backlog{{end}}
 {{define "content"}}
 <h1>Backlog</h1>
-{{with .Outcome}}
-<section class="panel outcome {{if .Refused}}refused{{else}}done{{end}}" id="outcome">
-  <h2>{{if .Refused}}Not done{{else}}Done{{end}}</h2>
-  {{with .Problem}}<pre>{{.}}</pre>{{end}}
-  {{with .Said}}<pre>{{.}}</pre>{{end}}
-</section>
-{{end}}
+{{with .Outcome}}{{template "outcome" .}}{{end}}
 {{if not .CanAct}}<p class="muted small note">{{.Cannot}}.</p>{{end}}
 {{with .FormHooks}}
 <section class="panel attention" id="form-hooks">

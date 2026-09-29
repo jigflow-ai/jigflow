@@ -172,7 +172,8 @@ Commands:
                           Status with no Binding, or a final one, releases it
   comment <id> <text>     add a comment to an Artifact: in the tracker, where
                           an agent's ends with the AI-generated marker, or at
-                          the end of its file's body
+                          the end of its file's body; the Dashboard runs it for
+                          a person from the Artifact's page
   next [--autopilot]      say which Skill to run on which Artifact, preferring
                           what the session claims and skipping what others
                           claim, and make the pick the session's Focus; in an
@@ -314,9 +315,11 @@ Commands:
                           check's warning about hooks that can answer the
                           Confirmation form. The browser that opens the link
                           it prints may approve or reject Proposals, editing
-                          their creations first, and make Human Transitions;
-                          a Dashboard an agent session starts is only to look
-                          at. It never edits an Artifact's body
+                          their creations first, make Human Transitions, and
+                          comment on an Artifact from its page, as jfl comment
+                          run by them; a Dashboard an agent session starts is
+                          only to look at. It never edits an Artifact's body,
+                          except to add such a comment
   version                 print the version
 
 Environment:

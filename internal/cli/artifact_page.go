@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/jigflow-ai/jigflow/internal/engine"
@@ -24,6 +25,8 @@ type artifactPage struct {
 	Note                    string // why next doesn't hand out agent work, if it doesn't
 	Claim                   string
 	Moves                   []string // the Statuses its Human Transitions lead to
+	Outcome                 *outcome // what the person's comment did, if they just posted one
+	Draft                   string   // the comment they posted, kept when it was refused
 	CanAct                  bool     // whether the person viewing it may decide here
 	Cannot                  string   // why not, when they may not
 	Proposals               []pendingProposal
@@ -75,12 +78,21 @@ type historyEntry struct {
 }
 
 // artifactView builds the page of the Artifact id as the person making the
-// request sees it.
-func (d *dashboard) artifactView(r *http.Request, id string) func() (any, error) {
+// request sees it, with the outcome of the comment they just posted, if any.
+func (d *dashboard) artifactView(r *http.Request, id string, done *outcome) func() (any, error) {
 	return func() (any, error) {
 		v, err := d.e.artifact(id)
+		if err != nil && done != nil {
+			// The comment was added, or refused, all the same.
+			said := strings.TrimSpace(done.Problem + "\n" + done.Said)
+			return nil, fmt.Errorf("%s\n\nThe page of %s can't be shown now: %w", said, id, err)
+		}
 		if err != nil {
 			return nil, err
+		}
+		v.Outcome = done
+		if done != nil && done.Refused {
+			v.Draft = r.PostForm.Get("text")
 		}
 		if err := d.mayAct(r); err != nil {
 			v.Cannot = err.Error()

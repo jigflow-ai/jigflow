@@ -89,7 +89,7 @@ From there `/spec` turns the PRD into Requirements, `/plan` into Stories and Tas
 | `jfl check`, `simulate`, `migrate` | validate a Playbook (warning about agent hooks that could answer a Confirmation for you), walk an Artifact Type through it, migrate Artifacts after a change |
 | `jfl install claude-code` | install the `/jigflow-init` Skill for every project, which sets a project up from Claude Code |
 | `jfl publish <adapter>` | publish the Skills for `claude-code` or `agents-md`, and register `jfl mcp` for the agent: in `.mcp.json` for Claude Code, or by printing the command for an `AGENTS.md` agent |
-| `jfl ui`, `ledger` | the local Dashboard, with a page for each Artifact and one for what the Playbook is made of and where each part comes from; time and tokens per Artifact, and where each Confirmation came from |
+| `jfl ui`, `ledger` | the local Dashboard, with a page for each Artifact, where you can comment on it, and one for what the Playbook is made of and where each part comes from; time and tokens per Artifact, and where each Confirmation came from |
 | `jfl mcp` | the agent-safe commands as an MCP server, and approving a Proposal, as soon as it is proposed or later, or making a Human Transition, in a form your agent's client shows only to you |
 
 Run `jfl` with no arguments for every flag, or read the [CLI reference](site/cli.html).

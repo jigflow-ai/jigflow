@@ -43,18 +43,18 @@ func (d *dashboard) open(w http.ResponseWriter, r *http.Request) {
 // only the browser that opened the link jfl ui printed may.
 func (d *dashboard) mayAct(r *http.Request) error {
 	if d.key == "" {
-		return fmt.Errorf("agent session %s started this Dashboard, so it is only to look at: approve Proposals and make Human Transitions in a Dashboard you start yourself with jfl ui", d.e.actor.Session)
+		return fmt.Errorf("agent session %s started this Dashboard, so it is only to look at: approve Proposals, make Human Transitions and comment in a Dashboard you start yourself with jfl ui", d.e.actor.Session)
 	}
 	c, err := r.Cookie(d.cookie)
 	if err != nil || subtle.ConstantTimeCompare([]byte(c.Value), []byte(d.key)) != 1 {
-		return errors.New("to approve Proposals and make Human Transitions here, open the link jfl ui printed in the terminal where you started it")
+		return errors.New("to approve Proposals, make Human Transitions and comment here, open the link jfl ui printed in the terminal where you started it")
 	}
 	return nil
 }
 
 // act handles a decision: when the request may make it, it runs do as the
-// person, one decision at a time, and shows the backlog with what it did.
-func (d *dashboard) act(do func(c *env, r *http.Request) error) http.HandlerFunc {
+// person, one decision at a time, and shows with then what it did.
+func (d *dashboard) act(do func(c *env, r *http.Request) error, then func(w http.ResponseWriter, r *http.Request, status int, done *outcome)) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if err := d.mayAct(r); err != nil {
 			d.refuse(w, http.StatusForbidden, err)
@@ -78,8 +78,31 @@ func (d *dashboard) act(do func(c *env, r *http.Request) error) http.HandlerFunc
 				status = http.StatusBadGateway
 			}
 		}
-		d.render(w, status, "backlog", "", d.backlogView(r, o))
+		then(w, r, status, o)
 	}
+}
+
+// showBacklog shows the backlog after a decision, with what it did.
+func (d *dashboard) showBacklog(w http.ResponseWriter, r *http.Request, status int, done *outcome) {
+	d.render(w, status, "backlog", "", d.backlogView(r, done))
+}
+
+// showArtifact shows the page of the Artifact the decision was made on,
+// with what it did.
+func (d *dashboard) showArtifact(w http.ResponseWriter, r *http.Request, status int, done *outcome) {
+	d.render(w, status, "artifact", "/artifacts/"+url.PathEscape(r.PathValue("id")), d.artifactView(r, r.PathValue("id"), done))
+}
+
+// comment runs jfl comment as the person, with the text they posted: the
+// one way the Dashboard adds to an Artifact's body, or to its comments in
+// a tracker.
+func comment(c *env, r *http.Request) error {
+	// A browser sends a textarea's lines ending in CRLF.
+	text := strings.ReplaceAll(r.PostForm.Get("text"), "\r\n", "\n")
+	if strings.TrimSpace(text) == "" {
+		return errors.New("a comment needs some text: nothing was added")
+	}
+	return cmdComment(c, []string{r.PathValue("id"), text})
 }
 
 // clickedBy is the env of a command a person runs by clicking in the

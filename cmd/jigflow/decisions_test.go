@@ -17,6 +17,7 @@ var (
 	inputs  = regexp.MustCompile(`(?s)<input\b([^>]*)>`)
 	selects = regexp.MustCompile(`(?s)<select\b([^>]*)>(.*?)</select>`)
 	options = regexp.MustCompile(`(?s)<option\b([^>]*)>`)
+	areas   = regexp.MustCompile(`(?s)<textarea\b([^>]*)>(.*?)</textarea>`)
 	buttons = regexp.MustCompile(`(?s)<button\b([^>]*)>(.*?)</button>`)
 )
 
@@ -65,6 +66,11 @@ func findForm(fragment, button string) (string, url.Values, bool) {
 				if i == 0 || strings.Contains(o[1], "selected") {
 					values.Set(name, a["value"])
 				}
+			}
+		}
+		for _, ta := range areas.FindAllStringSubmatch(f[2], -1) {
+			if name := attrs(ta[1])["name"]; name != "" {
+				values.Set(name, html.UnescapeString(ta[2]))
 			}
 		}
 		return attrs(f[1])["action"], values, true

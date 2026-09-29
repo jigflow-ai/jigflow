@@ -1,6 +1,7 @@
 {{define "title"}}{{.ID}} {{.Title}}{{end}}
 {{define "content"}}
 <h1><span class="id">{{.ID}}</span> {{.Title}}</h1>
+{{with .Outcome}}{{template "outcome" .}}{{end}}
 <section class="panel" id="about">
   <h2>About</h2>
   <dl class="facts">
@@ -78,6 +79,16 @@
   {{range .}}<div class="prose comment">{{.}}</div>{{end}}
 </section>
 {{end}}
+<section class="panel" id="comment">
+  <h2>Comment</h2>
+  {{if .CanAct}}
+  <form method="post" action="/artifacts/{{.ID}}/comment" class="comment-form">
+    <label for="comment-text" class="muted small">Added as yours through jfl comment, as Markdown: to the body when a file keeps {{.ID}}, in the tracker when one does.</label>
+    <textarea id="comment-text" name="text" rows="4" required>{{.Draft}}</textarea>
+    <button type="submit">Comment</button>
+  </form>
+  {{else}}<p class="muted small">{{.Cannot}}.</p>{{end}}
+</section>
 {{end}}
 {{/* A list of linked Artifacts, each linked to its page. */}}
 {{define "linked"}}<ul class="plain linked">{{range .}}<li><a class="id" href="/artifacts/{{.ID}}">{{.ID}}</a> {{if .Title}}{{.Title}} <span class="muted">{{.Status}}</span>{{else}}<span class="muted">kept in no Store</span>{{end}}</li>{{end}}</ul>{{end}}

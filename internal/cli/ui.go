@@ -101,7 +101,7 @@ func cmdUI(e *env, args []string) error {
 	}()
 	if d.key != "" {
 		fmt.Fprintf(e.stdout, "Dashboard at http://%s/?key=%s\n", ln.Addr(), d.key)
-		fmt.Fprintln(e.stdout, "Open this link in your browser to approve Proposals and make Human Transitions there; it is yours alone, until jfl ui stops.")
+		fmt.Fprintln(e.stdout, "Open this link in your browser to approve Proposals, make Human Transitions and comment there; it is yours alone, until jfl ui stops.")
 	} else {
 		fmt.Fprintf(e.stdout, "Dashboard at http://%s/ (to look only: agent session %s started it)\n", ln.Addr(), e.actor.Session)
 	}
@@ -155,20 +155,21 @@ func (d *dashboard) handler() http.Handler {
 		d.render(w, http.StatusOK, "ledger", "", d.e.ledgerView)
 	})
 	mux.HandleFunc("GET /artifacts/{id}", func(w http.ResponseWriter, r *http.Request) {
-		d.render(w, http.StatusOK, "artifact", r.URL.Path, d.artifactView(r, r.PathValue("id")))
+		d.render(w, http.StatusOK, "artifact", r.URL.Path, d.artifactView(r, r.PathValue("id"), nil))
 	})
 	mux.HandleFunc("GET /changes", d.stream)
 	mux.HandleFunc("POST /proposals/{id}/approve", d.act(func(c *env, r *http.Request) error {
 		return c.approve(r.PathValue("id"), func(pb *engine.Playbook, p *engine.Proposal) error {
 			return editItems(pb, p, r.PostForm)
 		})
-	}))
+	}, d.showBacklog))
 	mux.HandleFunc("POST /artifacts/{id}/move", d.act(func(c *env, r *http.Request) error {
 		return c.move(r.PathValue("id"), r.PostForm.Get("to"))
-	}))
+	}, d.showBacklog))
+	mux.HandleFunc("POST /artifacts/{id}/comment", d.act(comment, d.showArtifact))
 	mux.HandleFunc("POST /proposals/{id}/reject", d.act(func(c *env, r *http.Request) error {
 		return c.reject(r.PathValue("id"))
-	}))
+	}, d.showBacklog))
 	// A page elsewhere may post a form here through the person's browser,
 	// which carries the key: browsers say where a request comes from, and
 	// only the Dashboard's own pages may act.
