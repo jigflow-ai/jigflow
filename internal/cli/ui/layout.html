@@ -103,5 +103,35 @@ form.reject { margin-top: 8px; }
 <main>
 {{template "content" .}}
 </main>
+<script>
+// The page updates itself when the project changes (ADR 0025): jfl ui says
+// only that something changed, on /changes, and the page loads again, where
+// the person was on it. With JavaScript off it works the same, reloaded by
+// hand.
+(function () {
+  var here = {{.Here}}, key = "jfl-dashboard-scroll";
+  try {
+    var kept = JSON.parse(sessionStorage.getItem(key));
+    sessionStorage.removeItem(key);
+    if (kept) addEventListener("load", function () { scrollTo(kept.x, kept.y); });
+  } catch (e) {}
+  // reload loads the page again as a GET of the page it shows: after a
+  // decision, the backlog, never the form posted again.
+  function reload() {
+    try { sessionStorage.setItem(key, JSON.stringify({x: scrollX, y: scrollY})); } catch (e) {}
+    location.replace(here + location.hash);
+  }
+  // changed is what the page does when the project changed.
+  function changed() { reload(); }
+  // The stream is told what the page shows, so that it signals a change
+  // written before it listened, or while jfl ui was stopped: the browser
+  // listens again once it serves again.
+  var changes = new EventSource({{printf "/changes?since=%s" since}});
+  changes.onmessage = changed;
+  // A decision submitted leaves for the page that says what it did, which
+  // a change it makes itself must not replace.
+  addEventListener("submit", function () { changes.close(); });
+})();
+</script>
 </body>
 </html>

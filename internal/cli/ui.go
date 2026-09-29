@@ -37,7 +37,9 @@ var uiFiles embed.FS
 // layout.
 var uiPages = func() map[string]*template.Template {
 	pages := map[string]*template.Template{}
-	funcs := template.FuncMap{"duration": duration, "tokens": tokens}
+	// since is the version of the project a page shows, which writePage
+	// gives each page it writes.
+	funcs := template.FuncMap{"duration": duration, "tokens": tokens, "since": func() string { return "" }}
 	for _, name := range []string{"backlog", "workflows", "ledger", "problem"} {
 		pages[name] = template.Must(template.New("layout.html").Funcs(funcs).ParseFS(uiFiles, "ui/layout.html", "ui/"+name+".html"))
 	}
@@ -69,7 +71,7 @@ func cmdUI(e *env, args []string) error {
 	if err != nil {
 		return err
 	}
-	d := &dashboard{e: e}
+	d := &dashboard{e: e, changes: newChanges(projectFiles(e.dir)), closing: make(chan struct{})}
 	_, port, _ := net.SplitHostPort(ln.Addr().String())
 	d.cookie = "jfl-dashboard-" + port
 	if !e.actor.Agent() {
@@ -78,10 +80,16 @@ func cmdUI(e *env, args []string) error {
 		// can read the Dashboard, but not approve (ADR 0003).
 		d.key = rand.Text()
 	}
+	// No WriteTimeout: a page's change stream lasts as long as the page.
 	srv := &http.Server{Handler: d.handler(), ReadHeaderTimeout: 10 * time.Second}
+	// Shutting down waits for requests in flight, which change streams
+	// never finish of their own accord: they end on it.
+	srv.RegisterOnShutdown(func() { close(d.closing) })
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+	shutDown := make(chan struct{})
 	go func() {
+		defer close(shutDown)
 		<-ctx.Done()
 		shut, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
@@ -96,6 +104,8 @@ func cmdUI(e *env, args []string) error {
 	if err := srv.Serve(ln); !errors.Is(err, http.ErrServerClosed) {
 		return err
 	}
+	// A decision in flight finishes before jfl ui exits.
+	<-shutDown
 	return nil
 }
 
@@ -113,6 +123,10 @@ type dashboard struct {
 	cookie string
 	// mu lets one decision at a time change the project.
 	mu sync.Mutex
+	// changes tells the pages listening that the project changed.
+	changes *changes
+	// closing is closed when jfl ui stops, ending the change streams.
+	closing chan struct{}
 }
 
 func (d *dashboard) handler() http.Handler {
@@ -122,14 +136,15 @@ func (d *dashboard) handler() http.Handler {
 			d.open(w, r)
 			return
 		}
-		d.e.render(w, http.StatusOK, "backlog", d.backlogView(r, nil))
+		d.render(w, http.StatusOK, "backlog", d.backlogView(r, nil))
 	})
 	mux.HandleFunc("GET /workflows", func(w http.ResponseWriter, r *http.Request) {
-		d.e.render(w, http.StatusOK, "workflows", d.e.workflowsView)
+		d.render(w, http.StatusOK, "workflows", d.e.workflowsView)
 	})
 	mux.HandleFunc("GET /ledger", func(w http.ResponseWriter, r *http.Request) {
-		d.e.render(w, http.StatusOK, "ledger", d.e.ledgerView)
+		d.render(w, http.StatusOK, "ledger", d.e.ledgerView)
 	})
+	mux.HandleFunc("GET /changes", d.stream)
 	mux.HandleFunc("POST /proposals/{id}/approve", d.act(func(c *env, r *http.Request) error {
 		return c.approve(r.PathValue("id"), func(pb *engine.Playbook, p *engine.Proposal) error {
 			return editItems(pb, p, r.PostForm)
@@ -146,7 +161,7 @@ func (d *dashboard) handler() http.Handler {
 	// only the Dashboard's own pages may act.
 	cop := http.NewCrossOriginProtection()
 	cop.SetDenyHandler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		d.e.refuse(w, http.StatusForbidden, errors.New("only the Dashboard's own pages may act on it, not a page elsewhere"))
+		d.refuse(w, http.StatusForbidden, errors.New("only the Dashboard's own pages may act on it, not a page elsewhere"))
 	}))
 	protected := cop.Handler(mux)
 	// A web page elsewhere can point a name of its own at 127.0.0.1 and
@@ -177,7 +192,10 @@ func loopback(host string) bool {
 
 // render writes the page built by view inside the layout, with the status
 // given, or why view failed.
-func (e *env) render(w http.ResponseWriter, status int, page string, view func() (any, error)) {
+func (d *dashboard) render(w http.ResponseWriter, status int, page string, view func() (any, error)) {
+	// Before view reads the project, so that a change written meanwhile
+	// is signalled to the page.
+	since := d.changes.version()
 	data, err := view()
 	if err != nil {
 		// A Connector failing is a problem with the tracker, which the
@@ -189,18 +207,23 @@ func (e *env) render(w http.ResponseWriter, status int, page string, view func()
 		}
 		page, data = "problem", problem{chrome: chrome{Page: page}, Problem: err.Error()}
 	}
-	writePage(w, status, page, data)
+	writePage(w, status, page, data, since)
 }
 
 // refuse writes the page that says why the request can't be served.
-func (e *env) refuse(w http.ResponseWriter, status int, why error) {
-	writePage(w, status, "problem", problem{Problem: why.Error()})
+func (d *dashboard) refuse(w http.ResponseWriter, status int, why error) {
+	writePage(w, status, "problem", problem{Problem: why.Error()}, d.changes.version())
 }
 
-// writePage writes the page, rendered with data, with the status given.
-func writePage(w http.ResponseWriter, status int, page string, data any) {
+// writePage writes the page, rendered with data, with the status given,
+// saying it shows the project as of the version since.
+func writePage(w http.ResponseWriter, status int, page string, data any, since string) {
 	var buf bytes.Buffer
-	if err := uiPages[page].Execute(&buf, data); err != nil {
+	t, err := uiPages[page].Clone()
+	if err == nil {
+		err = t.Funcs(template.FuncMap{"since": func() string { return since }}).Execute(&buf, data)
+	}
+	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -265,6 +288,16 @@ type linkField struct {
 type chrome struct {
 	Playbook string
 	Page     string
+}
+
+// Here is the path of the page, which it loads again when the project
+// changes: after a decision, or a refusal, the backlog.
+func (c chrome) Here() string {
+	switch c.Page {
+	case "workflows", "ledger":
+		return "/" + c.Page
+	}
+	return "/"
 }
 
 type typeArtifacts struct {
@@ -386,6 +419,9 @@ type ledgerPage struct {
 	chrome
 	engine.LedgerSummary
 	Empty bool
+	// AsOf is when the times are summed to: the page updates only when
+	// the project changes, not as time passes (ADR 0025).
+	AsOf time.Time
 }
 
 func (e *env) ledgerView() (any, error) {
@@ -399,8 +435,10 @@ func (e *env) ledgerView() (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	sum := engine.Summarise(pb, l, e.now())
+	now := e.now()
+	sum := engine.Summarise(pb, l, now)
 	return ledgerPage{
+		AsOf:          now,
 		chrome:        chrome{pb.Name, "ledger"},
 		LedgerSummary: sum,
 		Empty:         len(sum.Artifacts) == 0 && sum.Unattributed == 0 && !sum.Usage,

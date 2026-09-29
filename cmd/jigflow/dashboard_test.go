@@ -11,15 +11,15 @@ import (
 )
 
 var (
-	styles = regexp.MustCompile(`(?s)<style.*?</style>`)
+	unread = regexp.MustCompile(`(?s)<style.*?</style>|<script.*?</script>`)
 	tags   = regexp.MustCompile(`(?s)<[^>]*>`)
 	spaces = regexp.MustCompile(`\s+`)
 )
 
 // text is what a person reads of an HTML fragment: its text, without the
-// markup, with runs of white space collapsed to one space.
+// markup, styles and scripts, with runs of white space collapsed to one space.
 func text(fragment string) string {
-	return strings.TrimSpace(spaces.ReplaceAllString(html.UnescapeString(tags.ReplaceAllString(styles.ReplaceAllString(fragment, " "), " ")), " "))
+	return strings.TrimSpace(spaces.ReplaceAllString(html.UnescapeString(tags.ReplaceAllString(unread.ReplaceAllString(fragment, " "), " ")), " "))
 }
 
 // section returns the HTML of the page's <section> headed by an <h2> or

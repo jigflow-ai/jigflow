@@ -57,12 +57,12 @@ func (d *dashboard) mayAct(r *http.Request) error {
 func (d *dashboard) act(do func(c *env, r *http.Request) error) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if err := d.mayAct(r); err != nil {
-			d.e.refuse(w, http.StatusForbidden, err)
+			d.refuse(w, http.StatusForbidden, err)
 			return
 		}
 		r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 		if err := r.ParseForm(); err != nil {
-			d.e.refuse(w, http.StatusBadRequest, err)
+			d.refuse(w, http.StatusBadRequest, err)
 			return
 		}
 		d.mu.Lock()
@@ -78,7 +78,7 @@ func (d *dashboard) act(do func(c *env, r *http.Request) error) http.HandlerFunc
 				status = http.StatusBadGateway
 			}
 		}
-		d.e.render(w, status, "backlog", d.backlogView(r, o))
+		d.render(w, status, "backlog", d.backlogView(r, o))
 	}
 }
 

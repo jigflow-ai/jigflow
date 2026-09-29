@@ -4,6 +4,7 @@
 {{if .Empty}}
 <p class="panel empty">The Ledger is empty: nothing has been created, moved or worked on through jfl yet.</p>
 {{else}}
+<p class="muted small">Times as of <time datetime="{{.AsOf.UTC.Format "2006-01-02T15:04:05Z07:00"}}">{{.AsOf.Local.Format "2 Jan 2006 15:04:05"}}</time>; the page updates when the project changes, not as time passes.</p>
 <section class="panel" id="per-artifact">
   <h2>Time per Artifact</h2>
   <div class="scroll">

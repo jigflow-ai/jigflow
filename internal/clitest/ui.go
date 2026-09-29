@@ -176,6 +176,83 @@ func (u *UI) send(c *http.Client, req *http.Request) Page {
 	return Page{Status: resp.StatusCode, HTML: string(body)}
 }
 
+// Stream is the Dashboard's change stream, read as a page listens to it:
+// the events it sends, one at a time, until it ends.
+type Stream struct {
+	// Status and ContentType are those of the response that opened it.
+	Status      int
+	ContentType string
+	events      chan string
+}
+
+// Listen opens the change stream with the request, sent as any program on
+// this machine sends it, with no key: a page's script listens with what the
+// browser carries, which the stream doesn't need. The stream is closed when
+// the test ends.
+func (u *UI) Listen(req *http.Request) *Stream {
+	u.t.Helper()
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		u.t.Fatalf("%s %s: %v", req.Method, req.URL, err)
+	}
+	done := make(chan struct{})
+	u.t.Cleanup(func() { close(done); _ = resp.Body.Close() })
+	s := &Stream{Status: resp.StatusCode, ContentType: resp.Header.Get("Content-Type"), events: make(chan string, 16)}
+	go func() {
+		defer close(s.events)
+		r := bufio.NewReader(resp.Body)
+		var data []string
+		for {
+			line, err := r.ReadString('\n')
+			if err != nil {
+				return
+			}
+			line = strings.TrimRight(line, "\r\n")
+			switch {
+			case line == "":
+				if data != nil {
+					select {
+					case s.events <- strings.Join(data, "\n"):
+					case <-done: // the test ended without reading it
+						return
+					}
+				}
+				data = nil
+			case strings.HasPrefix(line, "data:"):
+				data = append(data, strings.TrimPrefix(strings.TrimPrefix(line, "data:"), " "))
+			}
+		}
+	}()
+	return s
+}
+
+// Next waits up to within for the stream's next event and returns its
+// data, or false when none came in that time or the stream ended.
+func (s *Stream) Next(within time.Duration) (string, bool) {
+	select {
+	case e, ok := <-s.events:
+		return e, ok
+	case <-time.After(within):
+		return "", false
+	}
+}
+
+// Ended waits up to within for the stream to end, skipping any events sent
+// meanwhile, and reports whether it did.
+func (s *Stream) Ended(within time.Duration) bool {
+	deadline := time.After(within)
+	for {
+		select {
+		case _, ok := <-s.events:
+			if !ok {
+				return true
+			}
+		case <-deadline:
+			return false
+		}
+	}
+}
+
 func (u *UI) url(path string) string { return strings.TrimSuffix(u.URL, "/") + path }
 
 func mustRequest(t testing.TB, method, url string, body io.Reader) *http.Request {
