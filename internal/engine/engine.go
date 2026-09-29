@@ -182,6 +182,10 @@ type Transition struct {
 // the session id its Adapter gives it, or a person, who has none.
 type Actor struct {
 	Session string
+	// Persona is the Persona a comment is attributed to, if any: the point
+	// of view the Actor says it speaks from, whose name jfl has checked is
+	// usable, not that it was taken (ADR 0028).
+	Persona string
 }
 
 // Agent reports whether the Actor is an agent session.

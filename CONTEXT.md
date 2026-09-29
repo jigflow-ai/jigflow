@@ -125,7 +125,7 @@ A rule file in the Playbook that Skills reference and load only when needed; the
 _Avoid_: Runtime pack, rules, convention file
 
 **Persona**:
-A named point of view a Skill asks the agent to adopt; it is not a separate agent and has no memory of its own. A Persona proposed on demand is itself an Artifact of the built-in Persona Type (proposed, active, retired): the agent may propose one, but it becomes usable only through a Human Transition. Those the Playbook or the Persona Library ship are usable as they are. Adapters publish only the usable ones.
+A named point of view a Skill asks the agent to adopt; it is not a separate agent and has no memory of its own. A Persona proposed on demand is itself an Artifact of the built-in Persona Type (proposed, active, retired): the agent may propose one, but it becomes usable only through a Human Transition. Those the Playbook or the Persona Library ship are usable as they are. Adapters publish only the usable ones. A comment may be attributed to one usable Persona with `jfl comment --persona`, which names it in the comment's text; jfl checks the name is usable, not that the point of view was taken.
 _Avoid_: Role, agent, character
 
 **Persona Library**:

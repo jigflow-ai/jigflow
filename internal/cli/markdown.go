@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bytes"
+	"fmt"
 	"html"
 	"html/template"
 	"net/url"
@@ -9,6 +10,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/jigflow-ai/jigflow/internal/store"
 	"github.com/yuin/goldmark"
 	"github.com/yuin/goldmark/ast"
 	"github.com/yuin/goldmark/extension"
@@ -23,7 +25,7 @@ import (
 // page that carries decision forms (ADR 0027).
 var markdown = goldmark.New(
 	goldmark.WithExtensions(extension.GFM),
-	goldmark.WithRendererOptions(renderer.WithNodeRenderers(util.Prioritized(htmlAsText{}, 100))),
+	goldmark.WithRendererOptions(renderer.WithNodeRenderers(util.Prioritized(htmlAsText{}, 100), util.Prioritized(attributedAsChip{}, 100))),
 )
 
 // renderMarkdown renders source as HTML safe to put on a page.
@@ -36,42 +38,82 @@ func renderMarkdown(source string) (template.HTML, error) {
 // the paths, inside the Mockup folder mockups, of the Mockups it links to,
 // once each in the order it first does. A link to one, by its path from
 // the project's root or at the Dashboard's /mockups/, opens it in the
-// Dashboard. With no Mockup folder, it links none.
+// Dashboard. With no Mockup folder, it links none. A comment's heading
+// attributed to a Persona shows the Persona as a chip.
 func renderLinkingMockups(source, mockups string) (template.HTML, []string, error) {
 	src := []byte(source)
 	doc := markdown.Parser().Parse(text.NewReader(src))
 	var linked []string
-	if mockups != "" {
-		err := ast.Walk(doc, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
-			if !entering {
-				return ast.WalkContinue, nil
-			}
-			var dest *[]byte
-			switch l := n.(type) {
-			case *ast.Link:
-				dest = &l.Destination
-			case *ast.Image:
-				dest = &l.Destination
-			default:
-				return ast.WalkContinue, nil
-			}
-			if p, ok := mockupPath(string(*dest), mockups); ok {
-				*dest = []byte(mockupURL(p))
-				if !slices.Contains(linked, p) {
-					linked = append(linked, p)
+	var attributed []*ast.Paragraph
+	err := ast.Walk(doc, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
+		if !entering {
+			return ast.WalkContinue, nil
+		}
+		var dest *[]byte
+		switch l := n.(type) {
+		case *ast.Paragraph:
+			if l.Lines().Len() == 1 {
+				if _, _, ok := store.Attribution(firstLine(l, src)); ok {
+					attributed = append(attributed, l)
 				}
 			}
 			return ast.WalkContinue, nil
-		})
-		if err != nil {
-			return "", nil, err
+		case *ast.Link:
+			dest = &l.Destination
+		case *ast.Image:
+			dest = &l.Destination
+		default:
+			return ast.WalkContinue, nil
 		}
+		if mockups == "" {
+			return ast.WalkContinue, nil
+		}
+		if p, ok := mockupPath(string(*dest), mockups); ok {
+			*dest = []byte(mockupURL(p))
+			if !slices.Contains(linked, p) {
+				linked = append(linked, p)
+			}
+		}
+		return ast.WalkContinue, nil
+	})
+	if err != nil {
+		return "", nil, err
+	}
+	// A comment's heading attributed to a Persona shows the Persona as a
+	// chip (ADR 0028); replaced after the walk, which a replaced node
+	// would cut short.
+	for _, para := range attributed {
+		author, persona, _ := store.Attribution(firstLine(para, src))
+		para.Parent().ReplaceChild(para.Parent(), para, &attributedHeading{Author: author, Persona: persona})
 	}
 	var buf bytes.Buffer
 	if err := markdown.Renderer().Render(&buf, src, doc); err != nil {
 		return "", nil, err
 	}
 	return template.HTML(buf.String()), linked, nil
+}
+
+// firstLine is the source of the paragraph's first line.
+func firstLine(para *ast.Paragraph, src []byte) string {
+	seg := para.Lines().At(0)
+	return string(seg.Value(src))
+}
+
+// attributedHeading is the heading of a comment attributed to a Persona,
+// in place of the paragraph that holds it in the Markdown.
+type attributedHeading struct {
+	ast.BaseBlock
+	Author, Persona string
+}
+
+var kindAttributedHeading = ast.NewNodeKind("AttributedHeading")
+
+// Kind implements ast.Node.
+func (*attributedHeading) Kind() ast.NodeKind { return kindAttributedHeading }
+
+// Dump implements ast.Node.
+func (h *attributedHeading) Dump(source []byte, level int) {
+	ast.DumpHelper(h, source, level, map[string]string{"Author": h.Author, "Persona": h.Persona}, nil)
 }
 
 // mockupPath returns the path inside the Mockup folder mockups of the file
@@ -98,6 +140,21 @@ func mockupPath(dest, mockups string) (string, bool) {
 		return "", false
 	}
 	return p, true
+}
+
+// attributedAsChip renders a comment's heading attributed to a Persona
+// with the Persona as a chip after its author.
+type attributedAsChip struct{}
+
+// RegisterFuncs renders attributedHeading.
+func (attributedAsChip) RegisterFuncs(reg renderer.NodeRendererFuncRegisterer) {
+	reg.Register(kindAttributedHeading, func(w util.BufWriter, _ []byte, n ast.Node, entering bool) (ast.WalkStatus, error) {
+		if entering {
+			h := n.(*attributedHeading)
+			fmt.Fprintf(w, "<p class=\"comment-by\"><strong>%s as</strong> <span class=\"pill persona\" title=\"Persona\">%s</span></p>\n", html.EscapeString(h.Author), html.EscapeString(h.Persona))
+		}
+		return ast.WalkSkipChildren, nil
+	})
 }
 
 // htmlAsText renders the HTML written in Markdown, blocks and inline, as

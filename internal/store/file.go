@@ -145,11 +145,7 @@ func (f *File) Comment(id, text string, by engine.Actor) error {
 	if err != nil {
 		return err
 	}
-	who := "**Comment:**"
-	if by.Agent() {
-		who = "**Comment by agent session " + by.Session + ":**"
-	}
-	return f.write(a, strings.TrimRight(body, "\n")+"\n\n"+who+"\n\n"+strings.TrimRight(text, "\n")+"\n")
+	return f.write(a, strings.TrimRight(body, "\n")+"\n\n"+CommentHeading(by)+"\n\n"+strings.TrimRight(text, "\n")+"\n")
 }
 
 // write writes the Artifact's file with the given body.

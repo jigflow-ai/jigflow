@@ -105,7 +105,7 @@
 <dt id="guideline">Guideline</dt>
 <dd>A rule file in the Playbook that Skills reference and load only when needed; the home of language and codebase conventions.<br><span class="avoid">Not: Runtime pack, rules, convention file</span></dd>
 <dt id="persona">Persona</dt>
-<dd>A named point of view a Skill asks the agent to adopt; it is not a separate agent and has no memory of its own. A Persona proposed on demand is itself an Artifact of the built-in Persona Type (proposed, active, retired): the agent may propose one, but it becomes usable only through a Human Transition. Those the Playbook or the Persona Library ship are usable as they are. Adapters publish only the usable ones.<br><span class="avoid">Not: Role, agent, character</span></dd>
+<dd>A named point of view a Skill asks the agent to adopt; it is not a separate agent and has no memory of its own. A Persona proposed on demand is itself an Artifact of the built-in Persona Type (proposed, active, retired): the agent may propose one, but it becomes usable only through a Human Transition. Those the Playbook or the Persona Library ship are usable as they are. Adapters publish only the usable ones. A comment may be attributed to one usable Persona with <code>jfl comment --persona</code>, which names it in the comment's text; jfl checks the name is usable, not that the point of view was taken.<br><span class="avoid">Not: Role, agent, character</span></dd>
 <dt id="persona-library">Persona Library</dt>
 <dd>A user-level collection of Personas reused across projects; a project Persona with the same name, one the Playbook ships or a Persona Artifact a person has activated or retired, overrides a library one.<br><span class="avoid">Not: Persona registry, persona pack</span></dd>
 </dl>

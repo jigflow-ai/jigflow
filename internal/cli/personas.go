@@ -1,6 +1,9 @@
 package cli
 
 import (
+	"fmt"
+	"maps"
+	"slices"
 	"strings"
 
 	"github.com/jigflow-ai/jigflow/internal/engine"
@@ -39,4 +42,25 @@ func (e *env) activePersonas(pb *engine.Playbook) (map[string]string, error) {
 		bodies[a.ID] = strings.TrimLeft(body, "\n")
 	}
 	return engine.ActivePersonas(library, pb.Personas, personas, bodies), nil
+}
+
+// usablePersona refuses a comment's Persona name, when it has one, unless
+// it names a Persona usable in the project, resolved as jfl publish
+// resolves them: jfl vouches for the name, not for the point of view
+// (ADR 0028).
+func (e *env) usablePersona(pb *engine.Playbook, name string) error {
+	if name == "" {
+		return nil
+	}
+	usable, err := e.activePersonas(pb)
+	if err != nil {
+		return err
+	}
+	if _, ok := usable[name]; ok {
+		return nil
+	}
+	if len(usable) == 0 {
+		return fmt.Errorf("no Persona %q is usable in this project, nor any other; comment without --persona, or propose it with jfl create Persona --title %s, for a person to activate: nothing was added", name, name)
+	}
+	return fmt.Errorf("no Persona %q is usable in this project; the usable ones are %s: nothing was added", name, strings.Join(slices.Sorted(maps.Keys(usable)), ", "))
 }

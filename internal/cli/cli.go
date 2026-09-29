@@ -170,10 +170,16 @@ Commands:
                           an agent session's move Claims the Artifact, and is
                           refused on one another session claims; entering a
                           Status with no Binding, or a final one, releases it
-  comment <id> <text>     add a comment to an Artifact: in the tracker, where
+  comment <id> [--persona <name>] <text>
+                          add a comment to an Artifact: in the tracker, where
                           an agent's ends with the AI-generated marker, or at
                           the end of its file's body; the Dashboard runs it for
-                          a person from the Artifact's page
+                          a person from the Artifact's page; --persona
+                          attributes a file-kept Artifact's comment to a
+                          Persona usable in the project, as publish resolves
+                          them, naming it in the comment's heading after its
+                          author, and refuses any other name, listing the
+                          usable ones and adding nothing
   next [--autopilot]      say which Skill to run on which Artifact, preferring
                           what the session claims and skipping what others
                           claim, and make the pick the session's Focus; in an
@@ -639,17 +645,38 @@ func (e *env) askInstead(id string, tr engine.Transition) string {
 }
 
 func cmdComment(e *env, args []string) error {
-	if len(args) != 2 || strings.TrimSpace(args[1]) == "" {
-		return fmt.Errorf("%w: jfl comment <id> <text>", errUsage)
+	const use = "jfl comment <id> [--persona <name>] <text>"
+	if len(args) < 2 || args[0] == "" || args[0][0] == '-' {
+		return fmt.Errorf("%w: %s", errUsage, use)
 	}
-	_, st, err := e.load()
+	id, rest := args[0], args[1:]
+	var persona string
+	// A comment with no flag is taken whole, even one starting with '-'.
+	if len(rest) > 1 {
+		fs := flag.NewFlagSet("comment", flag.ContinueOnError)
+		fs.SetOutput(io.Discard)
+		fs.StringVar(&persona, "persona", "", "the Persona the comment is attributed to")
+		if err := fs.Parse(rest); err != nil {
+			return fmt.Errorf("%w: %v", errUsage, err)
+		}
+		rest = fs.Args()
+	}
+	if len(rest) != 1 || strings.TrimSpace(rest[0]) == "" {
+		return fmt.Errorf("%w: %s", errUsage, use)
+	}
+	pb, st, err := e.load()
 	if err != nil {
 		return err
 	}
-	if err := st.Comment(args[0], args[1], e.actor); err != nil {
+	if err := e.usablePersona(pb, persona); err != nil {
 		return err
 	}
-	fmt.Fprintf(e.stdout, "commented on %s\n", args[0])
+	by := e.actor
+	by.Persona = persona
+	if err := st.Comment(id, rest[0], by); err != nil {
+		return err
+	}
+	fmt.Fprintf(e.stdout, "commented on %s\n", id)
 	return nil
 }
 

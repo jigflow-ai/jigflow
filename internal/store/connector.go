@@ -284,6 +284,9 @@ func (s *Connector) Comment(id, text string, by engine.Actor) error {
 	if !ok {
 		return fmt.Errorf("%s: %w", id, ErrNotFound)
 	}
+	if by.Persona != "" {
+		return fmt.Errorf("%s: only a comment on an Artifact kept in a file can be attributed to a Persona yet; comment without --persona: nothing was added", id)
+	}
 	if by.Agent() {
 		text = strings.TrimRight(text, "\n") + "\n\n" + s.c.Marker
 	}
