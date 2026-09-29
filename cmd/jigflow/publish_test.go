@@ -319,7 +319,7 @@ func TestTheAgentsMdFallbackKeepsWhatAPersonWroteInAGENTSmd(t *testing.T) {
 	}
 
 	p.Write("AGENTS.md", strings.Replace(first, "Use tabs.", "Use spaces.", 1))
-	if r := p.MustRun("publish", "agents-md"); !strings.HasSuffix(r.Stdout, "nothing changed\n") {
+	if r := p.MustRun("publish", "agents-md"); !strings.Contains(r.Stdout, ": nothing changed\n") {
 		t.Errorf("publishing again = %q, want nothing changed", r.Stdout)
 	}
 	if got := p.Read("AGENTS.md"); got != strings.Replace(first, "Use tabs.", "Use spaces.", 1) {
@@ -419,5 +419,92 @@ func TestTheRouterNamesTheSkillsOnlyAPersonStarts(t *testing.T) {
 	}
 	if strings.Contains(body, "/grilling") {
 		t.Errorf("router body =\n%s\nwant no agent-invoked Skill among those a person starts", body)
+	}
+}
+
+// mcpServers returns the servers a project's .mcp.json registers, by name.
+func mcpServers(t *testing.T, content string) map[string]map[string]any {
+	t.Helper()
+	var m struct {
+		Servers map[string]map[string]any `json:"mcpServers"`
+	}
+	if err := json.Unmarshal([]byte(content), &m); err != nil {
+		t.Fatalf(".mcp.json isn't JSON: %v\n%s", err, content)
+	}
+	return m.Servers
+}
+
+func TestTheClaudeCodeAdapterRegistersJflsMCPServerInTheProject(t *testing.T) {
+	p := published(t)
+	r := p.MustRun("publish", "claude-code")
+	if !strings.Contains(r.Stdout, "wrote .mcp.json") {
+		t.Errorf("publish = %q, want it to say it wrote .mcp.json", r.Stdout)
+	}
+
+	jfl := mcpServers(t, p.Read(".mcp.json"))["jfl"]
+	if jfl["type"] != "stdio" || jfl["command"] != "jfl" || !slices.Equal(anyStrings(jfl["args"]), []string{"mcp"}) {
+		t.Errorf(".mcp.json jfl server = %v, want jfl mcp over stdio", jfl)
+	}
+}
+
+// anyStrings is a JSON list of strings as a []string.
+func anyStrings(v any) []string {
+	l, _ := v.([]any)
+	out := make([]string, 0, len(l))
+	for _, s := range l {
+		str, _ := s.(string)
+		out = append(out, str)
+	}
+	return out
+}
+
+func TestPublishingReplacesOnlyJflsServerInMcpJson(t *testing.T) {
+	p := published(t)
+	p.Write(".mcp.json", `{
+  "mcpServers": {
+    "github": {"command": "gh-mcp", "args": ["--port", "8080"], "env": {"TOKEN": "x"}},
+    "jfl": {"command": "/old/jfl", "args": ["serve"]}
+  },
+  "note": 42
+}
+`)
+	p.MustRun("publish", "claude-code")
+	if r := p.MustRun("publish", "claude-code"); !strings.HasSuffix(r.Stdout, "nothing changed\n") {
+		t.Errorf("publishing again = %q, want nothing changed", r.Stdout)
+	}
+
+	content := p.Read(".mcp.json")
+	servers := mcpServers(t, content)
+	if jfl := servers["jfl"]; jfl["command"] != "jfl" || !slices.Equal(anyStrings(jfl["args"]), []string{"mcp"}) {
+		t.Errorf("jfl server = %v, want it replaced by jfl mcp", jfl)
+	}
+	gh := servers["github"]
+	if env, _ := gh["env"].(map[string]any); gh["command"] != "gh-mcp" || !slices.Equal(anyStrings(gh["args"]), []string{"--port", "8080"}) || env["TOKEN"] != "x" {
+		t.Errorf("github server = %v, want it as the person wrote it", gh)
+	}
+	if !strings.Contains(content, `"note": 42`) {
+		t.Errorf(".mcp.json =\n%s\nwant the person's other keys kept", content)
+	}
+}
+
+// Codex, Cursor and the other agents that read AGENTS.md keep their MCP
+// servers in the user's own configuration, which a publish never writes.
+func TestTheAgentsMdAdapterPrintsTheCommandThatRegistersJflsMCPServer(t *testing.T) {
+	p := published(t)
+	home := t.TempDir()
+	p.Setenv("HOME", home)
+
+	r := p.MustRun("publish", "agents-md")
+	if !strings.Contains(r.Stdout, "codex mcp add jfl -- jfl mcp") {
+		t.Errorf("publish = %q, want the command that registers jfl mcp", r.Stdout)
+	}
+	if again := p.MustRun("publish", "agents-md"); !strings.Contains(again.Stdout, "codex mcp add jfl -- jfl mcp") {
+		t.Errorf("publishing again = %q, want the command still, since jfl can't tell it was run", again.Stdout)
+	}
+	if _, err := os.Stat(filepath.Join(p.Dir, ".mcp.json")); !os.IsNotExist(err) {
+		t.Errorf("agents-md wrote .mcp.json (err %v)", err)
+	}
+	if entries, err := os.ReadDir(home); err != nil || len(entries) != 0 {
+		t.Errorf("agents-md wrote into the user's home: %v (err %v)", entries, err)
 	}
 }

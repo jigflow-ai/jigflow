@@ -21,8 +21,18 @@ func cmdPublish(e *env, args []string) error {
 }
 
 // publish publishes the Playbook through the Adapter a and reports what it
-// wrote and removed.
+// wrote and removed, then how to register jfl's MCP server when a can't.
 func (e *env) publish(a *adapter.Adapter) error {
+	if err := e.publishFiles(a); err != nil {
+		return err
+	}
+	fmt.Fprint(e.stdout, a.RegisterHint)
+	return nil
+}
+
+// publishFiles publishes the Playbook through the Adapter a and reports
+// what it wrote and removed.
+func (e *env) publishFiles(a *adapter.Adapter) error {
 	pb, _, err := e.load()
 	if err != nil {
 		return err

@@ -20,6 +20,14 @@ const (
 	agentsPersonas = agentsDir + "/personas"
 )
 
+// agentsRegisterMCP tells the person how to give an agent that reads
+// AGENTS.md jfl's MCP server. Codex, Cursor and the like keep their MCP
+// servers in the user's own configuration, which a publish never writes.
+const agentsRegisterMCP = `To give your agent jfl's MCP tools, register them once in its own settings, which jfl doesn't write:
+  codex mcp add jfl -- jfl mcp
+(for Codex; in another agent, add a stdio MCP server named jfl that runs jfl mcp)
+`
+
 // agentsFrontmatter is the frontmatter of a SKILL.md an agent without an
 // Adapter of its own reads.
 type agentsFrontmatter struct {

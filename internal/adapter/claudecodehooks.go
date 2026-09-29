@@ -1,11 +1,6 @@
 package adapter
 
-import (
-	"bytes"
-	"encoding/json"
-	"fmt"
-	"strings"
-)
+import "fmt"
 
 // claudeCodeSettings is the project's shared Claude Code settings file,
 // committed, where the hooks jfl publishes go. The rest of it is the
@@ -31,16 +26,9 @@ func claudeCodeHooks() File {
 // hookEvents. Everything else is kept, though its keys are written back in
 // order. It is empty when nothing is left.
 func withHooks(content string, add bool) (string, error) {
-	settings := map[string]any{}
-	if strings.TrimSpace(content) != "" {
-		d := json.NewDecoder(strings.NewReader(content))
-		d.UseNumber() // keep the person's numbers as they wrote them
-		if err := d.Decode(&settings); err != nil {
-			return "", fmt.Errorf("%s: %w", claudeCodeSettings, err)
-		}
-		if settings == nil {
-			settings = map[string]any{}
-		}
+	settings, err := decodeObject(claudeCodeSettings, content)
+	if err != nil {
+		return "", err
 	}
 	hooks := map[string]any{}
 	if h, ok := settings["hooks"]; ok {
@@ -71,17 +59,7 @@ func withHooks(content string, add bool) (string, error) {
 	} else {
 		delete(settings, "hooks")
 	}
-	if len(settings) == 0 {
-		return "", nil
-	}
-	var b bytes.Buffer
-	enc := json.NewEncoder(&b)
-	enc.SetEscapeHTML(false)
-	enc.SetIndent("", "  ")
-	if err := enc.Encode(settings); err != nil {
-		return "", err
-	}
-	return b.String(), nil
+	return encodeObject(settings)
 }
 
 // withoutJfl is the matcher groups of one hook event without jfl's hooks,

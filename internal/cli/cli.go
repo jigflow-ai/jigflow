@@ -223,10 +223,12 @@ Commands:
                           names the Skills only a person starts, for a coding
                           agent: claude-code, as Claude Code Skills in
                           .claude/skills, with the hooks that read its token
-                          usage in .claude/settings.json, or agents-md, as a
+                          usage in .claude/settings.json and jfl mcp as the
+                          jfl server in .mcp.json, or agents-md, as a
                           section of AGENTS.md, Skills in .agents/skills and
-                          Personas in .agents/personas; publishing again
-                          replaces and removes only what jfl published.
+                          Personas in .agents/personas, printing the command
+                          that registers jfl mcp with the agent; publishing
+                          again replaces and removes only what jfl published.
                           Active Personas are those of the Persona Library
                           ($XDG_CONFIG_HOME/jigflow/personas, or
                           ~/.config/jigflow/personas) and of the Playbook,
@@ -264,7 +266,8 @@ Commands:
                           pending. There, propose asks the person the same
                           at once about the Proposal it puts forward, and
                           move asks them to make or refuse a Human
-                          Transition, which is then theirs
+                          Transition, which is then theirs. jfl publish
+                          registers it for the agent
   ui [--addr <host:port>] serve the Dashboard on this machine, at 127.0.0.1:7457
                           unless --addr names another loopback address, until
                           interrupted: the Artifacts of each Type with their

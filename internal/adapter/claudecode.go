@@ -24,12 +24,12 @@ type claudeCodeFrontmatter struct {
 }
 
 // claudeCode publishes every Skill as a Claude Code Skill, with the active
-// Personas it names, the router Skill with every active Persona, and the
-// hooks through which the Ledger reads token usage from Claude Code's
-// records.
+// Personas it names, the router Skill with every active Persona, the hooks
+// through which the Ledger reads token usage from Claude Code's records, and
+// jfl's MCP server in the project's .mcp.json.
 func claudeCode(pb *engine.Playbook, personas map[string]string) []File {
 	router := claudeCodeSkills + "/" + Router
-	files := []File{claudeCodeHooks(), {
+	files := []File{claudeCodeHooks(), claudeCodeMCPServer(), {
 		Path:    router + "/SKILL.md",
 		Content: skillMD(claudeCodeFrontmatter{Name: Router, Description: routerDescription}, routerPrompt(pb)+"\n## Personas\n\n"+personasGuide(personas, "")),
 	}}

@@ -30,16 +30,20 @@ type File struct {
 
 // Adapter publishes a Playbook for one coding agent.
 type Adapter struct {
-	Name   string   // how `jfl publish` names it
-	Agent  string   // the coding agent it publishes for, for messages
-	Where  []string // the files and directories it publishes into
-	render func(pb *engine.Playbook, personas map[string]string) []File
+	Name  string   // how `jfl publish` names it
+	Agent string   // the coding agent it publishes for, for messages
+	Where []string // the files and directories it publishes into
+	// RegisterHint, when set, tells the person how to register jfl's MCP
+	// server with an agent that keeps it in their own configuration, which
+	// the Adapter doesn't write. Every publish prints it.
+	RegisterHint string
+	render       func(pb *engine.Playbook, personas map[string]string) []File
 }
 
 // Adapters are the Adapters JigFlow ships, by name.
 var Adapters = []Adapter{
-	{Name: ClaudeCode, Agent: "Claude Code", Where: []string{claudeCodeSkills, claudeCodeSettings}, render: claudeCode},
-	{Name: "agents-md", Agent: "agents that read AGENTS.md", Where: []string{"AGENTS.md", agentsSkills, agentsPersonas}, render: agentsMD},
+	{Name: ClaudeCode, Agent: "Claude Code", Where: []string{claudeCodeSkills, claudeCodeSettings, claudeCodeMCP}, render: claudeCode},
+	{Name: "agents-md", Agent: "agents that read AGENTS.md", Where: []string{"AGENTS.md", agentsSkills, agentsPersonas}, RegisterHint: agentsRegisterMCP, render: agentsMD},
 }
 
 // Find returns the Adapter with the given name, or nil.
@@ -157,8 +161,8 @@ func (a *Adapter) publishes(rel string) bool {
 // abs is the path on disk of the project-relative, slash-separated rel.
 func abs(root, rel string) string { return filepath.Join(root, filepath.FromSlash(rel)) }
 
-// removeFile removes the published file rel, or only jfl's section or hooks
-// of it when it has them, then each directory above it that this leaves empty.
+// removeFile removes the published file rel, or only jfl's section, hooks
+// or server of it when it has them, then each directory above it that this leaves empty.
 func removeFile(root, rel string) error {
 	data, err := os.ReadFile(abs(root, rel))
 	if errors.Is(err, os.ErrNotExist) {
@@ -167,9 +171,9 @@ func removeFile(root, rel string) error {
 	if err != nil {
 		return err
 	}
-	if rel == claudeCodeSettings {
-		// Only jfl's hooks are jfl's; the person's settings stay.
-		rest, err := withHooks(string(data), false)
+	if unmerge := unmerges[rel]; unmerge != nil {
+		// Only jfl's hooks, or its server, are jfl's; the person's stay.
+		rest, err := unmerge(string(data))
 		if err != nil {
 			return err
 		}
@@ -188,6 +192,13 @@ func removeFile(root, rel string) error {
 		}
 	}
 	return nil
+}
+
+// unmerges takes jfl's part out of each file of which only a part is jfl's,
+// by path.
+var unmerges = map[string]func(string) (string, error){
+	claudeCodeSettings: func(s string) (string, error) { return withHooks(s, false) },
+	claudeCodeMCP:      func(s string) (string, error) { return withMCPServer(s, false) },
 }
 
 // The markers around the section of a shared file that jfl publishes.

@@ -3,6 +3,7 @@ package main_test
 import (
 	"fmt"
 	"maps"
+	"slices"
 	"strings"
 	"testing"
 
@@ -246,5 +247,21 @@ func TestAProposalsChangesToThePlaybookApplyAllOrNothing(t *testing.T) {
 	p.Write("bad.yaml", "summary: no command\nitems:\n  - {gate: lint}\n")
 	if r := p.RunInSession("A", "propose", "bad.yaml"); r.ExitCode != 1 || !strings.Contains(r.Stderr, "needs the Gate's name and a cmd") {
 		t.Errorf("proposing a Gate with no command exited %d: %s", r.ExitCode, r.Stderr)
+	}
+}
+
+func TestInitLeavesTheProjectWithJflsMCPServerRegistered(t *testing.T) {
+	p := initialised(t)
+	p.MustRun("init", "--adapter", "claude-code")
+
+	if jfl := mcpServers(t, p.Read(".mcp.json"))["jfl"]; jfl["command"] != "jfl" || !slices.Equal(anyStrings(jfl["args"]), []string{"mcp"}) {
+		t.Errorf(".mcp.json jfl server = %v, want jfl mcp", jfl)
+	}
+}
+
+func TestInitThroughAgentsMdPrintsTheCommandThatRegistersJflsMCPServer(t *testing.T) {
+	p := initialised(t)
+	if r := p.MustRun("init", "--adapter", "agents-md"); !strings.Contains(r.Stdout, "codex mcp add jfl -- jfl mcp") {
+		t.Errorf("init through agents-md = %q, want the command that registers jfl mcp", r.Stdout)
 	}
 }

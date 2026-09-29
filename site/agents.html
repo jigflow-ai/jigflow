@@ -44,8 +44,8 @@ jfl publish agents-md</code></pre>
 <p><code>jfl init</code> runs one for you, and you can run it again after changing the Playbook. Publishing again replaces and removes only what <code>jfl</code> published, and leaves your own files alone.</p>
 <div class="table-wrap"><table>
 <tr><th>Adapter</th><th>What it writes</th></tr>
-<tr><td><code>claude-code</code></td><td>Each Skill as a Claude Code Skill in <code>.claude/skills/&lt;name&gt;/SKILL.md</code>, with the Guidelines and Personas it names next to it. The router Skill <code>jigflow</code>. Hooks in <code>.claude/settings.json</code> (SessionStart, Stop, SubagentStop, SessionEnd) that give each session its id and record its token usage in the <a href="ledger.html">Ledger</a>.</td></tr>
-<tr><td><code>agents-md</code></td><td>A section of <code>AGENTS.md</code> explaining how to work through <code>jfl</code>, with Skills in <code>.agents/skills</code> and Personas in <code>.agents/personas</code>. It works with any agent that reads <code>AGENTS.md</code>.</td></tr>
+<tr><td><code>claude-code</code></td><td>Each Skill as a Claude Code Skill in <code>.claude/skills/&lt;name&gt;/SKILL.md</code>, with the Guidelines and Personas it names next to it. The router Skill <code>jigflow</code>. Hooks in <code>.claude/settings.json</code> (SessionStart, Stop, SubagentStop, SessionEnd) that give each session its id and record its token usage in the <a href="ledger.html">Ledger</a>. <a href="#mcp">jfl's MCP server</a>, as the <code>jfl</code> entry of the project's <code>.mcp.json</code>.</td></tr>
+<tr><td><code>agents-md</code></td><td>A section of <code>AGENTS.md</code> explaining how to work through <code>jfl</code>, with Skills in <code>.agents/skills</code> and Personas in <code>.agents/personas</code>. It works with any agent that reads <code>AGENTS.md</code>. It writes no MCP configuration, and prints the command that registers <a href="#mcp">jfl's MCP server</a> with your agent instead.</td></tr>
 </table></div>
 <p>Only usable Personas are published: the Playbook's own, your Persona Library's, and Persona Artifacts a person has activated. A Skill that names a Persona that isn't usable is told to work without it, and how to propose it.</p>
 
@@ -83,8 +83,22 @@ jfl publish agents-md</code></pre>
 <p>It never skips a checkpoint, because the checkpoints are Statuses with no Binding and Human Transitions, which autopilot can't pass.</p>
 
 <h2 id="mcp">The MCP server</h2>
-<pre><code>claude mcp add jfl -- jfl mcp</code></pre>
-<p><code>jfl mcp</code> serves the agent-safe commands over stdio as MCP tools: <code>next</code>, <code>move</code>, <code>propose</code>, <code>query</code>, <code>show</code>, and <code>create</code> into an Inbox. To a client that supports MCP elicitation, <code>propose</code> asks you at once to approve or reject the Proposal it puts forward, in a form the client shows only to you, and the server also offers <code>approve</code>, which asks the same about a Proposal still pending (see <a href="proposals.html#in-the-agent">Approving in the agent's client</a>). There, <code>move</code> on a Human Transition asks you, in the same kind of form, to make or refuse it. Other clients get no way to approve, reject or make a Human Transition: <code>propose</code> tells the agent where the Proposal waits for you, and <code>move</code> refuses a Human Transition. The server is always an agent session, using <code>JFL_SESSION</code> when set, or a fresh id for its lifetime. <code>jfl publish</code> doesn't register it, so add it to your agent as above if you want tools rather than shell commands.</p>
+<p><code>jfl mcp</code> serves the agent-safe commands over stdio as MCP tools: <code>next</code>, <code>move</code>, <code>propose</code>, <code>query</code>, <code>show</code>, and <code>create</code> into an Inbox. To a client that supports MCP elicitation, <code>propose</code> asks you at once to approve or reject the Proposal it puts forward, in a form the client shows only to you, and the server also offers <code>approve</code>, which asks the same about a Proposal still pending (see <a href="proposals.html#in-the-agent">Approving in the agent's client</a>). There, <code>move</code> on a Human Transition asks you, in the same kind of form, to make or refuse it. Other clients get no way to approve, reject or make a Human Transition: <code>propose</code> tells the agent where the Proposal waits for you, and <code>move</code> refuses a Human Transition. The server is always an agent session, using <code>JFL_SESSION</code> when set, or a fresh id for its lifetime.</p>
+<p><code>jfl publish</code> registers it for your agent, so after <code>jfl init</code> it is there. <code>claude-code</code> writes a <code>jfl</code> entry running <code>jfl mcp</code> into the project's <code>.mcp.json</code>, which it creates if it's missing. Publishing again replaces only that entry, and leaves your other servers and settings in the file as they are. Claude Code asks you once whether to trust the server. If you added it yourself before, with <code>claude mcp add jfl -- jfl mcp</code>, <code>claude mcp remove jfl</code> takes that copy away.</p>
+<pre><code><span class="c"># .mcp.json</span>
+{
+  "mcpServers": {
+    "jfl": {
+      "args": ["mcp"],
+      "command": "jfl",
+      "type": "stdio"
+    }
+  }
+}</code></pre>
+<p>Codex, Cursor and the other agents that read <code>AGENTS.md</code> keep their MCP servers in your own per-user settings, which <code>jfl</code> doesn't write. So <code>agents-md</code> prints the one command that registers it, to run once:</p>
+<pre class="out"><code>To give your agent jfl's MCP tools, register them once in its own settings, which jfl doesn't write:
+  codex mcp add jfl -- jfl mcp
+(for Codex; in another agent, add a stdio MCP server named jfl that runs jfl mcp)</code></pre>
 
 <h2 id="skills-rules">What a Skill may do</h2>
 <p>A Skill tells the agent how to do one piece of work. It reads and changes workflow state only through <code>jfl</code>: <code>show</code> and <code>query</code> to read, <code>create</code>, <code>comment</code>, <code>move</code> and <code>propose</code> to change. It edits code and an Artifact's body directly. If the body of an Artifact kept in a file changes outside <code>jfl</code>, the next move re-validates it. A changed Status or frontmatter is refused. Text an agent writes to a tracker is marked as AI-generated.</p>
