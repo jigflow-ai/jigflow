@@ -95,9 +95,6 @@ func cmdInit(e *env, args []string) error {
 	if fs.NArg() > 0 {
 		return fmt.Errorf("%w: unexpected argument %q", errUsage, fs.Arg(0))
 	}
-	if e.actor.Agent() {
-		return errors.New("choosing the project's way of working is a person's: run jfl init in your own terminal")
-	}
 	in := bufio.NewReader(e.stdin)
 
 	// Every choice is made before anything is written, so a refusal
@@ -131,6 +128,11 @@ func cmdInit(e *env, args []string) error {
 		return err
 	}
 	if err := e.setUpConnectors(in, pb, settings.pairs, labels.pairs); err != nil {
+		if !initialised && e.actor.Agent() {
+			// An agent session left an answer out: leave the project as
+			// it was, for it to run init again with every flag.
+			e.unwritePlaybook()
+		}
 		return err
 	}
 	if pb, _, err = e.load(); err != nil {
@@ -161,11 +163,24 @@ func cmdInit(e *env, args []string) error {
 // of every Status it doesn't map (ADR 0011). Each comes from the flags, or
 // else the person at the terminal, who may keep a label the Status's name;
 // without a terminal a label is the Status's name, and a setting stays
-// empty, to give later.
+// empty, to give later. In an agent session each must come from the flags
+// (ADR 0026): one missing fails, naming every flag missing, and writes
+// nothing.
 func (e *env) setUpConnectors(in *bufio.Reader, pb *engine.Playbook, settings, labels map[string]string) error {
 	f, err := playbook.OpenFile(e.dir)
 	if err != nil {
 		return err
+	}
+	// missing lists the flags an agent session didn't give, whose answers
+	// are then left out.
+	var missing []string
+	answerOrMiss := func(given, flag, question, fallback string) (v string, ok bool, err error) {
+		if given == "" && e.actor.Agent() {
+			missing = append(missing, flag)
+			return "", false, nil
+		}
+		v, err = e.answer(in, given, question, fallback)
+		return v, true, err
 	}
 	var done []string
 	for _, t := range pb.Types {
@@ -182,9 +197,12 @@ func (e *env) setUpConnectors(in *bufio.Reader, pb *engine.Playbook, settings, l
 				if c.Settings[key] != "" {
 					continue
 				}
-				v, err := e.answer(in, settings[c.Name+"."+key], fmt.Sprintf("Connector %q: %s: ", c.Name, key), "")
+				v, ok, err := answerOrMiss(settings[c.Name+"."+key], fmt.Sprintf("--setting %s.%s=<value>", c.Name, key), fmt.Sprintf("Connector %q: %s: ", c.Name, key), "")
 				if err != nil {
 					return err
+				}
+				if !ok {
+					continue
 				}
 				if v == "" {
 					fmt.Fprintf(e.stdout, "Connector %q: setting %s is empty: give it with jfl init --setting %s.%s=<value>\n", c.Name, key, c.Name, key)
@@ -200,9 +218,12 @@ func (e *env) setUpConnectors(in *bufio.Reader, pb *engine.Playbook, settings, l
 			if m.Settings[key] != "" {
 				continue
 			}
-			v, err := e.answer(in, settings[c.Name+"."+t.Name+"."+key], fmt.Sprintf("Connector %q, %s: %s: ", c.Name, t.Name, key), "")
+			v, ok, err := answerOrMiss(settings[c.Name+"."+t.Name+"."+key], fmt.Sprintf("--setting %s.%s.%s=<value>", c.Name, t.Name, key), fmt.Sprintf("Connector %q, %s: %s: ", c.Name, t.Name, key), "")
 			if err != nil {
 				return err
+			}
+			if !ok {
+				continue
 			}
 			if v == "" {
 				fmt.Fprintf(e.stdout, "Connector %q: %s's setting %s is empty: give it with jfl init --setting %s.%s.%s=<value>\n", c.Name, t.Name, key, c.Name, t.Name, key)
@@ -216,14 +237,20 @@ func (e *env) setUpConnectors(in *bufio.Reader, pb *engine.Playbook, settings, l
 			if _, ok := m.Statuses[status]; ok {
 				continue
 			}
-			label, err := e.answer(in, labels[t.Name+"."+status], fmt.Sprintf("%s in %q is labelled [%s]: ", t.Name, status, status), status)
+			label, ok, err := answerOrMiss(labels[t.Name+"."+status], fmt.Sprintf("--label %s.%s=<label>", t.Name, status), fmt.Sprintf("%s in %q is labelled [%s]: ", t.Name, status, status), status)
 			if err != nil {
 				return err
+			}
+			if !ok {
+				continue
 			}
 			if err := f.Set(label, "connectors", c.Name, "types", t.Name, "statuses", status); err != nil {
 				return err
 			}
 		}
+	}
+	if len(missing) > 0 {
+		return fmt.Errorf("%w: an agent session gives every answer as a flag: jfl init %s", errUsage, strings.Join(missing, " "))
 	}
 	for _, name := range done {
 		if f.Changed() {
@@ -242,7 +269,7 @@ func (e *env) answer(in *bufio.Reader, given, question, fallback string) (string
 	if given != "" {
 		return given, nil
 	}
-	if !e.interactive() {
+	if !e.asks() {
 		return fallback, nil
 	}
 	fmt.Fprint(e.stderr, question)
@@ -273,9 +300,11 @@ func (f pairFlag) Set(v string) error {
 	return nil
 }
 
-// proposeSetup proposes, as one Proposal from the person, the commands of
-// the Gates and the starter Guideline that fit the project's toolchain:
-// those the Playbook doesn't have yet and no pending Proposal proposes.
+// proposeSetup proposes, as one Proposal from whoever runs init, the
+// commands of the Gates and the starter Guideline that fit the project's
+// toolchain: those the Playbook doesn't have yet and no pending Proposal
+// proposes. An agent session's waits for a person's Confirmation, as any
+// Proposal of its own does (ADR 0026).
 func (e *env) proposeSetup(pb *engine.Playbook) error {
 	d, err := toolchain.Detect(e.dir)
 	if err != nil {
@@ -325,6 +354,10 @@ func (e *env) proposeSetup(pb *engine.Playbook) error {
 	if err := ps.Save(p); err != nil {
 		return err
 	}
+	if e.actor.Agent() {
+		fmt.Fprintf(e.stdout, "%s%s\n", proposedForAHuman(p), e.waiting(p.ID, ""))
+		return nil
+	}
 	fmt.Fprintf(e.stdout, "proposed %s: %s (%s, waiting for you: read it in %s, then jfl approve %s or jfl reject %s, or decide in jfl ui)\n%s", p.ID, p.Summary, plural(len(p.Items), "change"), filepath.Join(store.ProposalDir, p.ID+".yaml"), p.ID, p.ID, listItems(p))
 	return nil
 }
@@ -333,7 +366,7 @@ func (e *env) proposeSetup(pb *engine.Playbook) error {
 // picks at the terminal: there is no default.
 func (e *env) chooseOffer(in *bufio.Reader, key string) (offer, error) {
 	if key == "" {
-		if !e.interactive() {
+		if !e.asks() {
 			return offer{}, fmt.Errorf("%w: which Playbook? there is no default: jfl init --playbook %s\n%s", errUsage, offerKeys(), offerList())
 		}
 		fmt.Fprintf(e.stderr, "Which Playbook should this project use? There is no default.\n%s", offerList())
@@ -368,7 +401,7 @@ func (e *env) chooseAdapters(in *bufio.Reader, name string) ([]*adapter.Adapter,
 		if err != nil || len(published) > 0 {
 			return published, err
 		}
-		if !e.interactive() {
+		if !e.asks() {
 			return nil, fmt.Errorf("%w: which coding agent? jfl init --adapter %s", errUsage, strings.ReplaceAll(adapterNames(), " or ", "|"))
 		}
 		fmt.Fprintln(e.stderr, "Which coding agent should the Playbook's Skills be published for?")
@@ -471,4 +504,11 @@ func offerList() string {
 		s += fmt.Sprintf("  %d. %s (%s): %s\n", i+1, o.name, o.key, o.about)
 	}
 	return s
+}
+
+// asks reports whether init may ask its questions: at an interactive
+// terminal, and never in an agent session, which gives every answer as a
+// flag (ADR 0026).
+func (e *env) asks() bool {
+	return e.interactive() && !e.actor.Agent()
 }

@@ -62,12 +62,18 @@ func cmdPropose(e *env, args []string) error {
 	if err := ps.Save(p); err != nil {
 		return err
 	}
-	fmt.Fprintf(e.stdout, "proposed %s: %s (%s, waiting for a human)\n%s", p.ID, p.Summary, plural(len(p.Items), "change"), listItems(p))
+	fmt.Fprint(e.stdout, proposedForAHuman(p))
 	if e.form == nil || dashboard != "" {
 		fmt.Fprintln(e.stdout, e.waiting(p.ID, dashboard))
 		return nil
 	}
 	return e.askNow(p.ID)
+}
+
+// proposedForAHuman says that an agent session put the Proposal p forward,
+// for a person to approve or reject, and lists its items.
+func proposedForAHuman(p engine.Proposal) string {
+	return fmt.Sprintf("proposed %s: %s (%s, waiting for a human)\n%s", p.ID, p.Summary, plural(len(p.Items), "change"), listItems(p))
 }
 
 // askNow asks the person, in the form the agent's client shows only to them,

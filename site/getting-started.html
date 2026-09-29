@@ -81,6 +81,7 @@ gates:
   tests: go test ./...
   lint: go vet ./...</code></pre>
 <p>Running <code>jfl init</code> again is safe. It keeps the Playbook, publishes again through the same Adapters, and asks for or proposes only what's missing.</p>
+<p id="init-agent">Your agent can run <code>jfl init</code> for you, once you've told it your answers in chat. Run as an agent session, with <code>JFL_SESSION</code> set, it never asks: every answer comes from a flag, the Connector settings and each Status's label too, and one missing fails, naming the flag to give and writing nothing, on a first run as on a later one. P-1 is then the agent session's Proposal, so it still waits for you: approve it with <code>jfl approve P-1</code> in your own terminal, in the Dashboard, or in the form your agent's client shows only to you.</p>
 
 <h2 id="first-loop">The first loop</h2>
 <p>Create a PRD. A person creates it in <code>inception</code>, for a product not built yet, or in <code>adopt</code>, for an existing codebase:</p>

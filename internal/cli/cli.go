@@ -137,8 +137,13 @@ Commands:
                           commands of the Gates tests and lint and a starter
                           Guideline, conventions, from the toolchain it
                           detects. Running it again keeps what is set up and
-                          asks only for what is missing. It warns about hooks
-                          that can answer the Confirmation form, as check does
+                          asks only for what is missing. An agent session may
+                          run it too, with every answer as a flag: there it
+                          never asks, and an answer missing fails, naming the
+                          flag and writing nothing; the Proposal it puts
+                          forward is the session's, for a person to approve.
+                          It warns about hooks that can answer the
+                          Confirmation form, as check does
   create <Type> --title <title> [--status <status>] [--field <field>=<value>]...
          [--link <link>=<id>]...
                           create an Artifact in one of the Type's initial Statuses,
