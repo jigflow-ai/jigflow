@@ -38,8 +38,9 @@ func renderMarkdown(source string) (template.HTML, error) {
 // the paths, inside the Mockup folder mockups, of the Mockups it links to,
 // once each in the order it first does. A link to one, by its path from
 // the project's root or at the Dashboard's /mockups/, opens it in the
-// Dashboard. With no Mockup folder, it links none. A comment's heading
-// attributed to a Persona shows the Persona as a chip.
+// Dashboard. With no Mockup folder, it links none. A comment's heading, or
+// a tracker comment's lead line, attributed to a Persona shows the Persona
+// as a chip.
 func renderLinkingMockups(source, mockups string) (template.HTML, []string, error) {
 	src := []byte(source)
 	doc := markdown.Parser().Parse(text.NewReader(src))
@@ -79,8 +80,8 @@ func renderLinkingMockups(source, mockups string) (template.HTML, []string, erro
 	if err != nil {
 		return "", nil, err
 	}
-	// A comment's heading attributed to a Persona shows the Persona as a
-	// chip (ADR 0028); replaced after the walk, which a replaced node
+	// A comment's heading or lead line attributed to a Persona shows the
+	// Persona as a chip (ADR 0028); replaced after the walk, which a replaced node
 	// would cut short.
 	for _, para := range attributed {
 		author, persona, _ := store.Attribution(firstLine(para, src))
@@ -99,8 +100,8 @@ func firstLine(para *ast.Paragraph, src []byte) string {
 	return string(seg.Value(src))
 }
 
-// attributedHeading is the heading of a comment attributed to a Persona,
-// in place of the paragraph that holds it in the Markdown.
+// attributedHeading is the heading or lead line of a comment attributed to
+// a Persona, in place of the paragraph that holds it in the Markdown.
 type attributedHeading struct {
 	ast.BaseBlock
 	Author, Persona string
@@ -142,8 +143,9 @@ func mockupPath(dest, mockups string) (string, bool) {
 	return p, true
 }
 
-// attributedAsChip renders a comment's heading attributed to a Persona
-// with the Persona as a chip after its author.
+// attributedAsChip renders a comment's heading or lead line attributed to
+// a Persona with the Persona as a chip, after its author when the line
+// names one.
 type attributedAsChip struct{}
 
 // RegisterFuncs renders attributedHeading.
@@ -151,7 +153,11 @@ func (attributedAsChip) RegisterFuncs(reg renderer.NodeRendererFuncRegisterer) {
 	reg.Register(kindAttributedHeading, func(w util.BufWriter, _ []byte, n ast.Node, entering bool) (ast.WalkStatus, error) {
 		if entering {
 			h := n.(*attributedHeading)
-			fmt.Fprintf(w, "<p class=\"comment-by\"><strong>%s as</strong> <span class=\"pill persona\" title=\"Persona\">%s</span></p>\n", html.EscapeString(h.Author), html.EscapeString(h.Persona))
+			as := "As"
+			if h.Author != "" {
+				as = h.Author + " as"
+			}
+			fmt.Fprintf(w, "<p class=\"comment-by\"><strong>%s</strong> <span class=\"pill persona\" title=\"Persona\">%s</span></p>\n", html.EscapeString(as), html.EscapeString(h.Persona))
 		}
 		return ast.WalkSkipChildren, nil
 	})

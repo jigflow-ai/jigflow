@@ -5,6 +5,8 @@ import (
 	"testing"
 
 	"github.com/jigflow-ai/jigflow/internal/clitest"
+	"github.com/jigflow-ai/jigflow/internal/clitest/fakegithub"
+	"github.com/jigflow-ai/jigflow/internal/clitest/fakelinear"
 )
 
 func TestAnAgentSessionAttributesACommentToAPersona(t *testing.T) {
@@ -85,18 +87,55 @@ func TestAProjectPersonaOverridesTheLibrarysForAComment(t *testing.T) {
 	}
 }
 
-func TestACommentOnATrackerArtifactCantBeAttributedToAPersonaYet(t *testing.T) {
-	p := trackerPlaybook(t)
+func TestAnAttributedCommentOnAGitHubIssueLeadsWithThePersona(t *testing.T) {
+	p, gh := githubPlaybook(t)
 	p.Write(".jigflow/personas/reviewer.md", "Review it.\n")
-	setTracker(t, p, map[string]any{"next": 42, "items": []map[string]any{
-		{"id": "41", "title": "Add login page", "labels": []string{"ready-for-agent"}},
-	}})
+	gh.Add(fakegithub.Issue{Title: "Add login page", Labels: []string{"ticket", "ready-for-agent"}})
 
-	r := p.RunInSession("A", "comment", "T-41", "--persona", "reviewer", "Names are clear.")
-	if want := "only a comment on an Artifact kept in a file can be attributed to a Persona yet"; r.ExitCode != 1 || !strings.Contains(r.Stderr, want) {
-		t.Errorf("attributing a tracker comment: exit %d, stderr %q; want %q", r.ExitCode, r.Stderr, want)
+	agentComments(t, p, "A", "T-41", "--persona", "reviewer", "Names are clear.")
+	p.MustRun("comment", "T-41", "--persona", "reviewer", "Agreed.")
+	p.MustRun("comment", "T-41", "Thanks.")
+
+	want := []string{
+		"**As reviewer:**\n\nNames are clear.\n\n_Written by an AI agent through JigFlow._",
+		"**As reviewer:**\n\nAgreed.",
+		"Thanks.",
 	}
-	if got := item(t, p, "41").Comments; len(got) != 0 {
+	if got := gh.Issue(t, 41).Comments; strings.Join(got, "|") != strings.Join(want, "|") {
+		t.Errorf("issue 41's comments = %q, want %q", got, want)
+	}
+	if show := p.MustRun("show", "T-41").Stdout; !strings.Contains(show, "## Comment 1\n\n**As reviewer:**\n\nNames are clear.") || !strings.Contains(show, "## Comment 2\n\n**As reviewer:**\n\nAgreed.") {
+		t.Errorf("jfl show should print the attributed comments:\n%s", show)
+	}
+}
+
+func TestAnAttributedCommentOnALinearIssueLeadsWithThePersona(t *testing.T) {
+	p, ln := linearPlaybook(t)
+	p.Write(".jigflow/personas/security-reviewer.md", "Review for security.\n")
+	ln.Add(fakelinear.Issue{Title: "Add login page", Labels: []string{"ticket"}})
+
+	agentComments(t, p, "A", "T-41", "--persona", "security-reviewer", "No secrets logged.")
+	p.MustRun("comment", "T-41", "--persona", "security-reviewer", "Agreed.")
+
+	want := []string{
+		"**As security-reviewer:**\n\nNo secrets logged.\n\n_Written by an AI agent through JigFlow._",
+		"**As security-reviewer:**\n\nAgreed.",
+	}
+	if got := ln.Issue(t, 41).Comments; strings.Join(got, "|") != strings.Join(want, "|") {
+		t.Errorf("issue ENG-41's comments = %q, want %q", got, want)
+	}
+}
+
+func TestATrackerCommentIsRefusedAPersonaThatIsntUsableAndNothingIsWritten(t *testing.T) {
+	p, gh := githubPlaybook(t)
+	p.Write(".jigflow/personas/reviewer.md", "Review it.\n")
+	gh.Add(fakegithub.Issue{Title: "Add login page", Labels: []string{"ticket", "ready-for-agent"}})
+
+	r := p.RunInSession("A", "comment", "T-41", "--persona", "nobody", "Looks fine.")
+	if want := `no Persona "nobody" is usable in this project; the usable ones are reviewer`; r.ExitCode != 1 || !strings.Contains(r.Stderr, want) {
+		t.Errorf("a tracker comment as an unknown Persona: exit %d, stderr %q; want %q", r.ExitCode, r.Stderr, want)
+	}
+	if got := gh.Issue(t, 41).Comments; len(got) != 0 {
 		t.Errorf("a refused comment was added in the tracker: %q", got)
 	}
 }
@@ -138,5 +177,34 @@ func agentComments(t *testing.T, p *clitest.Project, session string, args ...str
 	t.Helper()
 	if r := p.RunInSession(session, append([]string{"comment"}, args...)...); r.ExitCode != 0 {
 		t.Fatalf("jfl comment %q in agent session %s: exit %d, stderr %q", args, session, r.ExitCode, r.Stderr)
+	}
+}
+
+func TestTheArtifactPageShowsAPersonaChipOnAttributedTrackerComments(t *testing.T) {
+	p := trackerPlaybook(t)
+	p.Write(".jigflow/personas/security-reviewer.md", "Review for security.\n")
+	setTracker(t, p, map[string]any{"next": 42, "items": []map[string]any{
+		{"id": "41", "title": "Add login page", "labels": []string{"ready-for-agent"}},
+	}})
+	agentComments(t, p, "A", "T-41", "--persona", "security-reviewer", "Checked `login.go`: **no** secrets logged.")
+	p.MustRun("comment", "T-41", "Thanks.")
+	ui := p.StartUI()
+
+	comments := section(t, get(t, ui, "/artifacts/T-41"), "Comments")
+	for _, want := range []string{
+		`<strong>As</strong> <span class="pill persona" title="Persona">security-reviewer</span>`,
+		"Checked <code>login.go</code>: <strong>no</strong> secrets logged.",
+		"<em>Written by an AI agent through JigFlow.</em>",
+		"<p>Thanks.</p>",
+	} {
+		if !strings.Contains(comments, want) {
+			t.Errorf("the comments should show %q:\n%s", want, comments)
+		}
+	}
+	if n := strings.Count(comments, `class="pill persona"`); n != 1 {
+		t.Errorf("the comments show %d Persona chips, want one for the attributed comment:\n%s", n, comments)
+	}
+	if strings.Contains(comments, "**As") {
+		t.Errorf("the lead line should be shown as a chip, not as its Markdown:\n%s", comments)
 	}
 }

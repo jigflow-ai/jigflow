@@ -6,7 +6,7 @@ jfl accepts only a Persona usable in the project, resolved exactly as `jfl publi
 
 The attribution lives in the comment's text, not in the Store interface or the Connector protocol (ADR 0008), so it shows wherever the comment does. A file-kept Artifact's comment heading names the Persona after its author, `**Comment by agent session <session> as <name>:**` or `**Comment as <name>:**`, so attribution never hides who wrote it; without a Persona the headings are as before. `jfl show` prints comments as stored, and so the attribution with them. The Dashboard reads it back from the text, through one small function next to the one that writes it, and shows the Persona as a chip on the comment, the rest rendered as Markdown as before. Its comment form offers no Persona: attributing is rare for a person, who has the CLI for it.
 
-A comment on a tracker-kept Artifact can't be attributed yet: jfl refuses `--persona` there and adds nothing, rather than drop the Persona. It is to lead the comment's text with a line `**As <name>:**`, which the Dashboard will read back the same way.
+A comment on a tracker-kept Artifact, whose author the tracker names itself, leads its text with a line `**As <name>:**` and a blank line, and an agent's still ends with the AI-generated marker (ADR 0011). The Connector adds it like any comment, so no Connector changes, and the Dashboard reads the lead line back through the same function and shows the same chip.
 
 ## Considered Options
 
@@ -19,4 +19,5 @@ A comment on a tracker-kept Artifact can't be attributed yet: jfl refuses `--per
 
 - The Persona Library is per machine, so a name usable on one machine may be refused on another, the consequence ADR 0018 already accepts for publishing.
 - A person, or an agent, can hand-write a heading that looks attributed without jfl's check, and the Dashboard shows a chip for it. That is acceptable: bodies are editable by anyone (ADR 0002), and the check keeps jfl from writing an unusable name; it doesn't authenticate text.
+- `jfl show` and the Artifact page show a tracker comment's attribution only where the Connector reports comments at all: the GitHub Issues Connector does, the Linear Connector doesn't yet, though the lead line reads in Linear itself.
 - Showing which Artifacts a Persona commented on, or filtering an Artifact's comments by Persona, needs a cheap index of comments first, since reading a tracker's comments is a Connector call per Artifact.

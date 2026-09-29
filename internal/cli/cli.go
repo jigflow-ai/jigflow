@@ -175,11 +175,12 @@ Commands:
                           an agent's ends with the AI-generated marker, or at
                           the end of its file's body; the Dashboard runs it for
                           a person from the Artifact's page; --persona
-                          attributes a file-kept Artifact's comment to a
-                          Persona usable in the project, as publish resolves
-                          them, naming it in the comment's heading after its
-                          author, and refuses any other name, listing the
-                          usable ones and adding nothing
+                          attributes the comment to a Persona usable in the
+                          project, as publish resolves them, naming it in a
+                          file's comment heading after its author or in a
+                          tracker comment's lead line **As <name>:**, and
+                          refuses any other name, listing the usable ones and
+                          adding nothing
   next [--autopilot]      say which Skill to run on which Artifact, preferring
                           what the session claims and skipping what others
                           claim, and make the pick the session's Focus; in an

@@ -277,15 +277,16 @@ func (s *Connector) Verify(id string) (bool, error) {
 	return false, nil
 }
 
-// Comment adds a comment to the Artifact in the tracker. A comment by an
-// agent ends with the AI-generated marker.
+// Comment adds a comment to the Artifact in the tracker. A comment
+// attributed to a Persona leads with a line naming it (ADR 0028), and one
+// by an agent ends with the AI-generated marker.
 func (s *Connector) Comment(id, text string, by engine.Actor) error {
 	t, tid, ok := s.split(id)
 	if !ok {
 		return fmt.Errorf("%s: %w", id, ErrNotFound)
 	}
 	if by.Persona != "" {
-		return fmt.Errorf("%s: only a comment on an Artifact kept in a file can be attributed to a Persona yet; comment without --persona: nothing was added", id)
+		text = CommentLead(by.Persona) + "\n\n" + text
 	}
 	if by.Agent() {
 		text = strings.TrimRight(text, "\n") + "\n\n" + s.c.Marker
