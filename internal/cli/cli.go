@@ -51,8 +51,9 @@ type env struct {
 	// form, when set, asks the person for a Confirmation in a form the
 	// agent's client shows only to them, and returns their choice (ADR
 	// 0024). jfl mcp sets it only for a client that can show a form: on a
-	// person's command, and on an agent's propose, which asks the person
-	// at once about the Proposal it puts forward.
+	// person's command, on an agent's propose, which asks the person at
+	// once about the Proposal it puts forward, and on an agent's move,
+	// which asks the person to make a Human Transition.
 	form func(message string, choices ...string) (string, error)
 }
 
@@ -147,9 +148,11 @@ Commands:
   move <id> <status>      move an Artifact through a declared Transition,
                           running its Gates before and its Actions after;
                           a Human Transition asks a person to confirm it in
-                          an interactive terminal and is refused to agents,
-                          and one the Playbook marks human: dashboard is made
-                          only in the Dashboard (jfl ui);
+                          an interactive terminal, or in the form the agent's
+                          client shows them through jfl mcp, and is otherwise
+                          refused to agents, and one the Playbook marks
+                          human: dashboard is made only in the Dashboard
+                          (jfl ui);
                           a body edited outside jfl is re-validated, and a
                           Status or frontmatter changed outside jfl is refused;
                           an agent session's move Claims the Artifact, and is
@@ -250,16 +253,18 @@ Commands:
                           token usage Claude Code's transcripts record to the
                           Ledger
   mcp                     serve the agent-safe commands as an MCP server over
-                          stdio, as an agent session: next, move (never a
-                          Human Transition), propose, query, show, and create
-                          into an Inbox. The session is JFL_SESSION, or a
+                          stdio, as an agent session: next, move (a Human
+                          Transition only as below), propose, query, show,
+                          and create into an Inbox. The session is JFL_SESSION, or a
                           fresh one for the server's life. To a client that
                           declared elicitation, also approve: it asks the
                           person to approve or reject a pending Proposal in a
                           form the client shows only to them, which jfl
                           writes; a dismissed or declined form leaves it
                           pending. There, propose asks the person the same
-                          at once about the Proposal it puts forward
+                          at once about the Proposal it puts forward, and
+                          move asks them to make or refuse a Human
+                          Transition, which is then theirs
   ui [--addr <host:port>] serve the Dashboard on this machine, at 127.0.0.1:7457
                           unless --addr names another loopback address, until
                           interrupted: the Artifacts of each Type with their
@@ -477,7 +482,14 @@ func (e *env) move(id, to string) error {
 	if err != nil {
 		return err
 	}
-	moved, tr, err := engine.Move(pb, e.actor, a, to, all)
+	// Asked of an agent session whose client can show the person a form, a
+	// Human Transition is the person's to make, confirmed in the form, as
+	// they would make it in a terminal (ADR 0024).
+	actor := e.actor
+	if actor.Agent() && e.form != nil && humanTransition(pb, a, to) {
+		actor = engine.Actor{}
+	}
+	moved, tr, err := engine.Move(pb, actor, a, to, all)
 	if err != nil {
 		return err
 	}
@@ -520,6 +532,15 @@ func (e *env) move(id, to string) error {
 		fmt.Fprintf(e.stdout, "Action %q succeeded%s\n", act.Name, indent(out))
 	}
 	return nil
+}
+
+// humanTransition reports whether moving a to the Status to is a declared
+// Human Transition.
+func humanTransition(pb *engine.Playbook, a engine.Artifact, to string) bool {
+	t := pb.Type(a.Type)
+	return t != nil && slices.ContainsFunc(t.Transitions, func(tr engine.Transition) bool {
+		return tr.From == a.Status && tr.To == to && tr.Human
+	})
 }
 
 func cmdComment(e *env, args []string) error {

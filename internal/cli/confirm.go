@@ -42,7 +42,9 @@ func (e *env) interactive() bool {
 // confirmHuman asks the person at the terminal to confirm the Human
 // Transition tr of a, and returns the channel their Confirmation came
 // through. In the Dashboard, the person's click is the confirmation; one the
-// Playbook requires the Dashboard for is refused anywhere else.
+// Playbook requires the Dashboard for is refused anywhere else, before anyone
+// is asked. In the agent's client, the person is asked in a form jfl writes
+// from a and tr, and may refuse it there.
 func (e *env) confirmHuman(a engine.Artifact, tr engine.Transition) (engine.Channel, error) {
 	if e.clicked {
 		return engine.ViaDashboard, nil
@@ -51,7 +53,18 @@ func (e *env) confirmHuman(a engine.Artifact, tr engine.Transition) (engine.Chan
 	if tr.Dashboard {
 		return "", fmt.Errorf("%s and make it there", dashboardOnly(a.ID, tr))
 	}
-	ok, err := e.confirm(fmt.Sprintf("%s %q: %q → %q is a Human Transition. Make it?", a.ID, a.Title, a.Status, to))
+	question := fmt.Sprintf("%s %q: %q → %q is a Human Transition. Make it", a.ID, a.Title, a.Status, to)
+	if e.form != nil {
+		choice, err := e.form(question+", or refuse it?", "make", "refuse")
+		if err == nil && choice == "refuse" {
+			err = errors.New("the person refused the Human Transition in the form")
+		}
+		if err != nil {
+			return "", fmt.Errorf("%s: not moved, still in %q: %w", a.ID, a.Status, err)
+		}
+		return engine.ViaAgent, nil
+	}
+	ok, err := e.confirm(question + "?")
 	if errors.Is(err, errNoTerminal) {
 		return "", fmt.Errorf("%s: %q → %q is a Human Transition and needs confirming in an interactive terminal, but stdin isn't one", a.ID, a.Status, to)
 	}

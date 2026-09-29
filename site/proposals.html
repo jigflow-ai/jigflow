@@ -87,6 +87,11 @@ Approve all 2 changes as one unit, or reject P-3?
 
 Decision: ( ) approve  ( ) reject</code></pre>
 <p><code>jfl</code> writes the form from the Proposal itself, so what you approve is what will happen. You must pick one: <strong>approve</strong> applies the Proposal exactly as <code>jfl approve</code> at a terminal would, with its Gates, Actions, re-validated bodies and trackers, and <strong>reject</strong> drops it. Dismissing or declining the form changes nothing: the Proposal stays pending for the terminal, the Dashboard, or the agent asking again later. You can't edit items in the form; reject, and ask the agent to propose again, or edit them in the Dashboard. A Proposal that makes a <code>human: dashboard</code> Transition is refused without a form, with the same pointer to the Dashboard. The tool isn't offered to a client that can't show forms. See <a href="https://github.com/jigflow-ai/jigflow/blob/main/docs/adr/0024-confirmations-in-the-agents-client-through-mcp-elicitation.md">ADR 0024</a>.</p>
+<p>The same goes for a Human Transition. When the agent asks the <code>move</code> tool for one, the client shows you a form written from the Artifact:</p>
+<pre class="out"><code>T-1 "Add login page": "ready-to-merge" → "done" is a Human Transition. Make it, or refuse it?
+
+Decision: ( ) make  ( ) refuse</code></pre>
+<p><strong>make</strong> makes it exactly as <code>jfl move</code> confirmed at a terminal would, with its Gates, Actions, Guards, re-validated body, Claim and tracker, and the Ledger records it <code>via: agent</code>. <strong>refuse</strong>, or dismissing or declining the form, leaves the Artifact where it is, and the agent is told so. Activating or retiring a Persona works the same way. A <code>human: dashboard</code> Transition is refused without a form, with the pointer to the Dashboard, and a client that can't show forms gets the usual refusal.</p>
 
 <h2 id="dashboard">The Dashboard</h2>
 <pre><code>jfl ui</code></pre>

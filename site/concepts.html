@@ -75,7 +75,7 @@
 <dt id="action">Action</dt>
 <dd>A user-declared command run after a Transition succeeds (e.g. commit, open a branch, notify).<br><span class="avoid">Not: Hook, effect, callback</span></dd>
 <dt id="human-transition">Human Transition</dt>
-<dd>A Transition that only a human may perform; the agent can propose it but never make it. Creating an Artifact directly into a Status that has a Binding also counts as a Human Transition, unless that Status is an Inbox. A Playbook may require one to be made in the Dashboard. It guards against accidents, not against a determined agent.<br><span class="avoid">Not: Approval step, manual step</span></dd>
+<dd>A Transition that only a human may perform; the agent can propose or request it but never make it, since it needs a <a href="#confirmation">Confirmation</a>. Creating an Artifact directly into a Status that has a Binding also counts as a Human Transition, unless that Status is an Inbox. A Playbook may require one to be made in the Dashboard. It guards against accidents, not against a determined agent.<br><span class="avoid">Not: Approval step, manual step</span></dd>
 <dt id="confirmation">Confirmation</dt>
 <dd>A person's yes to a Human Transition or a Proposal, given through a channel the agent can't answer for them: an interactive terminal, the Dashboard, or a form the agent's client shows only to the person. The <a href="ledger.html#confirmations">Ledger</a> records which one.<br><span class="avoid">Not: Approval, consent, sign-off</span></dd>
 <dt id="focus">Focus</dt>

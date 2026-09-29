@@ -615,3 +615,203 @@ func TestAGateFailingAfterTheFormProposeAsksIsAnError(t *testing.T) {
 		t.Errorf("T-1 status = %q, want it still ready-to-merge", got)
 	}
 }
+
+// mergeForm is the form jfl writes to ask for a Confirmation of
+// mergePlaybook's Human Transition of T-1 to done.
+const mergeForm = `T-1 "Add login page": "ready-to-merge" → "done" is a Human Transition. Make it, or refuse it?`
+
+func TestAPersonMakesAHumanTransitionInAFormTheAgentsClientShowsThem(t *testing.T) {
+	p := mergePlaybook(t)
+	m := p.StartMCPWith("A", eliciting)
+	m.Answer(clitest.Accept("make"))
+
+	r := m.MustCallTool("move", map[string]any{"id": "T-1", "status": "done"})
+	if want := "T-1: ready-to-merge → done\nAction \"commit\" succeeded\n"; r.IsError || r.Text != want {
+		t.Errorf("move = %+v, want %q", r, want)
+	}
+	if forms := m.Forms(); len(forms) != 1 || forms[0].Message != mergeForm {
+		t.Errorf("forms = %+v, want one with message\n%s", forms, mergeForm)
+	}
+	if got := p.Read("ran.log"); got != "gate\naction\n" {
+		t.Errorf("ran.log = %q, want the Gate, then the Action", got)
+	}
+	if got := frontmatter(t, p.Read(".jigflow/state/T-1.md"))["status"]; got != "done" {
+		t.Errorf("T-1 status = %q, want done", got)
+	}
+	if got := entriesVia(t, p, "done"); got["agent"] != 1 || len(got) != 1 {
+		t.Errorf("T-1's move into done was recorded via %v, want agent", got)
+	}
+	if l := p.MustRun("ledger").Stdout; !regexp.MustCompile(`T-1\s+ready-to-merge → done\s+via agent`).MatchString(l) {
+		t.Errorf("jfl ledger should show T-1's move confirmed via agent:\n%s", l)
+	}
+}
+
+func TestTheFormForAHumanTransitionAsksForOneRequiredDecisionToMakeOrRefuse(t *testing.T) {
+	p := mergePlaybook(t)
+	m := p.StartMCPWith("A", eliciting)
+	m.Answer(clitest.Cancel)
+
+	m.MustCallTool("move", map[string]any{"id": "T-1", "status": "done"})
+	forms := m.Forms()
+	if len(forms) != 1 {
+		t.Fatalf("the client was asked for %d forms, want 1", len(forms))
+	}
+	s := forms[0].Schema
+	props, _ := s["properties"].(map[string]any)
+	decision, _ := props["decision"].(map[string]any)
+	if s["type"] != "object" || len(props) != 1 || decision["type"] != "string" || fmt.Sprint(decision["enum"]) != "[make refuse]" || fmt.Sprint(s["required"]) != "[decision]" {
+		t.Errorf("the form's schema = %v, want one required string decision: make or refuse", s)
+	}
+}
+
+func TestAHumanTransitionRefusedOrNotAnsweredInTheFormLeavesTheArtifactWhereItIs(t *testing.T) {
+	for name, c := range map[string]struct {
+		answer clitest.FormAnswer
+		why    string
+	}{
+		"refused":      {clitest.Accept("refuse"), "the person refused the Human Transition in the form"},
+		"declined":     {clitest.Decline, "the form was declined"},
+		"dismissed":    {clitest.Cancel, "the form was dismissed"},
+		"client error": {clitest.FailForm, "the client couldn't ask the person (the client couldn't show the form)"},
+		"not a choice": {clitest.Accept("approve"), `the form was submitted with decision "approve", not one of make, refuse`},
+	} {
+		t.Run(name, func(t *testing.T) {
+			p := mergePlaybook(t)
+			before := p.Read(".jigflow/state/T-1.md")
+			m := p.StartMCPWith("A", eliciting)
+			m.Answer(c.answer)
+
+			r := m.MustCallTool("move", map[string]any{"id": "T-1", "status": "done"})
+			if want := `jfl move: T-1: not moved, still in "ready-to-merge": ` + c.why + "\n"; !r.IsError || r.Text != want {
+				t.Errorf("move = %+v, want an error %q", r, want)
+			}
+			if after := p.Read(".jigflow/state/T-1.md"); after != before {
+				t.Errorf("a move not made changed the Artifact file:\n%s", after)
+			}
+			assertNothingRan(t, p)
+			if got := entriesVia(t, p, "done"); len(got) != 0 {
+				t.Errorf("the Ledger recorded a move into done via %v, want none", got)
+			}
+			// The person can still be asked later.
+			m.Answer(clitest.Accept("make"))
+			if r := m.MustCallTool("move", map[string]any{"id": "T-1", "status": "done"}); r.IsError {
+				t.Errorf("asking again = %+v, want T-1 moved", r)
+			}
+		})
+	}
+}
+
+func TestAHumanTransitionThePlaybookRequiresTheDashboardForIsRefusedInTheAgentsClientWithoutAForm(t *testing.T) {
+	p := dashboardMergePlaybook(t)
+	before := p.Read(".jigflow/state/T-1.md")
+	m := p.StartMCPWith("A", eliciting)
+	m.Answer(clitest.Accept("make"))
+
+	r := m.MustCallTool("move", map[string]any{"id": "T-1", "status": "done"})
+	want := `T-1: "ready-to-merge" → "done" is a Human Transition the Playbook requires making in the Dashboard: run jfl ui and make it there`
+	if !r.IsError || !strings.Contains(r.Text, want) {
+		t.Errorf("move = %+v, want the Dashboard pointer %q", r, want)
+	}
+	if n := len(m.Forms()); n != 0 {
+		t.Errorf("the client was asked for %d forms, want none", n)
+	}
+	if after := p.Read(".jigflow/state/T-1.md"); after != before {
+		t.Errorf("a refused move changed the Artifact file:\n%s", after)
+	}
+	assertNothingRan(t, p)
+}
+
+func TestAPersonActivatesAndRetiresAPersonaInTheAgentsClient(t *testing.T) {
+	p := ticketPlaybook(t)
+	m := p.StartMCPWith("A", eliciting)
+	if r := m.MustCallTool("create", map[string]any{"type": "Persona", "title": "security-auditor"}); r.IsError {
+		t.Fatalf("create = %+v, want PERSONA-1 proposed", r)
+	}
+
+	for _, to := range []string{"active", "retired"} {
+		m.Answer(clitest.Accept("make"))
+		r := m.MustCallTool("move", map[string]any{"id": "PERSONA-1", "status": to})
+		if r.IsError || !strings.HasSuffix(r.Text, " → "+to+"\n") {
+			t.Errorf("move PERSONA-1 %s = %+v, want it made", to, r)
+		}
+		if got := frontmatter(t, p.Read(".jigflow/state/PERSONA-1.md"))["status"]; got != to {
+			t.Errorf("PERSONA-1 status = %q, want %s", got, to)
+		}
+		if got := entriesVia(t, p, to); got["agent"] != 1 || len(got) != 1 {
+			t.Errorf("PERSONA-1's move into %s was recorded via %v, want agent", to, got)
+		}
+	}
+	want := []string{
+		`PERSONA-1 "security-auditor": "proposed" → "active" is a Human Transition. Make it, or refuse it?`,
+		`PERSONA-1 "security-auditor": "active" → "retired" is a Human Transition. Make it, or refuse it?`,
+	}
+	var got []string
+	for _, f := range m.Forms() {
+		got = append(got, f.Message)
+	}
+	if !slices.Equal(got, want) {
+		t.Errorf("forms = %q, want %q", got, want)
+	}
+}
+
+func TestAHumanTransitionMadeInTheFormTreatsClaimsAndEditedBodiesAsTheTerminalDoes(t *testing.T) {
+	p := shipPlaybook(t)
+	p.Write("pass.flag", "")
+	m := p.StartMCPWith("A", eliciting)
+	// An ordinary Transition is still this session's, and Claims T-1.
+	if r := m.MustCallTool("move", map[string]any{"id": "T-1", "status": "built"}); r.IsError || r.Text != "T-1: open → built\n" {
+		t.Fatalf("move = %+v, want T-1 moved to built", r)
+	}
+	if fm := frontmatter(t, p.Read(".jigflow/state/T-1.md")); fm["claim"] != "A" {
+		t.Fatalf("T-1 frontmatter = %v, want it claimed by A", fm)
+	}
+	if n := len(m.Forms()); n != 0 {
+		t.Errorf("an ordinary Transition asked for %d forms, want none", n)
+	}
+	p.Write(".jigflow/state/T-1.md", p.Read(".jigflow/state/T-1.md")+"Users sign in with email.\n")
+	m.Answer(clitest.Accept("make"))
+
+	r := m.MustCallTool("move", map[string]any{"id": "T-1", "status": "done"})
+	if want := "T-1: body edited outside jfl, re-validated\nT-1: built → done\n"; r.IsError || r.Text != want {
+		t.Errorf("move = %+v, want %q", r, want)
+	}
+	got := p.Read(".jigflow/state/T-1.md")
+	if fm := frontmatter(t, got); fm["status"] != "done" || fm["claim"] != "" {
+		t.Errorf("T-1 frontmatter = %v, want done with its Claim released", fm)
+	}
+	if !strings.HasSuffix(got, "Users sign in with email.\n") {
+		t.Errorf("T-1 should keep its edited body:\n%s", got)
+	}
+}
+
+func TestAHumanTransitionMadeInTheFormReachesTheTracker(t *testing.T) {
+	p := trackerPlaybook(t)
+	p.MustRun("create", "Ticket", "--title", "Crash on login")
+	m := p.StartMCPWith("A", eliciting)
+	m.Answer(clitest.Accept("make"))
+
+	if r := m.MustCallTool("move", map[string]any{"id": "T-41", "status": "ready-for-agent"}); r.IsError || r.Text != "T-41: needs-triage → ready-for-agent\n" {
+		t.Errorf("move = %+v, want T-41 moved to ready-for-agent", r)
+	}
+	if labels := item(t, p, "41").Labels; strings.Join(labels, ",") != "ready-for-agent" {
+		t.Errorf("T-41's labels in the tracker = %v, want ready-for-agent", labels)
+	}
+	if got := entriesVia(t, p, "ready-for-agent"); got["agent"] != 1 || len(got) != 1 {
+		t.Errorf("T-41's move into ready-for-agent was recorded via %v, want agent", got)
+	}
+}
+
+func TestAHumanTransitionMadeInTheFormIsThePersonsEvenOnAnArtifactAnotherSessionClaims(t *testing.T) {
+	p := shipPlaybook(t)
+	p.Write("pass.flag", "")
+	if r := p.RunInSession("B", "move", "T-1", "built"); r.ExitCode != 0 {
+		t.Fatalf("session B's move exited %d; stderr: %s", r.ExitCode, r.Stderr)
+	}
+	m := p.StartMCPWith("A", eliciting)
+	m.Answer(clitest.Accept("make"))
+
+	// As at a terminal, the person isn't held to session B's Claim.
+	if r := m.MustCallTool("move", map[string]any{"id": "T-1", "status": "done"}); r.IsError || r.Text != "T-1: built → done\n" {
+		t.Errorf("move = %+v, want T-1 made done by the person", r)
+	}
+}

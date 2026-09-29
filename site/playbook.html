@@ -142,7 +142,7 @@ transitions:
 <div class="table-wrap"><table>
 <tr><th>Key</th><th>What it is</th></tr>
 <tr><td><code>from</code>, <code>to</code></td><td>The two Statuses.</td></tr>
-<tr><td><code>human</code></td><td><code>true</code> makes it a Human Transition, confirmed at an interactive terminal or in the Dashboard and refused to agent sessions. <code>dashboard</code> requires the Dashboard.</td></tr>
+<tr><td><code>human</code></td><td><code>true</code> makes it a Human Transition, confirmed at an interactive terminal, in the Dashboard, or in a form the agent's client shows only to the person, and refused to agent sessions. <code>dashboard</code> requires the Dashboard.</td></tr>
 <tr><td><code>gates</code></td><td>Commands that must succeed <em>before</em> the move. A failing Gate refuses the move and prints its output.</td></tr>
 <tr><td><code>actions</code></td><td>Commands run <em>after</em> the move succeeds (commit, open a branch, notify).</td></tr>
 <tr><td><code>guards</code></td><td>Conditions on Linked Artifacts, checked at the moment of the move.</td></tr>

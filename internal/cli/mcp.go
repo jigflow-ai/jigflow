@@ -42,19 +42,21 @@ type mcpTool struct {
 	// client shows only to them, so it is listed only to a client that
 	// declared elicitation (ADR 0024).
 	confirms bool
-	// asks is set on a tool whose command runs as this session and then,
-	// where the client can show a form, asks the person for a
-	// Confirmation in one.
+	// asks is set on a tool whose command runs as this session and, where
+	// the client can show a form, asks the person for a Confirmation in
+	// one: propose, then about the Proposal it put forward; move, instead
+	// of refusing a Human Transition, which is then the person's to make.
 	asks bool
 }
 
 // mcpTools is the agent-safe surface of the CLI, and approve, which asks the
 // person for a Confirmation in a form the agent's client shows only to them
 // (ADR 0024); where the client can show one, propose asks for one too, at
-// once. A client that can't show the person a form isn't offered
-// approve, and no client is offered reject, so an agent using MCP can't
-// decide for the person (ADR 0003); the engine refuses a Human Transition
-// asked of move, as it does in the CLI.
+// once, and move asks the person to make a Human Transition. A client that
+// can't show the person a form isn't offered approve, and no client is
+// offered reject, so an agent using MCP can't decide for the person (ADR
+// 0003); to such a client, the engine refuses a Human Transition asked of
+// move, as it does in the CLI.
 var mcpTools = []mcpTool{
 	{
 		Name:        "next",
@@ -73,7 +75,7 @@ var mcpTools = []mcpTool{
 	},
 	{
 		Name:        "move",
-		Description: "Move an Artifact through a declared Transition that isn't a Human Transition, like `jfl move <id> <status>`: its Gates run before and its Actions after, and it Claims the Artifact for this session. A Human Transition is refused: put it in a Proposal instead.",
+		Description: "Move an Artifact through a declared Transition, like `jfl move <id> <status>`: its Gates run before and its Actions after, and it Claims the Artifact for this session. A Human Transition is a person's to make: if your client can show the person a form, they are asked to make or refuse it there, and made, it is made as `jfl move` confirmed in a terminal makes it, taking no Claim; a form they dismiss or decline leaves the Artifact where it is. Otherwise a Human Transition is refused: put it in a Proposal instead. One the Playbook requires the Dashboard for is refused without asking.",
 		InputSchema: schema([]string{"id", "status"}, map[string]any{
 			"id":     map[string]any{"type": "string", "description": "the Artifact's id, e.g. T-1"},
 			"status": map[string]any{"type": "string", "description": "the Status to move it to"},
@@ -85,6 +87,7 @@ var mcpTools = []mcpTool{
 			}
 			return []string{"move", in.ID, in.Status}, nil
 		},
+		asks: true,
 	},
 	{
 		Name:        "propose",
