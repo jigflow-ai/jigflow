@@ -48,6 +48,12 @@ items:
   - {create: Ticket, ref: table, title: Reset-token table, fields: {category: enhancement}, links: {part_of: [S-1]}}
   - {create: Ticket, title: Reset endpoint, links: {part_of: [S-1], blocked_by: [table]}}
   - {move: S-1, to: ticketed}</code></pre>
+<p><code>jfl propose</code> lists the items and says where the Proposal waits for you:</p>
+<pre class="out"><code>proposed P-3: break S-1 into tickets (3 changes, waiting for a human)
+  1. create Ticket "Reset-token table" (category enhancement), part_of S-1
+  2. create Ticket "Reset endpoint", blocked_by table, part_of S-1
+  3. move S-1 → ticketed
+P-3 waits for a person to approve or reject it with jfl approve P-3 or jfl reject P-3 in a terminal, or in the Dashboard (jfl ui)</code></pre>
 <p>A <code>ref</code> names an Artifact the Proposal creates, so later items can Link to it before it has an id. Quote titles that contain <code>:</code>, <code>?</code> or <code>,</code>, as YAML requires.</p>
 
 <h3 id="items">Item kinds</h3>
@@ -73,7 +79,7 @@ jfl reject P-3</code></pre>
 <p>Only a person may approve or reject: at an interactive terminal, in the Dashboard, or in a form the agent's client shows only to them. An agent session running <code>jfl approve</code> or <code>jfl reject</code> is refused. If an item makes a Transition that the Playbook marks <code>human: dashboard</code>, the Proposal can only be approved in the Dashboard. The <a href="ledger.html#confirmations">Ledger</a> records which of the three each approval, and each Human Transition, came through.</p>
 
 <h3 id="in-the-agent">Approving in the agent's client</h3>
-<p>If your agent's client supports MCP elicitation, the <a href="cli.html#mcp"><code>jfl mcp</code></a> server offers the agent an <code>approve</code> tool. The agent calls it with a pending Proposal's id, and your client shows you a form that the model never sees:</p>
+<p>If your agent's client supports MCP elicitation, the <a href="cli.html#mcp"><code>jfl mcp</code></a> server asks you as soon as the agent puts a Proposal forward with its <code>propose</code> tool, while the context is fresh. It also offers the agent an <code>approve</code> tool, to ask you again about a Proposal still pending. Either way your client shows you a form that the model never sees:</p>
 <pre class="out"><code>P-3 from agent session A: break S-1 into 2 tickets
   1. create Ticket "Reset-token table" in ready-for-agent, part_of S-1
   2. move S-1 → ticketed

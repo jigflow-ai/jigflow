@@ -68,6 +68,10 @@ func (e *env) confirmHuman(a engine.Artifact, tr engine.Transition) (engine.Chan
 // reject the Proposal in the form they were asked.
 var errRejectedInForm = errors.New("rejected in the form")
 
+// errNotAnswered is returned by confirmApproval when the person didn't answer
+// the form they were asked: the Proposal stays pending.
+var errNotAnswered = errors.New("still pending")
+
 // confirmApproval asks the person at the terminal to confirm approving p,
 // and returns the channel their Confirmation came through. In the
 // Dashboard, the person's click is the confirmation. In the agent's client,
@@ -86,7 +90,7 @@ func (e *env) confirmApproval(pb *engine.Playbook, p engine.Proposal) (engine.Ch
 	if e.form != nil {
 		choice, err := e.form(question(formItems(pb, p), ", or reject "+p.ID), "approve", "reject")
 		if err != nil {
-			return "", fmt.Errorf("%s: not approved, still pending: %w", p.ID, err)
+			return "", fmt.Errorf("%s: not approved, %w: %w", p.ID, errNotAnswered, err)
 		}
 		if choice == "reject" {
 			return "", errRejectedInForm

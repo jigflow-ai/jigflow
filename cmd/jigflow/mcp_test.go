@@ -3,6 +3,7 @@ package main_test
 import (
 	"errors"
 	"fmt"
+	"net/http"
 	"regexp"
 	"slices"
 	"strings"
@@ -91,6 +92,9 @@ func TestTheMCPServerHandsOutNextAndProposesForAPersonToApprove(t *testing.T) {
 	r := m.MustCallTool("propose", map[string]any{"file": "breakdown.yaml"})
 	if want := "proposed P-1: break S-1 into 3 tickets (4 changes, waiting for a human)"; r.IsError || firstLine(r.Text) != want {
 		t.Errorf("propose = %+v, want %q", r, want)
+	}
+	if want := "\nP-1 waits for a person to approve or reject it with jfl approve P-1 or jfl reject P-1 in a terminal, or in the Dashboard (jfl ui)\n"; !strings.HasSuffix(r.Text, want) {
+		t.Errorf("propose = %+v, want it to end saying what waits and where:%s", r, want)
 	}
 	assertNoArtifact(t, p, "T-1")
 	if r := m.MustCallTool("next", map[string]any{"autopilot": true}); firstLine(r.Text) != "autopilot stopped: nothing for an agent to do" {
@@ -454,5 +458,160 @@ func TestAToolCallTheClientCancelsWhileTheFormIsOpenLeavesTheProposalPending(t *
 	assertNothingApplied(t, p)
 	if got := p.Read(".jigflow/proposals/P-1.yaml"); !strings.Contains(got, "status: pending") {
 		t.Errorf("P-1 should still be pending:\n%s", got)
+	}
+}
+
+// proposeBreakdown is a project with the Spec S-1 and the breakdown of it,
+// not yet proposed, and agent session A's client.
+func proposeBreakdown(t *testing.T, c clitest.MCPClient) (*clitest.Project, *clitest.MCP) {
+	t.Helper()
+	p := pocockPlaybook(t)
+	p.MustRun("create", "Spec", "--title", "Password reset by email")
+	p.Write("breakdown.yaml", breakdown)
+	return p, p.StartMCPWith("A", c)
+}
+
+func TestProposeAsksThePersonAtOnceInAClientThatCanShowAForm(t *testing.T) {
+	p, m := proposeBreakdown(t, eliciting)
+	m.Answer(clitest.Accept("approve"))
+
+	r := m.MustCallTool("propose", map[string]any{"file": "breakdown.yaml"})
+	if r.IsError || firstLine(r.Text) != "proposed P-1: break S-1 into 3 tickets (4 changes, waiting for a human)" || !strings.Contains(r.Text, "\napproved P-1 as one unit:\n") || !strings.Contains(r.Text, `created T-2 "Reset endpoint" in ready-for-agent`) {
+		t.Errorf("propose = %+v, want P-1 proposed, then approved, and what jfl printed", r)
+	}
+	if forms := m.Forms(); len(forms) != 1 || forms[0].Message != breakdownForm {
+		t.Errorf("forms = %+v, want one with message\n%s", forms, breakdownForm)
+	}
+	if got := p.Read(".jigflow/proposals/P-1.yaml"); !strings.Contains(got, "status: approved") {
+		t.Errorf("P-1 should be recorded as approved:\n%s", got)
+	}
+	if got := entriesVia(t, p, "ticketed"); got["agent"] != 1 || len(got) != 1 {
+		t.Errorf("S-1's move into ticketed was recorded via %v, want agent", got)
+	}
+	if got := p.Read(".jigflow/state/T-1.md"); strings.Contains(got, "claim:") {
+		t.Errorf("T-1 =\n%s\nwant no Claim: the person approved it", got)
+	}
+}
+
+func TestAPersonRejectingTheFormProposeAsksDropsTheProposal(t *testing.T) {
+	p, m := proposeBreakdown(t, eliciting)
+	m.Answer(clitest.Accept("reject"))
+
+	r := m.MustCallTool("propose", map[string]any{"file": "breakdown.yaml"})
+	if r.IsError || firstLine(r.Text) != "proposed P-1: break S-1 into 3 tickets (4 changes, waiting for a human)" || !strings.HasSuffix(r.Text, "\nrejected P-1. Nothing changed.\n") {
+		t.Errorf("propose answered with reject = %+v, want P-1 proposed, then rejected", r)
+	}
+	assertNothingApplied(t, p)
+	if got := p.Read(".jigflow/proposals/P-1.yaml"); !strings.Contains(got, "status: rejected") {
+		t.Errorf("P-1 should be recorded as rejected:\n%s", got)
+	}
+}
+
+func TestAFormProposeAsksNotAnsweredLeavesTheProposalPendingForLater(t *testing.T) {
+	later := map[string]func(t *testing.T, p *clitest.Project, m *clitest.MCP){
+		"approve tool": func(t *testing.T, p *clitest.Project, m *clitest.MCP) {
+			m.Answer(clitest.Accept("approve"))
+			if r := m.MustCallTool("approve", map[string]any{"proposal": "P-1"}); r.IsError || firstLine(r.Text) != "approved P-1 as one unit:" {
+				t.Errorf("approve = %+v, want P-1 approved", r)
+			}
+		},
+		"terminal": func(t *testing.T, p *clitest.Project, m *clitest.MCP) { approveInTerminal(t, p, "P-1") },
+		"Dashboard": func(t *testing.T, p *clitest.Project, m *clitest.MCP) {
+			ui := p.StartUI()
+			if page := submit(t, ui, section(t, get(t, ui, "/"), "Pending Proposals"), "Approve all 4 changes", nil); page.Status != http.StatusOK {
+				t.Errorf("approving P-1 in the Dashboard: status %d\n%s", page.Status, text(page.HTML))
+			}
+		},
+	}
+	for answer, c := range map[string]struct {
+		answer clitest.FormAnswer
+		why    string
+	}{
+		"declined":  {clitest.Decline, "the form was declined"},
+		"dismissed": {clitest.Cancel, "the form was dismissed"},
+	} {
+		for channel, approve := range later {
+			t.Run(answer+", then approved in the "+channel, func(t *testing.T) {
+				p, m := proposeBreakdown(t, eliciting)
+				m.Answer(c.answer)
+
+				r := m.MustCallTool("propose", map[string]any{"file": "breakdown.yaml"})
+				want := "P-1: not approved, still pending: " + c.why + "\n" +
+					"P-1 waits for a person: the approve tool asks them again, or they decide with jfl approve P-1 or jfl reject P-1 in a terminal, or in the Dashboard (jfl ui)\n"
+				if r.IsError || firstLine(r.Text) != "proposed P-1: break S-1 into 3 tickets (4 changes, waiting for a human)" || !strings.HasSuffix(r.Text, "\n"+want) {
+					t.Errorf("propose = %+v, want P-1 proposed, then\n%s", r, want)
+				}
+				assertNothingApplied(t, p)
+				if got := p.Read(".jigflow/proposals/P-1.yaml"); !strings.Contains(got, "status: pending") {
+					t.Errorf("P-1 should still be pending:\n%s", got)
+				}
+				if r := m.MustCallTool("next", map[string]any{}); strings.Contains(firstLine(r.Text), "S-1") || !strings.Contains(r.Text, "S-1: waiting on a pending Proposal (P-1)") {
+					t.Errorf("next = %+v, want S-1 skipped while P-1 waits", r)
+				}
+
+				approve(t, p, m)
+				if got := p.Read(".jigflow/proposals/P-1.yaml"); !strings.Contains(got, "status: approved") {
+					t.Errorf("P-1 should be recorded as approved:\n%s", got)
+				}
+			})
+		}
+	}
+}
+
+func TestProposeDoesNotAskAboutAProposalMakingATransitionThatRequiresTheDashboard(t *testing.T) {
+	for name, c := range map[string]clitest.MCPClient{"with elicitation": eliciting, "without elicitation": {}} {
+		t.Run(name, func(t *testing.T) {
+			p := dashboardMergePlaybook(t)
+			p.Write("merge.yaml", "summary: merge T-1\nitems:\n  - {move: T-1, to: done}\n")
+			m := p.StartMCPWith("A", c)
+			m.Answer(clitest.Accept("approve"))
+
+			r := m.MustCallTool("propose", map[string]any{"file": "merge.yaml"})
+			want := `P-1 waits for a person in the Dashboard: T-1: "ready-to-merge" → "done" is a Human Transition the Playbook requires making in the Dashboard: run jfl ui and approve P-1 there` + "\n"
+			if r.IsError || !strings.HasSuffix(r.Text, "\n"+want) {
+				t.Errorf("propose = %+v, want P-1 proposed and the Dashboard pointer\n%s", r, want)
+			}
+			if n := len(m.Forms()); n != 0 {
+				t.Errorf("the client was asked for %d forms, want none", n)
+			}
+			assertNothingRan(t, p)
+			if got := p.Read(".jigflow/proposals/P-1.yaml"); !strings.Contains(got, "status: pending") {
+				t.Errorf("P-1 should still be pending:\n%s", got)
+			}
+		})
+	}
+}
+
+func TestAnApprovalInTheFormProposeAsksRunsTheGatesAndActionsAsTheTerminalDoes(t *testing.T) {
+	p := mergePlaybook(t)
+	p.Write("merge.yaml", "summary: merge T-1\nitems:\n  - {move: T-1, to: done}\n")
+	m := p.StartMCPWith("A", eliciting)
+	m.Answer(clitest.Accept("approve"))
+
+	r := m.MustCallTool("propose", map[string]any{"file": "merge.yaml"})
+	if want := "\napproved P-1 as one unit:\n  T-1: ready-to-merge → done\nAction \"commit\" succeeded\n"; r.IsError || !strings.HasSuffix(r.Text, want) {
+		t.Errorf("propose = %+v, want it to end with%s", r, want)
+	}
+	if got := p.Read("ran.log"); got != "gate\naction\n" {
+		t.Errorf("ran.log = %q, want the Gate, then the Action", got)
+	}
+}
+
+func TestAGateFailingAfterTheFormProposeAsksIsAnError(t *testing.T) {
+	p := mergePlaybook(t)
+	p.Write("record.sh", "echo \"$1\" >> ran.log\n[ \"$1\" != gate ]\n")
+	p.Write("merge.yaml", "summary: merge T-1\nitems:\n  - {move: T-1, to: done}\n")
+	m := p.StartMCPWith("A", eliciting)
+	m.Answer(clitest.Accept("approve"))
+
+	r := m.MustCallTool("propose", map[string]any{"file": "merge.yaml"})
+	if want := `P-1 was not applied at all (all or nothing): item 1 (move T-1 → done): Gate "lint" failed`; !r.IsError || !strings.Contains(r.Text, want) {
+		t.Errorf("propose = %+v, want an error saying %q", r, want)
+	}
+	if got := p.Read("ran.log"); got != "gate\n" {
+		t.Errorf("ran.log = %q, want only the Gate", got)
+	}
+	if got := frontmatter(t, p.Read(".jigflow/state/T-1.md"))["status"]; got != "ready-to-merge" {
+		t.Errorf("T-1 status = %q, want it still ready-to-merge", got)
 	}
 }

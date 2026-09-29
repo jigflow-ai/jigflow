@@ -52,11 +52,64 @@ func cmdPropose(e *env, args []string) error {
 			return fmt.Errorf("not proposed: as the Proposal would make it, %w", err)
 		}
 	}
+	// A Proposal making a Transition the Playbook requires the Dashboard
+	// for is approved there only, so no one is asked about it here.
+	changes, err := engine.Approve(pb, p, all)
+	if err != nil {
+		return fmt.Errorf("not proposed: %w", err)
+	}
+	dashboard := ""
+	for _, c := range changes {
+		if c.Transition.Dashboard {
+			dashboard = dashboardOnly(c.Artifact.ID, c.Transition)
+			break
+		}
+	}
 	if err := ps.Save(p); err != nil {
 		return err
 	}
 	fmt.Fprintf(e.stdout, "proposed %s: %s (%s, waiting for a human)\n%s", p.ID, p.Summary, plural(len(p.Items), "change"), listItems(p))
-	return nil
+	if e.form == nil || dashboard != "" {
+		fmt.Fprintln(e.stdout, e.waiting(p.ID, dashboard))
+		return nil
+	}
+	return e.askNow(p.ID)
+}
+
+// askNow asks the person, in the form the agent's client shows only to them,
+// to approve or reject the Proposal id just put forward, as the approve tool
+// does. The form is the person's channel, which the model can't answer, so
+// the decision is theirs, not this agent session's (ADR 0024). A form the
+// person doesn't answer leaves the Proposal as it was put forward, pending,
+// which isn't a failure of propose: it says where the Proposal waits.
+func (e *env) askNow(id string) error {
+	getenv := func(key string) string {
+		if key == SessionEnv {
+			return ""
+		}
+		return e.getenv(key)
+	}
+	person := &env{dir: e.dir, stdout: e.stdout, stderr: e.stderr, getenv: getenv, now: e.now, led: e.led, form: e.form}
+	err := person.decide(id)
+	if errors.Is(err, errNotAnswered) {
+		fmt.Fprintf(e.stdout, "%v\n%s\n", err, e.waiting(id, ""))
+		return nil
+	}
+	return err
+}
+
+// waiting says what waits for a person, the pending Proposal id, and where
+// they decide on it: in the Dashboard only when it makes a Transition the
+// Playbook requires the Dashboard for, as dashboard says.
+func (e *env) waiting(id, dashboard string) string {
+	if dashboard != "" {
+		return fmt.Sprintf("%s waits for a person in the Dashboard: %s and approve %s there", id, dashboard, id)
+	}
+	where := fmt.Sprintf("with jfl approve %s or jfl reject %s in a terminal, or in the Dashboard (jfl ui)", id, id)
+	if e.form != nil {
+		return fmt.Sprintf("%s waits for a person: the approve tool asks them again, or they decide %s", id, where)
+	}
+	return fmt.Sprintf("%s waits for a person to approve or reject it %s", id, where)
 }
 
 // listItems lists a Proposal's items, one numbered line each.
@@ -79,10 +132,15 @@ func cmdApprove(e *env, args []string) error {
 	if len(args) != 1 {
 		return fmt.Errorf("%w: jfl approve <proposal>", errUsage)
 	}
-	err := e.approve(args[0], nil)
-	// Asked in the agent's client, the person may reject it instead.
+	return e.decide(args[0])
+}
+
+// decide approves the pending Proposal id or, asked in the agent's client,
+// rejects it, as the person chooses.
+func (e *env) decide(id string) error {
+	err := e.approve(id, nil)
 	if errors.Is(err, errRejectedInForm) {
-		return e.reject(args[0])
+		return e.reject(id)
 	}
 	return err
 }

@@ -42,11 +42,16 @@ type mcpTool struct {
 	// client shows only to them, so it is listed only to a client that
 	// declared elicitation (ADR 0024).
 	confirms bool
+	// asks is set on a tool whose command runs as this session and then,
+	// where the client can show a form, asks the person for a
+	// Confirmation in one.
+	asks bool
 }
 
 // mcpTools is the agent-safe surface of the CLI, and approve, which asks the
 // person for a Confirmation in a form the agent's client shows only to them
-// (ADR 0024). A client that can't show the person a form isn't offered
+// (ADR 0024); where the client can show one, propose asks for one too, at
+// once. A client that can't show the person a form isn't offered
 // approve, and no client is offered reject, so an agent using MCP can't
 // decide for the person (ADR 0003); the engine refuses a Human Transition
 // asked of move, as it does in the CLI.
@@ -83,7 +88,7 @@ var mcpTools = []mcpTool{
 	},
 	{
 		Name:        "propose",
-		Description: "Put forward the creations and Transitions in a Proposal file for a person to approve or reject as one unit, like `jfl propose <file>`. The file is YAML: a summary and items, each {create: <Type>, ref, title, status, fields, links} or {move: <id>, to: <status>}; creations may Link to each other by ref. An item may change the Playbook instead: {gate: <name>, cmd: <command>} gives the Gates of that name their command, {guideline: <name>, text: <Markdown>} adds a Guideline, {type: <Type>, text: <its file's YAML>} declares or replaces an Artifact Type, {skill: <name>, text: <its SKILL.md>} writes a Skill; a Proposal whose Playbook would fail jfl check is refused.",
+		Description: "Put forward the creations and Transitions in a Proposal file for a person to approve or reject as one unit, like `jfl propose <file>`. The file is YAML: a summary and items, each {create: <Type>, ref, title, status, fields, links} or {move: <id>, to: <status>}; creations may Link to each other by ref. An item may change the Playbook instead: {gate: <name>, cmd: <command>} gives the Gates of that name their command, {guideline: <name>, text: <Markdown>} adds a Guideline, {type: <Type>, text: <its file's YAML>} declares or replaces an Artifact Type, {skill: <name>, text: <its SKILL.md>} writes a Skill; a Proposal whose Playbook would fail jfl check is refused. If your client can show the person a form, they are asked at once to approve or reject it, as the approve tool asks, and the result says what they decided; otherwise, or if they put it off, the result says where it waits for them.",
 		InputSchema: schema([]string{"file"}, map[string]any{
 			"file": map[string]any{"type": "string", "description": "the Proposal file, relative to the project root"},
 		}),
@@ -94,6 +99,7 @@ var mcpTools = []mcpTool{
 			}
 			return []string{"propose", in.File}, nil
 		},
+		asks: true,
 	},
 	{
 		Name:        "approve",
@@ -415,7 +421,7 @@ func (s *mcpServer) callTool(params json.RawMessage) (any, *rpcError) {
 	}
 	var out bytes.Buffer
 	cmd := &env{dir: s.e.dir, actor: engine.Actor{Session: session}, stdout: &out, stderr: &out, getenv: getenv}
-	if tool.confirms {
+	if s.forms && (tool.confirms || tool.asks) {
 		cmd.form = s.elicit
 	}
 	code := cmd.run(args)

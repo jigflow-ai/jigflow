@@ -50,7 +50,9 @@ type env struct {
 	clicked bool
 	// form, when set, asks the person for a Confirmation in a form the
 	// agent's client shows only to them, and returns their choice (ADR
-	// 0024). It is set only on a person's command jfl mcp runs.
+	// 0024). jfl mcp sets it only for a client that can show a form: on a
+	// person's command, and on an agent's propose, which asks the person
+	// at once about the Proposal it puts forward.
 	form func(message string, choices ...string) (string, error)
 }
 
@@ -173,7 +175,8 @@ Commands:
                           Gate its command, adding a Guideline, or declaring
                           an Artifact Type or writing a Skill, either
                           replacing the one of that name; a Proposal whose
-                          Playbook would fail check is refused
+                          Playbook would fail check is refused. It says
+                          where the Proposal waits for a person
   query [--type <Type>] [--status <status>]
                           list the Artifacts, with their Status, Claim and
                           Links, optionally only those of one Type or in one
@@ -255,7 +258,8 @@ Commands:
                           person to approve or reject a pending Proposal in a
                           form the client shows only to them, which jfl
                           writes; a dismissed or declined form leaves it
-                          pending
+                          pending. There, propose asks the person the same
+                          at once about the Proposal it puts forward
   ui [--addr <host:port>] serve the Dashboard on this machine, at 127.0.0.1:7457
                           unless --addr names another loopback address, until
                           interrupted: the Artifacts of each Type with their

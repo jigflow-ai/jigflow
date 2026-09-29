@@ -171,6 +171,9 @@ func TestAnAgentProposesASetOfCreationsAndTransitionsThatWaitsForAHuman(t *testi
 	if want := "proposed P-1: break S-1 into 3 tickets (4 changes, waiting for a human)"; firstLine(r.Stdout) != want {
 		t.Errorf("propose said %q, want %q", firstLine(r.Stdout), want)
 	}
+	if want := "\nP-1 waits for a person to approve or reject it with jfl approve P-1 or jfl reject P-1 in a terminal, or in the Dashboard (jfl ui)\n"; !strings.HasSuffix(r.Stdout, want) {
+		t.Errorf("propose said\n%s\nwant it to end saying what waits and where:%s", r.Stdout, want)
+	}
 	assertNoArtifact(t, p, "T-1")
 	if got := frontmatter(t, p.Read(".jigflow/state/S-1.md"))["status"]; got != "ready-for-agent" {
 		t.Errorf("S-1 status = %q: a pending Proposal changed it", got)
