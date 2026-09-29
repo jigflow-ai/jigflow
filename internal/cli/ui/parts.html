@@ -8,3 +8,21 @@
   {{with .Problem}}<pre>{{.}}</pre>{{end}}
   {{with .Said}}<pre>{{.}}</pre>{{end}}
 </section>{{end}}
+{{/* Commits, newest first, each linked to its Artifact's page when its subject names one. */}}
+{{define "commits"}}
+<div class="scroll">
+<table>
+  <thead><tr><th>Commit</th><th>Subject</th><th>Author</th><th>When</th></tr></thead>
+  <tbody>
+  {{range .}}
+    <tr>
+      <td><code title="{{.Hash}}">{{.Short}}</code></td>
+      <td>{{if .Artifact}}<a class="id" href="/artifacts/{{.Artifact}}">{{.Artifact}}</a>{{.Rest}}{{else}}{{.Subject}}{{end}}</td>
+      <td class="small">{{.Author}}</td>
+      <td class="small"><time datetime="{{.At.UTC.Format "2006-01-02T15:04:05Z07:00"}}">{{.At.Local.Format "2 Jan 2006 15:04"}}</time></td>
+    </tr>
+  {{end}}
+  </tbody>
+</table>
+</div>
+{{end}}

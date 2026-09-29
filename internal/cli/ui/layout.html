@@ -184,6 +184,7 @@ rect.hatched.s0 { fill: url(#hatch-s0); stroke: var(--s0); } rect.hatched.s1 { f
     <nav>
       <a href="/"{{if eq .Page "backlog"}} aria-current="page"{{end}}>Backlog</a>
       <a href="/timeline"{{if eq .Page "timeline"}} aria-current="page"{{end}}>Timeline</a>
+      {{if git}}<a href="/git"{{if eq .Page "git"}} aria-current="page"{{end}}>Git</a>{{end}}
       <a href="/playbook"{{if eq .Page "playbook"}} aria-current="page"{{end}}>Playbook</a>
       <a href="/workflows"{{if eq .Page "workflows"}} aria-current="page"{{end}}>Workflows</a>
       <a href="/ledger"{{if eq .Page "ledger"}} aria-current="page"{{end}}>Ledger</a>

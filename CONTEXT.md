@@ -99,7 +99,7 @@ An external executable, written in any language, through which the CLI reads and
 _Avoid_: Integration, plugin, sync
 
 **Dashboard**:
-The local web view of a project's Artifacts, each on a page of its own with its body, Links and history, and of its human queue, pending Proposals, Ledger, a Timeline of how long each Artifact spent in each Status, Status machines and the parts of its Playbook with where each comes from, served only on the developer's machine, and the preferred place to approve or reject Proposals and perform Human Transitions. It never edits an Artifact's body, except to add a person's comment to it through jfl.
+The local web view of a project's Artifacts, each on a page of its own with its body, Links and history, and of its human queue, pending Proposals, Ledger, a Timeline of how long each Artifact spent in each Status, the branch's commits each linked to the Artifact it names when in a git repository, Status machines and the parts of its Playbook with where each comes from, served only on the developer's machine, and the preferred place to approve or reject Proposals and perform Human Transitions. It never edits an Artifact's body, except to add a person's comment to it through jfl.
 _Avoid_: UI, console, admin panel
 
 **Mockup**:

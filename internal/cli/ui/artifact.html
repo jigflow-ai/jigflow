@@ -69,6 +69,12 @@
   <p>Agent time {{if .Agent}}{{duration .Agent}}{{else}}<span class="muted">none</span>{{end}}</p>
   <p class="muted small">Times as of <time datetime="{{.AsOf.UTC.Format "2006-01-02T15:04:05Z07:00"}}">{{.AsOf.Local.Format "2 Jan 2006 15:04:05"}}</time>, from jfl's own clock.</p>
 </section>
+{{if .Git}}
+<section class="panel" id="commits">
+  <h2>Commits</h2>
+  {{with .Commits}}{{template "commits" .}}{{else}}<p class="empty">No commit names {{.ID}} yet.</p>{{end}}
+</section>
+{{end}}
 <section class="panel" id="body">
   <h2>Body</h2>
   {{if .Body}}<div class="prose">{{.Body}}</div>{{else}}<p class="empty">No body yet.</p>{{end}}

@@ -312,8 +312,9 @@ Commands:
                           Status, Claim and Links and who they wait on, the
                           human queue and pending Proposals first, the Ledger
                           summed and drawn as a Timeline of how long each
-                          Artifact spent in each Status, and each Type's
-                          Status machine drawn, with
+                          Artifact spent in each Status, in a git repository
+                          the branch's commits linked to the Artifacts they
+                          name, and each Type's Status machine drawn, with
                           check's warning about hooks that can answer the
                           Confirmation form. The browser that opens the link
                           it prints may approve or reject Proposals, editing

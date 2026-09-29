@@ -37,10 +37,11 @@ var uiFiles embed.FS
 // layout.
 var uiPages = func() map[string]*template.Template {
 	pages := map[string]*template.Template{}
-	// since is the version of the project a page shows, which writePage
-	// gives each page it writes.
-	funcs := template.FuncMap{"duration": duration, "tokens": tokens, "since": func() string { return "" }}
-	for _, name := range []string{"backlog", "timeline", "playbook", "workflows", "ledger", "artifact", "playbookfile", "problem"} {
+	// since is the version of the project a page shows, and git whether
+	// the project is in a git repository, which writePage gives each page
+	// it writes.
+	funcs := template.FuncMap{"duration": duration, "tokens": tokens, "since": func() string { return "" }, "git": func() bool { return false }}
+	for _, name := range []string{"backlog", "timeline", "git", "playbook", "workflows", "ledger", "artifact", "playbookfile", "problem"} {
 		pages[name] = template.Must(template.New("layout.html").Funcs(funcs).ParseFS(uiFiles, "ui/layout.html", "ui/parts.html", "ui/"+name+".html"))
 	}
 	return pages
@@ -75,7 +76,7 @@ func cmdUI(e *env, args []string) error {
 	if err != nil {
 		return err
 	}
-	d := &dashboard{e: e, changes: newChanges(projectFiles(e.dir), trackers(e.dir, every)), closing: make(chan struct{})}
+	d := &dashboard{e: e, changes: newChanges(projectFiles(e.dir), gitHead(e.dir), trackers(e.dir, every)), closing: make(chan struct{})}
 	_, port, _ := net.SplitHostPort(ln.Addr().String())
 	d.cookie = "jfl-dashboard-" + port
 	if !e.actor.Agent() {
@@ -144,6 +145,9 @@ func (d *dashboard) handler() http.Handler {
 	})
 	mux.HandleFunc("GET /timeline", func(w http.ResponseWriter, r *http.Request) {
 		d.render(w, http.StatusOK, "timeline", "", d.e.timelineView)
+	})
+	mux.HandleFunc("GET /git", func(w http.ResponseWriter, r *http.Request) {
+		d.render(w, http.StatusOK, "git", "", d.e.gitView(r))
 	})
 	mux.HandleFunc("GET /playbook", func(w http.ResponseWriter, r *http.Request) {
 		d.render(w, http.StatusOK, "playbook", "", d.e.playbookView)
@@ -249,21 +253,35 @@ func (d *dashboard) render(w http.ResponseWriter, status int, page, path string,
 		}
 		page, data = "problem", problem{chrome: chrome{Page: page, Path: path}, Problem: err.Error()}
 	}
-	writePage(w, status, page, data, since)
+	writePage(w, status, page, data, frame{since, d.inGit()})
 }
 
 // refuse writes the page that says why the request can't be served.
 func (d *dashboard) refuse(w http.ResponseWriter, status int, why error) {
-	writePage(w, status, "problem", problem{Problem: why.Error()}, d.changes.version())
+	writePage(w, status, "problem", problem{Problem: why.Error()}, frame{d.changes.version(), d.inGit()})
+}
+
+// inGit reports whether the project is in a git repository, whose history
+// the Dashboard then shows.
+func (d *dashboard) inGit() bool {
+	_, ok := gitDir(d.e.dir)
+	return ok
+}
+
+// frame is what every page is told around its data: the version of the
+// project it shows, and whether the project is in a git repository.
+type frame struct {
+	since string
+	git   bool
 }
 
 // writePage writes the page, rendered with data, with the status given,
-// saying it shows the project as of the version since.
-func writePage(w http.ResponseWriter, status int, page string, data any, since string) {
+// in the frame f.
+func writePage(w http.ResponseWriter, status int, page string, data any, f frame) {
 	var buf bytes.Buffer
 	t, err := uiPages[page].Clone()
 	if err == nil {
-		err = t.Funcs(template.FuncMap{"since": func() string { return since }}).Execute(&buf, data)
+		err = t.Funcs(template.FuncMap{"since": func() string { return f.since }, "git": func() bool { return f.git }}).Execute(&buf, data)
 	}
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -345,7 +363,7 @@ func (c chrome) Here() string {
 		return c.Path
 	}
 	switch c.Page {
-	case "timeline", "playbook", "workflows", "ledger":
+	case "timeline", "git", "playbook", "workflows", "ledger":
 		return "/" + c.Page
 	}
 	return "/"

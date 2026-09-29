@@ -35,6 +35,8 @@ type artifactPage struct {
 	History                 []historyEntry
 	Agent                   time.Duration // agent session time charged to it
 	AsOf                    time.Time     // when times so far are summed to
+	Git                     bool          // whether the project is in a git repository
+	Commits                 []gitCommit   // those whose subject starts with its id, newest first
 	Body                    template.HTML // rendered from Markdown
 	// Comments are those a tracker keeps apart from the body, rendered,
 	// oldest first; a file keeps its comments in its body.
@@ -164,6 +166,11 @@ func (e *env) artifact(id string) (artifactPage, error) {
 	v.Links = linksFrom(a, byID(all))
 	v.LinkedHere = linksTo(pb, a, all)
 	v.History, v.Agent = history(pb, l, a, v.AsOf)
+	if _, v.Git = gitDir(e.dir); v.Git {
+		if v.Commits, err = commitsOf(e.dir, a.ID); err != nil {
+			return artifactPage{}, err
+		}
+	}
 	if v.Body, err = renderMarkdown(text.Body); err != nil {
 		return artifactPage{}, err
 	}

@@ -1,0 +1,18 @@
+{{define "title"}}Git{{end}}
+{{define "content"}}
+<h1>Git</h1>
+{{if not .Repo}}
+<p class="panel empty">This project isn't in a git repository, so there is no history to show.</p>
+{{else}}
+<p class="muted small">The commits of {{with .Branch}}the branch <strong>{{.}}</strong>{{else}}the detached HEAD{{end}}, newest first. A commit whose subject starts with an Artifact's id and a colon, as accepting a Task names it, links to that Artifact's page.</p>
+<section class="panel" id="commits">
+  <h2>Commits</h2>
+  {{if .Commits}}{{template "commits" .Commits}}
+  {{else if eq .N 1}}<p class="empty">No commit yet.</p>
+  {{else}}<p class="empty">No commit on page {{.N}}.</p>{{end}}
+  {{if or .Newer .Older}}
+  <p class="pager">{{with .Newer}}<a href="{{.}}">← Newer</a>{{end}} <span class="muted small">page {{.N}}</span> {{with .Older}}<a href="{{.}}">Older →</a>{{end}}</p>
+  {{end}}
+</section>
+{{end}}
+{{end}}
