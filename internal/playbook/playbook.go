@@ -263,12 +263,14 @@ type commandFile struct {
 // Base Playbook when it extends one. Artifact Types are declared in the
 // lexical order of their file names, a Base Playbook's first.
 func Load(root string) (*engine.Playbook, error) {
-	return load(root, os.DirFS(filepath.Join(root, Dir)))
+	return load(root, os.DirFS(filepath.Join(root, Dir)), true)
 }
 
 // load reads the Playbook whose own files are in fsys, laid out as Dir is,
-// for the project rooted at root, where its Base Playbook is resolved.
-func load(root string, fsys fs.FS) (*engine.Playbook, error) {
+// for the project rooted at root, where its Base Playbook is resolved. With
+// pin, a git Base Playbook resolved to a new commit is pinned to it in the
+// lockfile; without, the lockfile is only read.
+func load(root string, fsys fs.FS, pin bool) (*engine.Playbook, error) {
 	own, err := readLayer(fsys, Dir)
 	if errors.Is(err, os.ErrNotExist) {
 		return nil, fmt.Errorf("no Playbook found: %s is missing", path.Join(Dir, "playbook.yaml"))
@@ -278,15 +280,19 @@ func load(root string, fsys fs.FS) (*engine.Playbook, error) {
 	}
 	l := own
 	var base *layer
+	var from *engine.Base
 	if own.extends != nil {
-		base, err = resolveBase(root, own.extends)
+		var commit string
+		base, commit, err = resolveBase(root, own.extends, pin)
 		if err != nil {
 			return nil, fmt.Errorf("%s: %w", path.Join(Dir, "playbook.yaml"), err)
 		}
 		l = merge(base, own)
+		r := own.extends
+		from = &engine.Base{Builtin: r.Builtin, Path: r.Path, Git: r.Git, Ref: r.Ref, Commit: commit}
 	}
 	giveGatesCommands(l.types, l.gates)
-	pb := &engine.Playbook{Name: own.name, Types: l.types, Skills: l.skills, Personas: l.personas, Guidelines: l.guidelines, Connectors: l.connectors, Gates: l.gates, Mockups: l.mockups, Origins: origins(base, own)}
+	pb := &engine.Playbook{Name: own.name, Types: l.types, Skills: l.skills, Personas: l.personas, Guidelines: l.guidelines, Connectors: l.connectors, Gates: l.gates, Mockups: l.mockups, Base: from, Origins: origins(base, own)}
 	problems := builtinTypeProblems(pb, l.typeFiles)
 	problems = append(problems, mockupsProblems(pb)...)
 	pb.Types = append(pb.Types, engine.PersonaArtifactType())

@@ -33,7 +33,8 @@ type Proposal struct {
 // Playbook file gives them, so that they run the Base Playbook's (ADR
 // 0030), setting the Mockup folder to Mockups, or, with Remove, removing
 // the folder Mockups the project's Playbook file gives, so that the Base
-// Playbook's is the folder again, changing the values of the Connector
+// Playbook's is the folder again, moving the git Base Playbook to the ref
+// BaseRef, which approving it pins, changing the values of the Connector
 // named Connector, or, with Remove, removing the project's declaration of
 // it, adding the Guideline named Guideline, whose Markdown is Text,
 // declaring the Artifact Type named Type, whose YAML file is Text, or writing
@@ -59,6 +60,7 @@ type ProposalItem struct {
 	Cmd     string
 	Remove  bool // removes the value the item names from the project's Playbook file
 	Mockups string
+	BaseRef string
 	// Connector names the Connector whose values in the Playbook file the
 	// item changes: Command, Args, Marker, Settings and each Type's
 	// settings, those it gives and no others; or, with Remove, the
@@ -115,7 +117,7 @@ func (p Proposal) ProposedBy() string {
 // ChangesPlaybook reports whether the item changes the Playbook rather
 // than an Artifact.
 func (it ProposalItem) ChangesPlaybook() bool {
-	return it.Gate != "" || it.Mockups != "" || it.Connector != "" || it.Guideline != "" || it.Type != "" || it.Skill != ""
+	return it.Gate != "" || it.Mockups != "" || it.BaseRef != "" || it.Connector != "" || it.Guideline != "" || it.Type != "" || it.Skill != ""
 }
 
 // FileValue names the value of the Playbook file the item changes, as the
@@ -129,6 +131,8 @@ func (it ProposalItem) FileValue() string {
 		return "gates." + it.Gate
 	case it.Mockups != "":
 		return "mockups"
+	case it.BaseRef != "":
+		return "extends.ref"
 	case it.Connector != "":
 		return "connectors." + it.Connector
 	}
@@ -159,6 +163,11 @@ func (pb *Playbook) Now(it ProposalItem) (string, bool) {
 		return "", true
 	case it.Mockups != "":
 		return pb.Mockups, true
+	case it.BaseRef != "":
+		if pb.Base == nil {
+			return "", true
+		}
+		return pb.Base.Ref, true
 	case it.Connector != "":
 		c := pb.Connectors[it.Connector]
 		if c == nil {
@@ -225,6 +234,8 @@ func (it ProposalItem) String() string {
 		return "remove the project's Mockup folder " + it.Mockups
 	case it.Mockups != "":
 		return "set the Mockup folder to " + it.Mockups
+	case it.BaseRef != "":
+		return "move the git Base Playbook to ref " + it.BaseRef
 	case it.Connector != "" && it.Remove:
 		return fmt.Sprintf("remove the project's declaration of Connector %q", it.Connector)
 	case it.Connector != "":
@@ -364,7 +375,7 @@ func Approve(pb *Playbook, p Proposal, all []Artifact) ([]Change, error) {
 			return nil, fmt.Errorf("item %d (%s): %w", i+1, it, err)
 		}
 		kinds := 0
-		for _, is := range []bool{it.Create != "", it.Move != "" || it.To != "", it.Gate != "" || it.Cmd != "", it.Mockups != "", it.Connector != "" || it.changesConnector(), it.Guideline != "", it.Type != "", it.Skill != ""} {
+		for _, is := range []bool{it.Create != "", it.Move != "" || it.To != "", it.Gate != "" || it.Cmd != "", it.Mockups != "", it.BaseRef != "", it.Connector != "" || it.changesConnector(), it.Guideline != "", it.Type != "", it.Skill != ""} {
 			if is {
 				kinds++
 			}
@@ -386,6 +397,8 @@ func Approve(pb *Playbook, p Proposal, all []Artifact) ([]Change, error) {
 			// Its values are checked with the Playbook they make.
 		case it.Mockups != "":
 			// The folder's place is checked with the Playbook it makes.
+		case it.BaseRef != "":
+			// The ref is resolved with the Playbook it makes.
 		case it.Remove:
 			if it.Cmd != "" {
 				return fail(errors.New("removing a Gate's command from the Playbook file takes no cmd"))
@@ -462,7 +475,7 @@ func (it ProposalItem) changesConnector() bool {
 }
 
 // itemKinds says what a Proposal item may be.
-const itemKinds = "an item either creates (create, title, and optionally status, fields and links), moves (move, to), gives a Gate its command (gate, cmd) or removes the one the project's Playbook file gives it (gate, remove: true), sets the Mockup folder (mockups) or removes the one the project's Playbook file gives (mockups, remove: true), changes a Connector (connector, and any of command, args, marker, settings and types) or removes the project's declaration of it (connector, remove: true), adds a Guideline (guideline, text), declares an Artifact Type (type, text) or writes a Skill (skill, text)"
+const itemKinds = "an item either creates (create, title, and optionally status, fields and links), moves (move, to), gives a Gate its command (gate, cmd) or removes the one the project's Playbook file gives it (gate, remove: true), sets the Mockup folder (mockups) or removes the one the project's Playbook file gives (mockups, remove: true), moves a git Base Playbook to another ref (base_ref), changes a Connector (connector, and any of command, args, marker, settings and types) or removes the project's declaration of it (connector, remove: true), adds a Guideline (guideline, text), declares an Artifact Type (type, text) or writes a Skill (skill, text)"
 
 // touched returns, for every Artifact an item of a pending Proposal moves, the
 // id of that Proposal. Creations touch nothing yet: their Artifacts don't

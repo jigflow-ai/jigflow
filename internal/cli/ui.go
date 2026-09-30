@@ -177,6 +177,7 @@ func (d *dashboard) handler() http.Handler {
 	mux.HandleFunc("POST /artifacts/{id}/comment", d.act(comment, d.showArtifact))
 	mux.HandleFunc("POST /playbook/gates/{name}", d.act(giveGateCommand, d.showPlaybook))
 	mux.HandleFunc("POST /playbook/gates/{name}/base", d.act(gateBackToBase, d.showPlaybook))
+	mux.HandleFunc("POST /playbook/base", d.act(moveBaseRef, d.showPlaybook))
 	mux.HandleFunc("POST /playbook/mockups", d.act(setMockupFolder, d.showPlaybook))
 	mux.HandleFunc("POST /playbook/mockups/base", d.act(mockupsBackToBase, d.showPlaybook))
 	mux.HandleFunc("POST /playbook/connectors/{name}", d.act(changeConnector, d.showPlaybook))

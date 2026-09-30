@@ -29,9 +29,20 @@ type Playbook struct {
 	// relative to the project's root, as a slash-separated path; empty
 	// when it declares none.
 	Mockups string
+	// Base is the Base Playbook the Playbook file extends, or nil when it
+	// extends none.
+	Base *Base
 	// Origins says where each part of the Playbook comes from, as the
 	// Dashboard shows it.
 	Origins Origins
+}
+
+// Base is where a Playbook's single Base Playbook comes from, as its
+// Playbook file names it: one of a Playbook built into jfl, a directory at
+// a local path, or a git repository at a ref, pinned to the commit Commit.
+type Base struct {
+	Builtin, Path, Git, Ref string
+	Commit                  string
 }
 
 // Origins says where each part of a Playbook comes from, by the part's

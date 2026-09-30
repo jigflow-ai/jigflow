@@ -55,6 +55,7 @@ type itemFile struct {
 	Cmd     string `yaml:"cmd,omitempty"`
 	Remove  bool   `yaml:"remove,omitempty"`
 	Mockups string `yaml:"mockups,omitempty"`
+	BaseRef string `yaml:"base_ref,omitempty"`
 
 	Connector      string                          `yaml:"connector,omitempty"`
 	Command        string                          `yaml:"command,omitempty"`
@@ -85,6 +86,7 @@ type itemFile struct {
 //	  - {gate: lint, remove: true}
 //	  - {mockups: docs/mockups}
 //	  - {mockups: design/screens, remove: true}
+//	  - {base_ref: v2}
 //	  - {connector: github, command: jfl-connector-github, args: [--verbose], marker: "_Drafted by an agent._"}
 //	  - {connector: github, settings: {repo: acme/web, create_labels: true, assignee: null}}
 //	  - {connector: github, types: {Ticket: {settings: {label: ticket}}}}
@@ -99,6 +101,8 @@ type itemFile struct {
 // whole of a Connector's declaration. An item changing a Connector sets the
 // values it gives, keeping the others, the project's declaration first
 // copied whole from the Base Playbook's; a setting given null is removed.
+// An item with base_ref moves a git Base Playbook to that ref, which
+// approving it pins in playbook.lock.
 func ParseProposal(data []byte) (summary string, items []engine.ProposalItem, err error) {
 	var in struct {
 		Summary string     `yaml:"summary"`

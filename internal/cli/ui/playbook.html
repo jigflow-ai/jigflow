@@ -5,6 +5,27 @@
 <p class="muted small">What the project's Playbook is made of, and where each part comes from. Changing a value of the Playbook file here makes a Proposal and approves it as you save; the rest of the Playbook changes through Proposals.</p>
 {{with .Outcome}}{{template "outcome" .}}{{end}}
 {{if not .CanAct}}<p class="muted small note">{{.Cannot}}.</p>{{end}}
+{{with .Base}}
+<section class="panel" id="base">
+  <h2>Base Playbook</h2>
+  <p class="muted small">The single Playbook this one extends, overriding its parts by name. A git one stays pinned, in .jigflow/playbook.lock, to the commit its ref pointed to, until its ref changes. Switching to another Base Playbook is done with playbook-author, jfl check and jfl simulate.</p>
+  <div class="scroll">
+  <table>
+    <tbody>
+    {{if .Git}}
+    <tr><th>git</th><td><code>{{.Git}}</code></td></tr>
+    <tr><th>ref</th><td>{{if $.CanAct}}<form method="post" action="/playbook/base" class="value"><input type="text" name="ref" value="{{.Ref}}" aria-label="the ref of the git Base Playbook" placeholder="a tag, branch or commit"><button type="submit">Save</button></form>{{else}}<code>{{.Ref}}</code>{{end}}{{range .Pending}}<div class="small">pending Proposal <a class="id" href="/#{{.}}">{{.}}</a> changes it too</div>{{end}}</td></tr>
+    <tr><th>commit</th><td class="id">{{.Commit}}</td></tr>
+    {{else if .Builtin}}
+    <tr><th>built into jfl</th><td><code>{{.Builtin}}</code></td></tr>
+    {{else}}
+    <tr><th>local path</th><td><code>{{.Path}}</code></td></tr>
+    {{end}}
+    </tbody>
+  </table>
+  </div>
+</section>
+{{end}}
 <section class="panel" id="types">
   <h2>Artifact Types</h2>
   <div class="scroll">

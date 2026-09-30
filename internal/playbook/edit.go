@@ -18,11 +18,13 @@ import (
 )
 
 // Apply writes the items of an approved Proposal that change the Playbook
-// into the project rooted at root: a Gate's command, the Mockup folder or a
-// Connector's values into the Playbook file, or out of it, which keeps the rest of what it says, a Guideline, an Artifact Type or a
+// into the project rooted at root: a Gate's command, the Mockup folder, a
+// git Base Playbook's ref or a Connector's values into the Playbook file, or out of it, which keeps the rest of what it says, a Guideline, an Artifact Type or a
 // Skill into its own file, overriding the Base Playbook's of the same name.
-// It applies all of them or none: when one can't be, or the Playbook they
-// make fails its checks or verify, it puts every file back as it was.
+// A git Base Playbook's new ref is resolved and its commit pinned in the
+// lockfile. It applies all of them or none: when one can't be, or the
+// Playbook they make fails its checks or verify, it puts every file back as
+// it was, the lockfile too.
 func Apply(root string, items []engine.ProposalItem, verify func(*engine.Playbook) error) (err error) {
 	files, err := changes(root, items)
 	if err != nil {
@@ -45,6 +47,13 @@ func Apply(root string, items []engine.ProposalItem, verify func(*engine.Playboo
 			}
 		}
 	}()
+	// Loading the Playbook the items make pins a git Base Playbook's new
+	// ref in the lockfile, which is put back with the rest.
+	lock, readErr := os.ReadFile(filepath.Join(root, lockPath))
+	if readErr != nil && !errors.Is(readErr, os.ErrNotExist) {
+		return readErr
+	}
+	saved[filepath.Join(root, lockPath)] = lock
 	for _, rel := range slices.Sorted(maps.Keys(files)) {
 		path := filepath.Join(dir, filepath.FromSlash(rel))
 		data, err := os.ReadFile(path)
@@ -101,7 +110,8 @@ func Candidate(root string, items []engine.ProposalItem) (*engine.Playbook, erro
 	for rel, data := range files {
 		fsys[rel] = &fstest.MapFile{Data: data}
 	}
-	return load(root, fsys)
+	// The lockfile stays as it is: the commit is pinned on approval.
+	return load(root, fsys, false)
 }
 
 // changes returns the files, by their path in Dir, that the items write,
@@ -111,7 +121,7 @@ func changes(root string, items []engine.ProposalItem) (map[string][]byte, error
 	files := map[string][]byte{}
 	for _, it := range items {
 		switch {
-		case it.Gate != "" || it.Mockups != "" || it.Connector != "":
+		case it.Gate != "" || it.Mockups != "" || it.BaseRef != "" || it.Connector != "":
 			data, ok := files["playbook.yaml"]
 			if !ok {
 				var err error
@@ -179,6 +189,14 @@ func setValue(f *File, it engine.ProposalItem) error {
 		}
 	case it.Connector != "":
 		return setConnector(f, it)
+	case it.BaseRef != "":
+		// Only the ref of a git Base Playbook changes here: switching to
+		// another Base Playbook stays with playbook-author, jfl check and
+		// jfl simulate (ADR 0030).
+		if !f.Has("extends", "git") {
+			return fmt.Errorf("%s extends no git Base Playbook, whose ref alone a Proposal changes; switching to another Base Playbook is done by editing extends, checked with jfl check and jfl simulate", file)
+		}
+		return f.Set(it.BaseRef, "extends", "ref")
 	case it.Remove:
 		// It names the folder it removes, so that it removes no other.
 		var own string

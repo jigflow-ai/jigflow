@@ -295,9 +295,10 @@ func (e *env) approve(id string, edit func(pb *engine.Playbook, p *engine.Propos
 		}
 	}
 	// A Mockup folder that holds a Mockup now, as it may not when the
-	// Proposal was made, is refused before the person is asked.
+	// Proposal was made, and a git Base Playbook's ref that can't be
+	// fetched now, are refused before the person is asked.
 	changesPlaybook := playbookItems(p.Items)
-	if slices.ContainsFunc(changesPlaybook, func(it engine.ProposalItem) bool { return it.Mockups != "" }) {
+	if slices.ContainsFunc(changesPlaybook, func(it engine.ProposalItem) bool { return it.Mockups != "" || it.BaseRef != "" }) {
 		next, err := e.candidate(changesPlaybook)
 		if err != nil {
 			return notApplied(err)

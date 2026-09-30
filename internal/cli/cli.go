@@ -198,7 +198,9 @@ Commands:
                           Gate its command or removing the one the project's
                           Playbook file gives it, setting the Mockup folder
                           or removing the project's, which is refused while
-                          the folder holds a Mockup, changing a Connector's
+                          the folder holds a Mockup, moving a git Base
+                          Playbook to another ref, whose commit approving
+                          it pins in playbook.lock, changing a Connector's
                           command, args, marker, settings or an Artifact
                           Type's settings, copying the Base Playbook's
                           declaration of it first, or removing the
@@ -235,9 +237,10 @@ Commands:
                           it leaves in an undeclared Status; every other
                           command refuses to run while there are any.
                           --proposal validates it as that pending Proposal
-                          would make it, writing nothing. It says where the
-                          Playbook keeps Mockups, when it declares a folder
-                          for them. It warns, still succeeding, about each
+                          would make it, writing nothing, and says the
+                          commit a git Base Playbook's ref resolves to. It
+                          says where the Playbook keeps Mockups, when it
+                          declares a folder for them. It warns, still succeeding, about each
                           Claude Code Elicitation or ElicitationResult hook
                           in .claude/settings.json,
                           .claude/settings.local.json or the user's
@@ -352,7 +355,8 @@ Commands:
                           page, as jfl comment run by them, and give a Gate
                           its command, or its Base Playbook's back, and set
                           the Mockup folder, or its Base Playbook's back,
-                          unless it holds a Mockup, and change a
+                          unless it holds a Mockup, move a git Base
+                          Playbook to another ref, and change a
                           Connector's command, args, marker and settings,
                           or take it back to its Base Playbook's, on the
                           Playbook page, as a Proposal of theirs approved
@@ -403,6 +407,9 @@ func cmdCheck(e *env, args []string) error {
 		fmt.Fprintf(e.stdout, "Playbook %q, as %s would make it: no problems\n", pb.Name, *proposal)
 		if pb.Mockups != "" {
 			fmt.Fprintf(e.stdout, "Mockups in %s\n", pb.Mockups)
+		}
+		if b := pb.Base; b != nil && b.Git != "" {
+			fmt.Fprintf(e.stdout, "Base Playbook %s@%s, commit %s\n", b.Git, b.Ref, b.Commit)
 		}
 		e.warnFormHooks()
 		return nil

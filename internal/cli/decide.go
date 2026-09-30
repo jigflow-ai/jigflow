@@ -139,6 +139,16 @@ func stopPublishingFor(c *env, r *http.Request) error {
 	return cmdPublish(c, []string{"--remove", r.PathValue("name")})
 }
 
+// moveBaseRef moves the git Base Playbook to the ref the person posted, in
+// the project's Playbook file, pinning the commit it points to.
+func moveBaseRef(c *env, r *http.Request) error {
+	ref := strings.TrimSpace(r.PostForm.Get("ref"))
+	if ref == "" {
+		return errors.New("not proposed: the git Base Playbook needs a ref: a tag, branch or commit")
+	}
+	return c.changePlaybook(engine.ProposalItem{BaseRef: ref})
+}
+
 // setMockupFolder makes the folder the person posted the Mockup folder, in
 // the project's Playbook file.
 func setMockupFolder(c *env, r *http.Request) error {

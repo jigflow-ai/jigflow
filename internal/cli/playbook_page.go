@@ -24,9 +24,10 @@ import (
 // they confirm as they make it (ADR 0030); to anyone else it is read-only.
 type playbookPage struct {
 	chrome
-	Outcome    *outcome // what the person's last change did, if they just made one
-	CanAct     bool     // whether the person viewing it may change the Playbook file here
-	Cannot     string   // why not, when they may not
+	Outcome    *outcome  // what the person's last change did, if they just made one
+	CanAct     bool      // whether the person viewing it may change the Playbook file here
+	Cannot     string    // why not, when they may not
+	Base       *basePart // the Base Playbook, when the Playbook file extends one
 	Types      []typePart
 	Bindings   []bindingPart
 	Skills     []skillPart
@@ -163,6 +164,17 @@ type mockupsPart struct {
 	Pending []string
 }
 
+// basePart is the Base Playbook the Playbook file extends, as the Playbook
+// page shows it: only a git one's ref changes there, switching to another
+// Base Playbook staying with playbook-author, jfl check and jfl simulate
+// (ADR 0030).
+type basePart struct {
+	engine.Base
+	// Pending are the pending Proposals that change its ref too, which
+	// the person's own change doesn't wait for (ADR 0030).
+	Pending []string
+}
+
 // namedPart is a part of the Playbook known by its name alone, such as a
 // Guideline.
 type namedPart struct {
@@ -277,6 +289,9 @@ func (e *env) playbookPage() (playbookPage, error) {
 				})
 			}
 		}
+	}
+	if pb.Base != nil {
+		v.Base = &basePart{Base: *pb.Base, Pending: changing[engine.ProposalItem{BaseRef: pb.Base.Ref}.FileValue()]}
 	}
 	if pb.Mockups != "" {
 		o := pb.Origins.Mockups

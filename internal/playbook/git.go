@@ -31,23 +31,25 @@ const lockHeader = `# Written by jfl: the commit the git Base Playbook is pinned
 # change the ref in playbook.yaml to move to another one.
 `
 
-// gitBase reads the git Base Playbook ref names. The first time, and
-// whenever its URL or ref changes in the Playbook file, it resolves the ref
-// to a commit and records it in the lockfile; otherwise it reads the commit
-// the lockfile records, so a changed upstream is never picked up silently.
-func gitBase(root string, ref *baseRef) (*layer, error) {
+// gitBase reads the git Base Playbook ref names, and the commit it is
+// pinned to. The first time, and whenever its URL or ref changes in the
+// Playbook file, it resolves the ref to a commit and, with pin, records it
+// in the lockfile; otherwise it reads the commit the lockfile records, so a
+// changed upstream is never picked up silently. Without pin, as when a
+// Playbook a Proposal would make is checked, the lockfile is left as it is.
+func gitBase(root string, ref *baseRef, pin bool) (*layer, string, error) {
 	if _, err := exec.LookPath("git"); err != nil {
-		return nil, fmt.Errorf("a git Base Playbook needs git installed: %w", err)
+		return nil, "", fmt.Errorf("a git Base Playbook needs git installed: %w", err)
 	}
 	var lk lockFile
 	data, err := os.ReadFile(filepath.Join(root, lockPath))
 	switch {
 	case err == nil:
 		if err := decodeYAML(data, lockPath, &lk); err != nil {
-			return nil, err
+			return nil, "", err
 		}
 	case !errors.Is(err, os.ErrNotExist):
-		return nil, err
+		return nil, "", err
 	}
 	want := lk.Commit
 	if lk.Git != ref.Git || lk.Ref != ref.Ref {
@@ -55,18 +57,19 @@ func gitBase(root string, ref *baseRef) (*layer, error) {
 	}
 	dir, commit, err := checkout(root, ref, want)
 	if err != nil {
-		return nil, fmt.Errorf("Base Playbook %s@%s: %w", ref.Git, ref.Ref, err)
+		return nil, "", fmt.Errorf("Base Playbook %s@%s: %w", ref.Git, ref.Ref, err)
 	}
-	if commit != lk.Commit || lk.Git != ref.Git || lk.Ref != ref.Ref {
+	if pin && (commit != lk.Commit || lk.Git != ref.Git || lk.Ref != ref.Ref) {
 		out, err := yaml.Marshal(lockFile{Git: ref.Git, Ref: ref.Ref, Commit: commit})
 		if err != nil {
-			return nil, err
+			return nil, "", err
 		}
 		if err := os.WriteFile(filepath.Join(root, lockPath), append([]byte(lockHeader), out...), 0o644); err != nil {
-			return nil, err
+			return nil, "", err
 		}
 	}
-	return readBase(os.DirFS(dir), ref.Git+"@"+ref.Ref)
+	l, err := readBase(os.DirFS(dir), ref.Git+"@"+ref.Ref)
+	return l, commit, err
 }
 
 // checkout returns the directory holding the git Base Playbook at commit,

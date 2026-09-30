@@ -64,19 +64,23 @@ func parseBaseRef(n *yaml.Node) (*baseRef, error) {
 //go:embed builtin
 var builtin embed.FS
 
-// resolveBase reads the Base Playbook ref names for the project at root.
-func resolveBase(root string, ref *baseRef) (*layer, error) {
+// resolveBase reads the Base Playbook ref names for the project at root,
+// and the commit a git one is pinned to, pinning it there with pin (see
+// gitBase).
+func resolveBase(root string, ref *baseRef, pin bool) (*layer, string, error) {
 	switch {
 	case ref.Builtin != "":
-		return builtinBase(ref.Builtin)
+		l, err := builtinBase(ref.Builtin)
+		return l, "", err
 	case ref.Git != "":
-		return gitBase(root, ref)
+		return gitBase(root, ref, pin)
 	}
 	dir := ref.Path
 	if !filepath.IsAbs(dir) {
 		dir = filepath.Join(root, dir)
 	}
-	return readBase(os.DirFS(dir), ref.Path)
+	l, err := readBase(os.DirFS(dir), ref.Path)
+	return l, "", err
 }
 
 // readBase reads a Base Playbook, labelled for messages as label.
