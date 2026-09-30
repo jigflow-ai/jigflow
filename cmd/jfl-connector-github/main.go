@@ -67,6 +67,14 @@ type (
 		CreateLabels bool   `json:"create_labels"` // create a label the repository lacks, rather than refuse
 		Assignee     string `json:"assignee"`      // who a Claim assigns; the token's user by default
 	}
+	// described is one of the settings, as describe answers it.
+	described struct {
+		Name     string `json:"name"`
+		Kind     string `json:"kind"` // text, yesno or number
+		Required bool   `json:"required,omitempty"`
+		PerType  bool   `json:"per_type,omitempty"` // given per Artifact Type
+		Help     string `json:"help"`
+	}
 	// failure is a protocol error response.
 	failure struct {
 		Kind       string `json:"kind"`
@@ -76,6 +84,15 @@ type (
 )
 
 func (f *failure) Error() string { return f.Message }
+
+// describe is the settings, as describe answers them: it needs no token,
+// so jfl can ask before the Connector is set up (ADR 0031).
+var describe = []described{
+	{Name: "repo", Kind: "text", Required: true, Help: "the repository that keeps the issues, as owner/name"},
+	{Name: "label", Kind: "text", PerType: true, Help: "the label that tells this Artifact Type's issues apart, if any"},
+	{Name: "create_labels", Kind: "yesno", Help: "create a label the repository lacks, rather than refuse"},
+	{Name: "assignee", Kind: "text", Help: "the login a Claim assigns the issue to; the token's user by default"},
+}
 
 func main() {
 	resp, err := serve(os.Stdin)
@@ -104,6 +121,9 @@ func serve(in io.Reader) (any, error) {
 	}
 	if req.Protocol != protocol {
 		return nil, &failure{Kind: "invalid", Message: fmt.Sprintf("this Connector speaks protocol %d, not %d", protocol, req.Protocol)}
+	}
+	if req.Op == "describe" {
+		return map[string]any{"settings": describe}, nil
 	}
 	var s settings
 	if len(req.Settings) > 0 {

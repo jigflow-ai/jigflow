@@ -28,6 +28,8 @@ connectors:
 | `create_labels` | `true` creates a label the repository doesn't have when an issue needs it, with a grey colour you can change in GitHub. By default the Connector refuses the request instead (an `invalid` error naming the label), so a mistyped mapping doesn't fill the repository with labels. |
 | `assignee` | the GitHub login a Claim assigns. By default, the user the token belongs to. |
 
+The Connector [describes](connector-protocol.md#describing-the-settings) these settings without a token or the network, so the Dashboard's Playbook page shows each one, set or not, with `create_labels` as a toggle, and `jfl init` asks for `repo`, the one required.
+
 The token comes from the environment jfl runs in, `GH_TOKEN` or else `GITHUB_TOKEN`, never from the Playbook file. It needs read and write access to the repository's issues (for a fine-grained token, the *Issues* permission). With the GitHub CLI signed in, `GH_TOKEN=$(gh auth token) jfl …` works. For a GitHub Enterprise Server, set `GITHUB_API_URL` to its REST API, e.g. `https://github.example.com/api/v3`; it is `https://api.github.com` otherwise.
 
 ## How Artifacts map to issues

@@ -49,7 +49,7 @@ connectors:
 
 `jfl check` reports a Store that names no Connector, a Connector with no command, and settings that map an Artifact Type the Connector doesn't keep, a Status or field value that Type doesn't declare, or a Status or value mapped to no label or state.
 
-A person changes a Connector's `command`, `args`, `marker` and `settings`, and each Artifact Type's `settings`, `statuses` and `fields`, from the Dashboard's Playbook page, and an agent proposes them with a `{connector: <name>, …}` Proposal item (ADR 0030); either is checked like the rest of the Playbook before it is written. The project's declaration of a Connector replaces the Base Playbook's whole, so the first change to a Connector only the Base declares copies the Base's declaration into the project's Playbook file, as `jfl init` does; "Back to the Base's", `{connector: <name>, remove: true}`, removes the project's declaration. A change may re-point the Connector's Store, as another repository, team or label does: jfl lists the Store as the Playbook is and as the change would make it, and says which Artifacts will no longer be seen before the person confirms it, so a Connector need do nothing for it; a Store that can't be listed is a tracker problem.
+A person changes a Connector's `command`, `args`, `marker` and `settings`, and each Artifact Type's `settings`, `statuses` and `fields`, from the Dashboard's Playbook page, which shows every setting a Connector [describes](#describing-the-settings), and an agent proposes them with a `{connector: <name>, …}` Proposal item (ADR 0030); either is checked like the rest of the Playbook before it is written. The project's declaration of a Connector replaces the Base Playbook's whole, so the first change to a Connector only the Base declares copies the Base's declaration into the project's Playbook file, as `jfl init` does; "Back to the Base's", `{connector: <name>, remove: true}`, removes the project's declaration. A change may re-point the Connector's Store, as another repository, team or label does: jfl lists the Store as the Playbook is and as the change would make it, and says which Artifacts will no longer be seen before the person confirms it, so a Connector need do nothing for it; a Store that can't be listed is a tracker problem.
 
 A change may remap a Status or a field value to another label or state, `{connector: github, types: {Ticket: {statuses: {in-progress: doing}}}}`; a mapping given `null` goes back to a label of its own name. Since an item matching no Status reads as its Type's first initial Status (see [Reading an item back](#reading-an-item-back)), the tracker's Artifacts follow: before the person confirms it, jfl lists the Store and says, per remapped value, how many Artifacts read as it and carry the old label or state, and which. Approving writes the Playbook file, then relabels each of them with a `status` request, `from` the old label or state `to` the new, so each reads back as before; a Connector needs nothing more for it. A tracker has no transaction, so when a relabel fails, jfl sends the reverse `status` request for each Artifact it already relabelled, puts the Playbook file back, and reports a tracker problem.
 
@@ -73,7 +73,7 @@ Every request carries:
 | field | |
 |---|---|
 | `protocol` | `1`, the protocol version |
-| `op` | the operation: `list`, `get`, `create`, `status`, `claim` or `comment` |
+| `op` | the operation: `list`, `get`, `create`, `status`, `claim` or `comment`, or `describe`, which carries no `type` or `settings` (see [Describing the settings](#describing-the-settings)) |
 | `type` | the Artifact Type the request is about, e.g. `"Ticket"` |
 | `settings` | the Connector's settings, with the Type's merged over them |
 
@@ -123,6 +123,36 @@ Examples:
  "item": {"title": "Reset endpoint", "labels": ["ready-for-agent"], "body": "_Written by an AI agent through JigFlow._",
           "links": {"blocked_by": [{"id": "41"}]}}}
 ```
+
+### Describing the settings
+
+`describe` is optional. jfl sends it to learn which settings a Connector has, so that the Dashboard's Playbook page shows every one of them, set or not, and `jfl init` asks for the required ones (ADR 0031). It asks for no Store, so the request is only:
+
+```json
+{"protocol": 1, "op": "describe"}
+```
+
+with no `type` and no `settings`, and the Connector answers it without a token or the network, since jfl may ask before the Connector is set up:
+
+```json
+{"settings": [
+  {"name": "repo", "kind": "text", "required": true, "help": "the repository that keeps the issues, as owner/name"},
+  {"name": "label", "kind": "text", "per_type": true, "help": "the label that tells this Artifact Type's issues apart, if any"},
+  {"name": "create_labels", "kind": "yesno", "help": "create a label the repository lacks, rather than refuse"}
+]}
+```
+
+| field | |
+|---|---|
+| `name` | the setting's name, as the Playbook file gives it |
+| `kind` | `text`, `yesno` or `number`; any other is taken as `text` |
+| `required` | whether the Connector can't work without it; `false` if left out |
+| `per_type` | whether it is given per Artifact Type, under `types: {<Type>: {settings}}`, rather than for the Connector; `false` if left out |
+| `help` | a line saying what it is |
+
+The Playbook page draws a field for each setting, in the order given, a `yesno` one as a toggle, with its kind, help, and whether it is required and per Artifact Type, and refuses a change that leaves a required one empty. `jfl init` asks for each required one the Playbook file doesn't give, which `--setting` answers too, and writes a `yesno` answer as `true` or `false` and a `number` one as a number.
+
+A Connector that doesn't know `describe` answers it as it answers any unknown operation, with an error such as `{"error": {"kind": "invalid", "message": "unknown op \"describe\""}}`. jfl then knows only the settings the Playbook file gives: the page shows those, a `true` or `false` one as a toggle, plus a free row to add any other, and `jfl init` asks only for those the Playbook leaves empty. jfl does the same for a Connector that can't be run. The protocol stays at version 1.
 
 ### Reading an item back
 

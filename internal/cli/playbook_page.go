@@ -115,25 +115,41 @@ func (f mappingField) posted(form url.Values) (any, bool) {
 }
 
 // settingField is a Connector's setting as the Playbook page's form draws
-// it, and reads it back: a toggle for a true or false value, a text field
-// for any other. It is drawn from the value the Playbook file gives it,
-// until Connectors describe their settings (ADR 0031).
+// it, and reads it back: a toggle for a yes/no setting, a text field for
+// any other. A setting the Connector describes is drawn as it says, with
+// its help, set or not (ADR 0031); any other is drawn from the value the
+// Playbook file gives it, a toggle when that is true or false.
 type settingField struct {
 	Name  string
 	Field string // the name of the form's field
 	Value string // what a text field holds
 	// Toggle is whether it is a toggle, On whether the toggle is on.
 	Toggle, On bool
-	now        any
+	// Described is whether the Connector describes it, with its Kind
+	// (text, yes/no or number), Help, and whether it is Required and given
+	// per Artifact Type.
+	Described         bool
+	Kind, Help        string
+	Required, PerType bool
+	now               any
 }
 
-// newSettingField draws the setting name, whose value is now, as the field
-// named prefix + "setting." + name.
-func newSettingField(prefix, name string, now any) settingField {
+// newSettingField draws the setting name, whose value is now, and which
+// the Connector describes as d, if it does, as the field named prefix +
+// "setting." + name.
+func newSettingField(prefix, name string, now any, d *store.Setting) settingField {
 	f := settingField{Name: name, Field: prefix + "setting." + name, now: now}
-	if on, ok := now.(bool); ok {
+	if d != nil {
+		f.Described, f.Kind, f.Help, f.Required, f.PerType = true, d.Kind, d.Help, d.Required, d.PerType
+		if d.Kind == store.SettingYesNo {
+			f.Kind = "yes/no"
+		}
+	}
+	on, isBool := now.(bool)
+	switch {
+	case f.Kind == "yes/no", d == nil && isBool:
 		f.Toggle, f.On = true, on
-	} else if now != nil {
+	case now != nil:
 		f.Value = fmt.Sprint(now)
 	}
 	return f
@@ -141,7 +157,8 @@ func newSettingField(prefix, name string, now any) settingField {
 
 // posted reads the setting back from the form the person posted: its new
 // value, nil to remove it, and whether they changed it. An emptied text
-// field removes the setting; a number stays a number while it reads as one.
+// field removes the setting; a number stays a number while it reads as one,
+// as does a setting the Connector describes as a number.
 func (f settingField) posted(form url.Values) (any, bool) {
 	if f.Toggle {
 		on := form.Has(f.Field)
@@ -167,15 +184,37 @@ func (f settingField) posted(form url.Values) (any, bool) {
 			return n, true
 		}
 	}
+	if f.Kind == store.SettingNumber {
+		if n, err := strconv.Atoi(text); err == nil {
+			return n, true
+		}
+		if n, err := strconv.ParseFloat(text, 64); err == nil {
+			return n, true
+		}
+	}
 	return text, true
 }
 
-// settingFields draws each of settings, in the order of their names, as a
-// field whose name starts with prefix.
-func settingFields(prefix string, settings map[string]any) []settingField {
+// settingFields draws, as fields whose names start with prefix, each
+// setting the Connector describes, in the order it describes them, that is
+// given per Artifact Type when perType is, then each other one of settings,
+// in the order of their names.
+func settingFields(prefix string, settings map[string]any, described []store.Setting, perType bool) []settingField {
 	var fields []settingField
+	for _, d := range described {
+		if d.PerType == perType {
+			fields = append(fields, newSettingField(prefix, d.Name, settings[d.Name], &d))
+		}
+	}
 	for _, name := range slices.Sorted(maps.Keys(settings)) {
-		fields = append(fields, newSettingField(prefix, name, settings[name]))
+		if slices.ContainsFunc(fields, func(f settingField) bool { return f.Name == name }) {
+			continue
+		}
+		var d *store.Setting
+		if i := slices.IndexFunc(described, func(d store.Setting) bool { return d.Name == name }); i >= 0 {
+			d = &described[i]
+		}
+		fields = append(fields, newSettingField(prefix, name, settings[name], d))
 	}
 	return fields
 }
@@ -351,7 +390,8 @@ func (e *env) playbookPage() (playbookPage, error) {
 		}
 	}
 	for _, name := range slices.Sorted(maps.Keys(pb.Connectors)) {
-		v.Connectors = append(v.Connectors, connectorView(pb, pb.Connectors[name], changing))
+		c := pb.Connectors[name]
+		v.Connectors = append(v.Connectors, connectorView(pb, c, store.Describe(e.dir, c), changing))
 	}
 	if v.Personas, err = e.personaParts(pb); err != nil {
 		return playbookPage{}, err
@@ -366,15 +406,15 @@ func (e *env) playbookPage() (playbookPage, error) {
 	return v, nil
 }
 
-// connectorView is the Connector c of pb as the Playbook page shows it;
-// changing names the pending Proposals changing each value of the Playbook
-// file.
-func connectorView(pb *engine.Playbook, c *engine.Connector, changing map[string][]string) connectorPart {
+// connectorView is the Connector c of pb, which describes its settings as
+// described, as the Playbook page shows it; changing names the pending
+// Proposals changing each value of the Playbook file.
+func connectorView(pb *engine.Playbook, c *engine.Connector, described []store.Setting, changing map[string][]string) connectorPart {
 	o := pb.Origins.Connectors[c.Name]
 	v := connectorPart{
 		Name: c.Name, From: from(o),
 		Command: c.Command, Marker: c.Marker, Args: strings.Join(c.Args, "\n"),
-		Settings: settingFields("", c.Settings),
+		Settings: settingFields("", c.Settings, described, false),
 		Base:     o.Project && o.Base != "",
 		Pending:  changing[engine.ProposalItem{Connector: c.Name}.FileValue()],
 	}
@@ -384,7 +424,7 @@ func connectorView(pb *engine.Playbook, c *engine.Connector, changing map[string
 		}
 		prefix := "type." + t.Name + "."
 		m := c.Types[t.Name]
-		v.Types = append(v.Types, connectorTypePart{Name: t.Name, Prefix: prefix, Settings: settingFields(prefix, m.Settings), Mappings: mappingFields(prefix, t, m)})
+		v.Types = append(v.Types, connectorTypePart{Name: t.Name, Prefix: prefix, Settings: settingFields(prefix, m.Settings, described, true), Mappings: mappingFields(prefix, t, m)})
 	}
 	return v
 }

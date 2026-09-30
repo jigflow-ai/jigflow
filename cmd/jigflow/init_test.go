@@ -387,6 +387,78 @@ func TestInitAsksForTheConnectorsSettingsAndLabelsInATerminal(t *testing.T) {
 	}
 }
 
+// describedTrackerBase is trackerBase with the fake Connector describing
+// its settings, which the Base Playbook declares none of but the log: a
+// tracker file, and a project and a yes/no closes per Artifact Type, are
+// required.
+func describedTrackerBase(t *testing.T) *clitest.Project {
+	t.Helper()
+	p := trackerBase(t)
+	p.Write("base/playbook.yaml", strings.Replace(p.Read("base/playbook.yaml"), `    settings: {tracker: "", log: calls.jsonl}`, "    args: [--describe=describe.json]\n    settings: {log: calls.jsonl}", 1))
+	p.Write("describe.json", `{"settings": [
+  {"name": "tracker", "kind": "text", "required": true, "help": "the file that keeps the fake tracker"},
+  {"name": "log", "kind": "text", "help": "the file every request is logged to"},
+  {"name": "verbose", "kind": "yesno", "help": "say more"},
+  {"name": "project", "kind": "text", "required": true, "per_type": true, "help": "the project that keeps this Type's items"},
+  {"name": "closes", "kind": "yesno", "required": true, "per_type": true, "help": "close an item when it is done"}
+]}`)
+	return p
+}
+
+func TestInitAsksForTheRequiredSettingsAConnectorDescribesInATerminal(t *testing.T) {
+	p := describedTrackerBase(t)
+
+	term := p.StartInTerminal("init", "--adapter", "agents-md", "--label", "Ticket.ready-for-agent=ready-for-agent", "--label", "Ticket.in-progress=in-progress", "--label", "Ticket.done=done")
+	term.Expect(`Connector "tracker": tracker (the file that keeps the fake tracker): `)
+	term.Type("tracker.json\n")
+	term.Expect(`Connector "tracker", Ticket: closes (close an item when it is done, yes or no): `)
+	term.Type("yes\n")
+	term.Expect(`Connector "tracker", Ticket: project (the project that keeps this Type's items): `)
+	term.Type("shop\n")
+	r := term.Wait()
+	if r.ExitCode != 0 {
+		t.Fatalf("init exited %d; terminal:\n%s", r.ExitCode, r.Output)
+	}
+	if strings.Contains(r.Output, "verbose") {
+		t.Errorf("init asked for verbose, which isn't required:\n%s", r.Output)
+	}
+	pbFile := p.Read(".jigflow/playbook.yaml")
+	for _, want := range []string{"tracker: tracker.json", "closes: true", "project: shop"} {
+		if !strings.Contains(pbFile, want) {
+			t.Errorf("the Playbook file should say %q:\n%s", want, pbFile)
+		}
+	}
+	p.MustRun("create", "Ticket", "--title", "Reset-token table")
+	if c := calls(t, p, "create"); len(c) != 1 || c[0].Settings["project"] != "shop" || c[0].Settings["closes"] != true {
+		t.Errorf("the Connector should be sent the settings init asked for: %+v", c)
+	}
+}
+
+func TestAnAgentSessionGivesTheRequiredSettingsAConnectorDescribesAsFlags(t *testing.T) {
+	p := describedTrackerBase(t)
+	labels := []string{"--label", "Ticket.ready-for-agent=ready-for-agent", "--label", "Ticket.in-progress=in-progress", "--label", "Ticket.done=done"}
+	before := tree(t, p)
+
+	r := p.RunInSession("A", append([]string{"init", "--adapter", "agents-md"}, labels...)...)
+	if r.ExitCode != 2 || !strings.Contains(r.Stderr, "--setting tracker.tracker=<value> --setting tracker.Ticket.closes=<value> --setting tracker.Ticket.project=<value>") || strings.Contains(r.Stderr, "verbose") {
+		t.Errorf("an agent session's init without the required settings exited %d, want 2 naming each: %s", r.ExitCode, r.Stderr)
+	}
+	if after := tree(t, p); !maps.Equal(after, before) {
+		t.Errorf("a refused init changed the project")
+	}
+
+	r = p.RunInSession("A", append([]string{"init", "--adapter", "agents-md", "--setting", "tracker.tracker=tracker.json", "--setting", "tracker.Ticket.closes=no", "--setting", "tracker.Ticket.project=shop"}, labels...)...)
+	if r.ExitCode != 0 {
+		t.Fatalf("an agent session's init with the required settings exited %d: %s", r.ExitCode, r.Stderr)
+	}
+	pbFile := p.Read(".jigflow/playbook.yaml")
+	for _, want := range []string{"tracker: tracker.json", "closes: false", "project: shop"} {
+		if !strings.Contains(pbFile, want) {
+			t.Errorf("the Playbook file should say %q:\n%s", want, pbFile)
+		}
+	}
+}
+
 func TestAProposalsChangesToThePlaybookApplyAllOrNothing(t *testing.T) {
 	p := gatedPlaybook(t, "      - name: tests\n", "")
 	p.Write("setup.yaml", "summary: check the work\nitems:\n  - {gate: tests, cmd: \"true\"}\n  - {guideline: conventions, text: \"# Conventions\\n\"}\n")

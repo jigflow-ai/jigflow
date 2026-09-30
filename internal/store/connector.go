@@ -528,29 +528,8 @@ func (s *Connector) call(t *engine.ArtifactType, req request) (response, error) 
 		}
 		maps.Copy(req.Settings, ts)
 	}
-	in, err := json.Marshal(req)
-	if err != nil {
-		return response{}, err
-	}
-	command := s.c.Command
-	if !filepath.IsAbs(command) && strings.ContainsAny(command, `/\`) {
-		command = filepath.Join(s.root, command)
-	}
-	cmd := exec.Command(command, s.c.Args...)
-	cmd.Dir = s.root
-	cmd.Stdin = bytes.NewReader(in)
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout, cmd.Stderr = &stdout, &stderr
-	runErr := cmd.Run()
 	var resp response
-	if err := json.Unmarshal(stdout.Bytes(), &resp); err != nil || runErr != nil {
-		why := fmt.Sprintf("its response is not JSON (%v)", err)
-		if runErr != nil {
-			why = runErr.Error()
-		}
-		if msg := strings.TrimSpace(stderr.String()); msg != "" {
-			why += ": " + msg
-		}
+	if why := exchange(s.root, s.c, req, &resp); why != "" {
 		return response{}, s.broken(req.Op, why)
 	}
 	if e := resp.Error; e != nil {
@@ -560,6 +539,80 @@ func (s *Connector) call(t *engine.ArtifactType, req request) (response, error) 
 		return response{}, &ConnectorError{Connector: s.c.Name, Op: req.Op, Kind: e.Kind, Message: e.Message, RetryAfter: e.RetryAfter}
 	}
 	return resp, nil
+}
+
+// exchange runs the Connector c, in the project rooted at root, with the
+// request req, and reads its response into resp. It returns why the
+// Connector broke the protocol, if it did.
+func exchange(root string, c *engine.Connector, req, resp any) (why string) {
+	in, err := json.Marshal(req)
+	if err != nil {
+		return err.Error()
+	}
+	command := c.Command
+	if !filepath.IsAbs(command) && strings.ContainsAny(command, `/\`) {
+		command = filepath.Join(root, command)
+	}
+	cmd := exec.Command(command, c.Args...)
+	cmd.Dir = root
+	cmd.Stdin = bytes.NewReader(in)
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout, cmd.Stderr = &stdout, &stderr
+	runErr := cmd.Run()
+	if err := json.Unmarshal(stdout.Bytes(), resp); err != nil || runErr != nil {
+		why = fmt.Sprintf("its response is not JSON (%v)", err)
+		if runErr != nil {
+			why = runErr.Error()
+		}
+		if msg := strings.TrimSpace(stderr.String()); msg != "" {
+			why += ": " + msg
+		}
+	}
+	return why
+}
+
+// Kinds of setting a Connector describes.
+const (
+	SettingText   = "text"
+	SettingYesNo  = "yesno"
+	SettingNumber = "number"
+)
+
+// Setting is one of a Connector's settings, as the Connector describes it
+// (ADR 0031).
+type Setting struct {
+	Name     string `json:"name"`
+	Kind     string `json:"kind"` // SettingText, SettingYesNo or SettingNumber
+	Required bool   `json:"required"`
+	PerType  bool   `json:"per_type"` // given per Artifact Type
+	Help     string `json:"help"`     // a line saying what it is
+}
+
+// Describe returns the settings the Connector c, in the project rooted at
+// root, describes, in the order it gives them. It asks for no Store and
+// sends no settings, so a Connector answers it before it is set up. A
+// Connector that doesn't describe its settings, answering describe as an
+// unknown operation, or that can't be run, describes none: jfl then knows
+// only the settings the Playbook file gives it.
+func Describe(root string, c *engine.Connector) []Setting {
+	var resp struct {
+		Settings []Setting `json:"settings"`
+		Error    any       `json:"error"`
+	}
+	if why := exchange(root, c, map[string]any{"protocol": Protocol, "op": "describe"}, &resp); why != "" || resp.Error != nil {
+		return nil
+	}
+	var out []Setting
+	for _, s := range resp.Settings {
+		if s.Name == "" {
+			continue
+		}
+		if s.Kind != SettingYesNo && s.Kind != SettingNumber {
+			s.Kind = SettingText
+		}
+		out = append(out, s)
+	}
+	return out
 }
 
 // broken is the error of a Connector that didn't answer op as the protocol

@@ -7,7 +7,6 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"maps"
 	"os"
 	"path/filepath"
 	"slices"
@@ -86,7 +85,7 @@ func cmdInit(e *env, args []string) error {
 	choice := fs.String("playbook", "", "the Playbook to use")
 	adapterName := fs.String("adapter", "", "the Adapter to publish through")
 	settings := pairFlag{flag: "--setting", want: "<connector>.<setting>=<value> or <connector>.<Type>.<setting>=<value>", pairs: map[string]string{}}
-	fs.Var(settings, "setting", "a Connector setting the Playbook leaves empty; repeatable")
+	fs.Var(settings, "setting", "a Connector setting the Playbook leaves empty, or the Connector requires; repeatable")
 	labels := pairFlag{flag: "--label", want: "<Type>.<status>=<label>", pairs: map[string]string{}}
 	fs.Var(labels, "label", "the tracker label of a Type's Status; repeatable")
 	if err := fs.Parse(args); err != nil {
@@ -159,13 +158,14 @@ func cmdInit(e *env, args []string) error {
 
 // setUpConnectors writes into the project's Playbook file what each
 // Connector that keeps an Artifact Type's Artifacts needs and the Playbook
-// leaves to the project: the settings it leaves empty, and the tracker label
-// of every Status it doesn't map (ADR 0011). Each comes from the flags, or
-// else the person at the terminal, who may keep a label the Status's name;
-// without a terminal a label is the Status's name, and a setting stays
-// empty, to give later. In an agent session each must come from the flags
-// (ADR 0026): one missing fails, naming every flag missing, and writes
-// nothing.
+// leaves to the project: the settings it leaves empty, those the Connector
+// describes as required and the Playbook doesn't give (ADR 0031), and the
+// tracker label of every Status it doesn't map (ADR 0011). Each comes from
+// the flags, or else the person at the terminal, who may keep a label the
+// Status's name; without a terminal a label is the Status's name, and a
+// setting stays empty, to give later. In an agent session each must come
+// from the flags (ADR 0026): one missing fails, naming every flag missing,
+// and writes nothing.
 func (e *env) setUpConnectors(in *bufio.Reader, pb *engine.Playbook, settings, labels map[string]string) error {
 	f, err := playbook.OpenFile(e.dir)
 	if err != nil {
@@ -182,7 +182,36 @@ func (e *env) setUpConnectors(in *bufio.Reader, pb *engine.Playbook, settings, l
 		v, err = e.answer(in, given, question, fallback)
 		return v, true, err
 	}
+	// setUp asks for the setting key, named in its flag after where and in
+	// its question after asked, as the Connector describes it in d, if it
+	// does, and writes it at path; it reports as empty a setting still left
+	// empty.
+	setUp := func(where, asked, key string, d *store.Setting, empty string, path ...string) error {
+		question := key
+		if d != nil && d.Help != "" {
+			question += " (" + d.Help
+			if d.Kind == store.SettingYesNo {
+				question += ", yes or no"
+			}
+			question += ")"
+		}
+		flag := fmt.Sprintf("--setting %s.%s=<value>", where, key)
+		v, ok, err := answerOrMiss(settings[where+"."+key], flag, fmt.Sprintf("%s: %s: ", asked, question), "")
+		if err != nil || !ok {
+			return err
+		}
+		if v == "" {
+			fmt.Fprintf(e.stdout, "%s is empty: give it with jfl init --setting %s.%s=<value>\n", empty, where, key)
+			return nil
+		}
+		value, err := settingValue(d, v)
+		if err != nil {
+			return fmt.Errorf("%w: %s: %v", errUsage, flag, err)
+		}
+		return f.Set(value, path...)
+	}
 	var done []string
+	described := map[string][]store.Setting{}
 	for _, t := range pb.Types {
 		c := pb.Connectors[t.Store]
 		if c == nil {
@@ -193,43 +222,16 @@ func (e *env) setUpConnectors(in *bufio.Reader, pb *engine.Playbook, settings, l
 		}
 		if !slices.Contains(done, c.Name) {
 			done = append(done, c.Name)
-			for _, key := range slices.Sorted(maps.Keys(c.Settings)) {
-				if c.Settings[key] != "" {
-					continue
-				}
-				v, ok, err := answerOrMiss(settings[c.Name+"."+key], fmt.Sprintf("--setting %s.%s=<value>", c.Name, key), fmt.Sprintf("Connector %q: %s: ", c.Name, key), "")
-				if err != nil {
-					return err
-				}
-				if !ok {
-					continue
-				}
-				if v == "" {
-					fmt.Fprintf(e.stdout, "Connector %q: setting %s is empty: give it with jfl init --setting %s.%s=<value>\n", c.Name, key, c.Name, key)
-					continue
-				}
-				if err := f.Set(v, "connectors", c.Name, "settings", key); err != nil {
+			described[c.Name] = store.Describe(e.dir, c)
+			for _, key := range toSetUp(c.Settings, nil, described[c.Name], false) {
+				if err := setUp(c.Name, fmt.Sprintf("Connector %q", c.Name), key, describedAs(described[c.Name], key), fmt.Sprintf("Connector %q: setting %s", c.Name, key), "connectors", c.Name, "settings", key); err != nil {
 					return err
 				}
 			}
 		}
 		m := c.Types[t.Name]
-		for _, key := range slices.Sorted(maps.Keys(m.Settings)) {
-			if m.Settings[key] != "" {
-				continue
-			}
-			v, ok, err := answerOrMiss(settings[c.Name+"."+t.Name+"."+key], fmt.Sprintf("--setting %s.%s.%s=<value>", c.Name, t.Name, key), fmt.Sprintf("Connector %q, %s: %s: ", c.Name, t.Name, key), "")
-			if err != nil {
-				return err
-			}
-			if !ok {
-				continue
-			}
-			if v == "" {
-				fmt.Fprintf(e.stdout, "Connector %q: %s's setting %s is empty: give it with jfl init --setting %s.%s.%s=<value>\n", c.Name, t.Name, key, c.Name, t.Name, key)
-				continue
-			}
-			if err := f.Set(v, "connectors", c.Name, "types", t.Name, "settings", key); err != nil {
+		for _, key := range toSetUp(m.Settings, c.Settings, described[c.Name], true) {
+			if err := setUp(c.Name+"."+t.Name, fmt.Sprintf("Connector %q, %s", c.Name, t.Name), key, describedAs(described[c.Name], key), fmt.Sprintf("Connector %q: %s's setting %s", c.Name, t.Name, key), "connectors", c.Name, "types", t.Name, "settings", key); err != nil {
 				return err
 			}
 		}
@@ -260,6 +262,63 @@ func (e *env) setUpConnectors(in *bufio.Reader, pb *engine.Playbook, settings, l
 		}
 	}
 	return f.Save()
+}
+
+// toSetUp returns, in the order of their names, the settings init sets
+// up: those of settings the Playbook leaves empty, and those described as
+// required that neither settings nor, for one given per Artifact Type,
+// the Connector's settings, over, give, those given per Artifact Type
+// when perType is.
+func toSetUp(settings, over map[string]any, described []store.Setting, perType bool) []string {
+	var keys []string
+	for key, v := range settings {
+		if v == "" {
+			keys = append(keys, key)
+		}
+	}
+	given := func(m map[string]any, key string) bool { v, ok := m[key]; return ok && v != "" }
+	for _, d := range described {
+		if d.Required && d.PerType == perType && !given(settings, d.Name) && !given(over, d.Name) && !slices.Contains(keys, d.Name) {
+			keys = append(keys, d.Name)
+		}
+	}
+	slices.Sort(keys)
+	return keys
+}
+
+// describedAs is the setting key as the Connector describes it among
+// described, or nil.
+func describedAs(described []store.Setting, key string) *store.Setting {
+	if i := slices.IndexFunc(described, func(d store.Setting) bool { return d.Name == key }); i >= 0 {
+		return &described[i]
+	}
+	return nil
+}
+
+// settingValue is the answer v to a setting the Connector describes as d,
+// if it does, as the Playbook file writes it: true or false for a yes/no
+// one, a number for a number one, and text for any other.
+func settingValue(d *store.Setting, v string) (any, error) {
+	switch {
+	case d == nil:
+	case d.Kind == store.SettingYesNo:
+		switch strings.ToLower(v) {
+		case "yes", "true":
+			return true, nil
+		case "no", "false":
+			return false, nil
+		}
+		return nil, fmt.Errorf("%s is yes or no, not %q", d.Name, v)
+	case d.Kind == store.SettingNumber:
+		if n, err := strconv.Atoi(v); err == nil {
+			return n, nil
+		}
+		if n, err := strconv.ParseFloat(v, 64); err == nil {
+			return n, nil
+		}
+		return nil, fmt.Errorf("%s is a number, not %q", d.Name, v)
+	}
+	return v, nil
 }
 
 // answer is given, when a flag gave it; or else the person's answer to the

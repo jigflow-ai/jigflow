@@ -132,12 +132,14 @@ Commands:
                           set the project up, asking at the terminal what the
                           flags don't say: the Playbook to use, with no
                           default (Larapilot-style, Pocock, or your own, which
-                          the playbook-author Skill builds with you); the settings a tracker's Connector needs and the
-                          label of each Status it keeps; and the Adapter to
-                          publish through. It proposes, as one Proposal, the
-                          commands of the Gates tests and lint and a starter
-                          Guideline, conventions, from the toolchain it
-                          detects. Running it again keeps what is set up and
+                          the playbook-author Skill builds with you); the
+                          settings a tracker's Connector needs, those the
+                          Playbook leaves empty and those the Connector
+                          describes as required, and the label of each Status
+                          it keeps; and the Adapter to publish through. It
+                          proposes, as one Proposal, the commands of the
+                          Gates tests and lint and a starter Guideline,
+                          conventions, from the toolchain it detects. Running it again keeps what is set up and
                           asks only for what is missing. An agent session may
                           run it too, with every answer as a flag: there it
                           never asks, and an answer missing fails, naming the

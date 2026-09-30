@@ -36,6 +36,8 @@ A Status can be a label instead, or both (`{label: …, state: …}`), as for an
 | `create_labels` | `true` creates a label the team doesn't have when an issue needs it, as a team label. By default the Connector refuses the request instead (an `invalid` error naming the label), so a mistyped mapping doesn't fill the team with labels. A label can be the team's or the workspace's. |
 | `assignee` | the display name of the Linear user a Claim assigns. By default, the user the API key belongs to. |
 
+The Connector [describes](connector-protocol.md#describing-the-settings) these settings without an API key or the network, so the Dashboard's Playbook page shows each one, set or not, with `create_labels` as a toggle, and `jfl init` asks for `team`, the one required.
+
 The API key comes from the environment jfl runs in, `LINEAR_API_KEY`, never from the Playbook file. Create a personal API key in Linear under *Settings → Security & access*; it needs to read and write the team's issues. The key is sent as it is in the `Authorization` header, so an OAuth access token works too, as `LINEAR_API_KEY="Bearer <token>"`. `LINEAR_API_URL` overrides the GraphQL endpoint, `https://api.linear.app/graphql`.
 
 ## How Artifacts map to issues

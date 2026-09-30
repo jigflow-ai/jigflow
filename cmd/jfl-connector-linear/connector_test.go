@@ -40,13 +40,23 @@ func TestMain(m *testing.M) {
 
 // response is the Connector's answer to one request.
 type response struct {
-	Items []item `json:"items"`
-	Item  *item  `json:"item"`
-	Error *struct {
+	Items    []item    `json:"items"`
+	Item     *item     `json:"item"`
+	Settings []setting `json:"settings"`
+	Error    *struct {
 		Kind       string `json:"kind"`
 		Message    string `json:"message"`
 		RetryAfter int    `json:"retry_after"`
 	} `json:"error"`
+}
+
+// setting is one of the Connector's settings, as describe answers it.
+type setting struct {
+	Name     string `json:"name"`
+	Kind     string `json:"kind"`
+	Required bool   `json:"required"`
+	PerType  bool   `json:"per_type"`
+	Help     string `json:"help"`
 }
 
 type item struct {
@@ -110,6 +120,21 @@ func ok(t *testing.T, resp response) response {
 		t.Fatalf("the Connector answered with an error: %+v", *resp.Error)
 	}
 	return resp
+}
+
+func TestDescribeAnswersEachSettingWithoutAnAPIKeyOrTheNetwork(t *testing.T) {
+	// No API key, and a Linear nothing listens on: describe needs neither.
+	resp := ok(t, run(t, map[string]any{"protocol": 1, "op": "describe"}, "LINEAR_API_URL=http://127.0.0.1:1/graphql"))
+	got := fmt.Sprintf("%+v", resp.Settings)
+	want := fmt.Sprintf("%+v", []setting{
+		{Name: "team", Kind: "text", Required: true, Help: "the key of the Linear team that keeps the issues, e.g. ENG"},
+		{Name: "label", Kind: "text", PerType: true, Help: "the label that tells this Artifact Type's issues apart, if any"},
+		{Name: "create_labels", Kind: "yesno", Help: "create a label the team lacks, rather than refuse"},
+		{Name: "assignee", Kind: "text", Help: "the display name of whom a Claim assigns the issue to; the API key's user by default"},
+	})
+	if got != want {
+		t.Errorf("describe = %s\nwant %s", got, want)
+	}
 }
 
 func TestListReturnsTheTeamsIssuesWithTheTypesLabel(t *testing.T) {

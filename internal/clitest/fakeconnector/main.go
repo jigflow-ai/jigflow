@@ -12,6 +12,12 @@
 // problem: "fail" is the error kind to report, and "fail_on", when set, the
 // only operation that fails. "fail" set to "crash" exits non-zero without
 // a response, breaking the protocol.
+//
+// It answers describe as an unknown operation, as a Connector written
+// before it did, unless its args give it a file, relative to the project
+// root, that holds the answer, which it then sends as it is:
+//
+//	args: [--describe=describe.json]
 package main
 
 import (
@@ -21,6 +27,7 @@ import (
 	"os"
 	"slices"
 	"strconv"
+	"strings"
 )
 
 type item struct {
@@ -74,6 +81,19 @@ func main() {
 	var req request
 	if err := json.Unmarshal(raw, &req); err != nil {
 		fail("invalid", err.Error())
+	}
+	if req.Op == "describe" {
+		for _, arg := range os.Args[1:] {
+			if file, ok := strings.CutPrefix(arg, "--describe="); ok {
+				answer, err := os.ReadFile(file)
+				if err != nil {
+					fail("internal", err.Error())
+				}
+				os.Stdout.Write(answer)
+				return
+			}
+		}
+		fail("invalid", "unknown op describe")
 	}
 	if f, err := os.OpenFile(req.setting("log"), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644); err == nil {
 		fmt.Fprintf(f, "%s\n", compact(raw))

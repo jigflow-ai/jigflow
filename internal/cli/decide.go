@@ -207,12 +207,13 @@ func changeConnector(c *env, r *http.Request) error {
 	if marker != now.Marker {
 		it.Marker, changed = marker, true
 	}
-	if it.Settings, err = postedSettings(form, "", now.Settings); err != nil {
+	described := store.Describe(c.dir, now)
+	if it.Settings, err = postedSettings(form, "", now.Settings, described, false); err != nil {
 		return err
 	}
 	for _, t := range form["type"] {
 		prefix := "type." + t + "."
-		settings, err := postedSettings(form, prefix, now.Types[t].Settings)
+		settings, err := postedSettings(form, prefix, now.Types[t].Settings, described, true)
 		if err != nil {
 			return err
 		}
@@ -251,14 +252,58 @@ func changeConnector(c *env, r *http.Request) error {
 	if !changed && it.Settings == nil && it.ConnectorTypes == nil {
 		return fmt.Errorf("not proposed: nothing to change in Connector %q", name)
 	}
+	if err := needSettings(pb, now, it, described); err != nil {
+		return err
+	}
 	return c.changePlaybook(it)
 }
 
+// needSettings refuses the change it to the Connector now of pb when it
+// leaves a setting the Connector describes as required empty: for the
+// Connector, or for an Artifact Type it keeps, which may be given it
+// either per Type or by the Connector's settings (ADR 0031).
+func needSettings(pb *engine.Playbook, now *engine.Connector, it engine.ProposalItem, described []store.Setting) error {
+	after := func(settings, changes map[string]any) map[string]any {
+		out := maps.Clone(settings)
+		if out == nil {
+			out = map[string]any{}
+		}
+		for k, v := range changes {
+			if v == nil {
+				delete(out, k)
+			} else {
+				out[k] = v
+			}
+		}
+		return out
+	}
+	empty := func(v any) bool { return v == nil || v == "" }
+	settings := after(now.Settings, it.Settings)
+	for _, d := range described {
+		if d.Required && !d.PerType && empty(settings[d.Name]) {
+			return fmt.Errorf("not proposed: Connector %q needs setting %s: %s", now.Name, d.Name, d.Help)
+		}
+	}
+	for _, t := range pb.Types {
+		if t.Store != now.Name {
+			continue
+		}
+		merged := after(settings, after(now.Types[t.Name].Settings, it.ConnectorTypes[t.Name].Settings))
+		for _, d := range described {
+			if d.Required && d.PerType && empty(merged[d.Name]) {
+				return fmt.Errorf("not proposed: Connector %q needs %s setting %s: %s", now.Name, t.Name, d.Name, d.Help)
+			}
+		}
+	}
+	return nil
+}
+
 // postedSettings returns the settings, whose fields' names start with
-// prefix, that the person changed from those the Connector has, now, each
-// with its new value, or nil to remove it, and the one they added, if any;
-// nil if they changed none.
-func postedSettings(form url.Values, prefix string, now map[string]any) (map[string]any, error) {
+// prefix, that the person changed from those the Connector has, now, or
+// describes as described, those given per Artifact Type when perType is,
+// each with its new value, or nil to remove it, and the one they added, if
+// any; nil if they changed none.
+func postedSettings(form url.Values, prefix string, now map[string]any, described []store.Setting, perType bool) (map[string]any, error) {
 	var changed map[string]any
 	set := func(name string, v any) {
 		if changed == nil {
@@ -266,7 +311,7 @@ func postedSettings(form url.Values, prefix string, now map[string]any) (map[str
 		}
 		changed[name] = v
 	}
-	for _, f := range settingFields(prefix, now) {
+	for _, f := range settingFields(prefix, now, described, perType) {
 		if v, ok := f.posted(form); ok {
 			set(f.Name, v)
 		}
