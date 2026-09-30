@@ -47,16 +47,23 @@ type term struct {
 }
 
 type request struct {
-	Protocol int               `json:"protocol"`
-	Op       string            `json:"op"`
-	Type     string            `json:"type"`
-	Settings map[string]string `json:"settings"`
-	ID       string            `json:"id"`
-	Item     item              `json:"item"`
-	From     term              `json:"from"`
-	To       term              `json:"to"`
-	Claim    string            `json:"claim"`
-	Body     string            `json:"body"`
+	Protocol int            `json:"protocol"`
+	Op       string         `json:"op"`
+	Type     string         `json:"type"`
+	Settings map[string]any `json:"settings"`
+	ID       string         `json:"id"`
+	Item     item           `json:"item"`
+	From     term           `json:"from"`
+	To       term           `json:"to"`
+	Claim    string         `json:"claim"`
+	Body     string         `json:"body"`
+}
+
+// setting is the text setting name, or empty: a setting may be of any kind,
+// such as yes/no, since jfl sends settings as they are.
+func (r request) setting(name string) string {
+	s, _ := r.Settings[name].(string)
+	return s
 }
 
 func main() {
@@ -68,12 +75,12 @@ func main() {
 	if err := json.Unmarshal(raw, &req); err != nil {
 		fail("invalid", err.Error())
 	}
-	if f, err := os.OpenFile(req.Settings["log"], os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644); err == nil {
+	if f, err := os.OpenFile(req.setting("log"), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644); err == nil {
 		fmt.Fprintf(f, "%s\n", compact(raw))
 		f.Close()
 	}
 	var tr tracker
-	if data, err := os.ReadFile(req.Settings["tracker"]); err == nil {
+	if data, err := os.ReadFile(req.setting("tracker")); err == nil {
 		if err := json.Unmarshal(data, &tr); err != nil {
 			fail("internal", err.Error())
 		}
@@ -128,7 +135,7 @@ func main() {
 	if err != nil {
 		fail("internal", err.Error())
 	}
-	if err := os.WriteFile(req.Settings["tracker"], data, 0o644); err != nil {
+	if err := os.WriteFile(req.setting("tracker"), data, 0o644); err != nil {
 		fail("internal", err.Error())
 	}
 	json.NewEncoder(os.Stdout).Encode(resp)

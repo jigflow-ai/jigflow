@@ -55,7 +55,12 @@ func findForm(fragment, button string) (string, url.Values, bool) {
 			continue
 		}
 		for _, in := range inputs.FindAllStringSubmatch(f[2], -1) {
-			if a := attrs(in[1]); a["name"] != "" {
+			a := attrs(in[1])
+			// A toggle is sent only when it is on.
+			if a["type"] == "checkbox" && !strings.Contains(in[1], " checked") {
+				continue
+			}
+			if a["name"] != "" {
 				values.Add(a["name"], a["value"])
 			}
 		}

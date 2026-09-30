@@ -348,6 +348,7 @@ func origins(base, own *layer) engine.Origins {
 		Skills:     of(func(l *layer) map[string]string { return l.skillFiles }),
 		Personas:   of(func(l *layer) map[string]string { return files(l.personas, l, "personas") }),
 		Guidelines: of(func(l *layer) map[string]string { return files(l.guidelines, l, "guidelines") }),
+		Connectors: of(func(l *layer) map[string]string { return l.connectorFiles }),
 		Gates: of(func(l *layer) map[string]string {
 			m := map[string]string{}
 			for name := range l.gates {

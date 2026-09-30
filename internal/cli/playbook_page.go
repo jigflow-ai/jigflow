@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/jigflow-ai/jigflow/internal/adapter"
@@ -33,7 +34,100 @@ type playbookPage struct {
 	Personas   []personaPart
 	Gates      []gatePart
 	Mockups    *mockupsPart // the Mockup folder, when the Playbook declares one
+	Connectors []connectorPart
 	Adapters   []adapterPart
+}
+
+// connectorPart is a Connector as the Playbook page shows it: its values
+// in the Playbook file, which the person changes in one form (ADR 0030).
+// Its credentials are never among them: a Connector reads them from its
+// environment.
+type connectorPart struct {
+	Name, From      string
+	Command, Marker string
+	Args            string // one per line
+	Settings        []settingField
+	Types           []connectorTypePart // the Artifact Types it keeps
+	// Base is whether the project's Playbook file declares it over the
+	// Base Playbook's declaration, which it can go back to.
+	Base bool
+	// Pending are the pending Proposals that change it too, which the
+	// person's own change doesn't wait for (ADR 0030).
+	Pending []string
+}
+
+// connectorTypePart is an Artifact Type a Connector keeps, with the
+// settings merged over the Connector's for it.
+type connectorTypePart struct {
+	Name     string
+	Settings []settingField
+	Prefix   string // what the names of its fields start with
+}
+
+// settingField is a Connector's setting as the Playbook page's form draws
+// it, and reads it back: a toggle for a true or false value, a text field
+// for any other. It is drawn from the value the Playbook file gives it,
+// until Connectors describe their settings (ADR 0031).
+type settingField struct {
+	Name  string
+	Field string // the name of the form's field
+	Value string // what a text field holds
+	// Toggle is whether it is a toggle, On whether the toggle is on.
+	Toggle, On bool
+	now        any
+}
+
+// newSettingField draws the setting name, whose value is now, as the field
+// named prefix + "setting." + name.
+func newSettingField(prefix, name string, now any) settingField {
+	f := settingField{Name: name, Field: prefix + "setting." + name, now: now}
+	if on, ok := now.(bool); ok {
+		f.Toggle, f.On = true, on
+	} else if now != nil {
+		f.Value = fmt.Sprint(now)
+	}
+	return f
+}
+
+// posted reads the setting back from the form the person posted: its new
+// value, nil to remove it, and whether they changed it. An emptied text
+// field removes the setting; a number stays a number while it reads as one.
+func (f settingField) posted(form url.Values) (any, bool) {
+	if f.Toggle {
+		on := form.Has(f.Field)
+		return on, on != f.On
+	}
+	if !form.Has(f.Field) {
+		return nil, false
+	}
+	text := strings.TrimSpace(form.Get(f.Field))
+	switch {
+	case text == f.Value:
+		return nil, false
+	case text == "":
+		return nil, true
+	}
+	switch f.now.(type) {
+	case int:
+		if n, err := strconv.Atoi(text); err == nil {
+			return n, true
+		}
+	case float64:
+		if n, err := strconv.ParseFloat(text, 64); err == nil {
+			return n, true
+		}
+	}
+	return text, true
+}
+
+// settingFields draws each of settings, in the order of their names, as a
+// field whose name starts with prefix.
+func settingFields(prefix string, settings map[string]any) []settingField {
+	var fields []settingField
+	for _, name := range slices.Sorted(maps.Keys(settings)) {
+		fields = append(fields, newSettingField(prefix, name, settings[name]))
+	}
+	return fields
 }
 
 // adapterPart is an Adapter, and whether the Playbook's Skills are published
@@ -192,6 +286,9 @@ func (e *env) playbookPage() (playbookPage, error) {
 			Pending: changing[engine.ProposalItem{Mockups: pb.Mockups}.FileValue()],
 		}
 	}
+	for _, name := range slices.Sorted(maps.Keys(pb.Connectors)) {
+		v.Connectors = append(v.Connectors, connectorView(pb, pb.Connectors[name], changing))
+	}
 	if v.Personas, err = e.personaParts(pb); err != nil {
 		return playbookPage{}, err
 	}
@@ -203,6 +300,28 @@ func (e *env) playbookPage() (playbookPage, error) {
 		v.Adapters = append(v.Adapters, adapterPart{a.Name, a.Agent, slices.Contains(published, &adapter.Adapters[i])})
 	}
 	return v, nil
+}
+
+// connectorView is the Connector c of pb as the Playbook page shows it;
+// changing names the pending Proposals changing each value of the Playbook
+// file.
+func connectorView(pb *engine.Playbook, c *engine.Connector, changing map[string][]string) connectorPart {
+	o := pb.Origins.Connectors[c.Name]
+	v := connectorPart{
+		Name: c.Name, From: from(o),
+		Command: c.Command, Marker: c.Marker, Args: strings.Join(c.Args, "\n"),
+		Settings: settingFields("", c.Settings),
+		Base:     o.Project && o.Base != "",
+		Pending:  changing[engine.ProposalItem{Connector: c.Name}.FileValue()],
+	}
+	for _, t := range pb.Types {
+		if t.Store != c.Name {
+			continue
+		}
+		prefix := "type." + t.Name + "."
+		v.Types = append(v.Types, connectorTypePart{Name: t.Name, Prefix: prefix, Settings: settingFields(prefix, c.Types[t.Name].Settings)})
+	}
+	return v
 }
 
 // gateCmdFrom says who gives the Gate g its command: its Transition, or a

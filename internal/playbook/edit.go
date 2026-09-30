@@ -18,8 +18,8 @@ import (
 )
 
 // Apply writes the items of an approved Proposal that change the Playbook
-// into the project rooted at root: a Gate's command or the Mockup folder
-// into the Playbook file, or out of it, which keeps the rest of what it says, a Guideline, an Artifact Type or a
+// into the project rooted at root: a Gate's command, the Mockup folder or a
+// Connector's values into the Playbook file, or out of it, which keeps the rest of what it says, a Guideline, an Artifact Type or a
 // Skill into its own file, overriding the Base Playbook's of the same name.
 // It applies all of them or none: when one can't be, or the Playbook they
 // make fails its checks or verify, it puts every file back as it was.
@@ -111,7 +111,7 @@ func changes(root string, items []engine.ProposalItem) (map[string][]byte, error
 	files := map[string][]byte{}
 	for _, it := range items {
 		switch {
-		case it.Gate != "" || it.Mockups != "":
+		case it.Gate != "" || it.Mockups != "" || it.Connector != "":
 			data, ok := files["playbook.yaml"]
 			if !ok {
 				var err error
@@ -122,6 +122,20 @@ func changes(root string, items []engine.ProposalItem) (map[string][]byte, error
 			f, err := parseFile(root, data)
 			if err != nil {
 				return nil, err
+			}
+			if it.Connector != "" && !it.Remove && !f.Has("connectors", it.Connector) {
+				// The project's declaration of a Connector replaces the
+				// Base Playbook's whole, so it starts as a copy of it
+				// (ADR 0019).
+				pb, err := Load(root)
+				if err != nil {
+					return nil, err
+				}
+				if c := pb.Connectors[it.Connector]; c != nil {
+					if err := f.DeclareConnector(c); err != nil {
+						return nil, err
+					}
+				}
 			}
 			if err := setValue(f, it); err != nil {
 				return nil, err
@@ -159,6 +173,12 @@ func setValue(f *File, it engine.ProposalItem) error {
 		}
 	case it.Gate != "":
 		return f.Set(it.Cmd, "gates", it.Gate)
+	case it.Connector != "" && it.Remove:
+		if !f.Remove("connectors", it.Connector) {
+			return fmt.Errorf("%s declares no Connector %q to remove", file, it.Connector)
+		}
+	case it.Connector != "":
+		return setConnector(f, it)
 	case it.Remove:
 		// It names the folder it removes, so that it removes no other.
 		var own string
@@ -171,6 +191,57 @@ func setValue(f *File, it engine.ProposalItem) error {
 		f.Remove("mockups")
 	default:
 		return f.Set(it.Mockups, "mockups")
+	}
+	return nil
+}
+
+// setConnector makes the Playbook file f give the Connector the item names
+// the values it gives, keeping the others: a setting given no value is
+// removed.
+func setConnector(f *File, it engine.ProposalItem) error {
+	at := []string{"connectors", it.Connector}
+	set := func(value any, keys ...string) error {
+		return f.Set(value, append(slices.Clone(at), keys...)...)
+	}
+	if it.Command != "" {
+		if err := set(it.Command, "command"); err != nil {
+			return err
+		}
+	}
+	switch {
+	case it.Args == nil:
+	case len(it.Args) == 0:
+		f.Remove(append(slices.Clone(at), "args")...)
+	default:
+		if err := set([]string(it.Args), "args"); err != nil {
+			return err
+		}
+	}
+	if it.Marker != "" {
+		if err := set(it.Marker, "marker"); err != nil {
+			return err
+		}
+	}
+	settings := func(settings map[string]any, keys ...string) error {
+		for _, name := range slices.Sorted(maps.Keys(settings)) {
+			path := append(append(slices.Clone(keys), "settings"), name)
+			if settings[name] == nil {
+				f.Remove(append(slices.Clone(at), path...)...)
+				continue
+			}
+			if err := set(settings[name], path...); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+	if err := settings(it.Settings); err != nil {
+		return err
+	}
+	for _, t := range slices.Sorted(maps.Keys(it.ConnectorTypes)) {
+		if err := settings(it.ConnectorTypes[t].Settings, "types", t); err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -269,8 +340,13 @@ func (f *File) Set(value any, keys ...string) error {
 		child := lookup(n, k)
 		if i == len(keys)-1 {
 			if child != nil {
-				// The value is replaced, the comments on it kept.
+				// The value is replaced, the comments on it kept, and
+				// its flow style, such as [a, b], when it stays a list or
+				// a mapping.
 				v.HeadComment, v.LineComment, v.FootComment = child.HeadComment, child.LineComment, child.FootComment
+				if v.Kind == child.Kind && v.Kind != yaml.ScalarNode {
+					v.Style |= child.Style & yaml.FlowStyle
+				}
 				*child = v
 			} else {
 				n.Content = append(n.Content, &yaml.Node{Kind: yaml.ScalarNode, Value: k}, &v)

@@ -49,6 +49,8 @@ connectors:
 
 `jfl check` reports a Store that names no Connector, a Connector with no command, and settings that map an Artifact Type the Connector doesn't keep, a Status or field value that Type doesn't declare, or a Status or value mapped to no label or state.
 
+A person changes a Connector's `command`, `args`, `marker` and `settings`, and each Artifact Type's `settings`, from the Dashboard's Playbook page, and an agent proposes them with a `{connector: <name>, …}` Proposal item (ADR 0030); either is checked like the rest of the Playbook before it is written. The project's declaration of a Connector replaces the Base Playbook's whole, so the first change to a Connector only the Base declares copies the Base's declaration into the project's Playbook file, as `jfl init` does; "Back to the Base's", `{connector: <name>, remove: true}`, removes the project's declaration.
+
 ## Who does what
 
 jfl does the Playbook's work, so every Connector behaves the same and a Connector knows nothing of Statuses, Transitions or sessions:

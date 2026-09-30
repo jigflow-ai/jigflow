@@ -1,4 +1,5 @@
 {{define "title"}}Playbook{{end}}
+{{define "settingField"}}{{if .Toggle}}<input type="checkbox" name="{{.Field}}" value="true"{{if .On}} checked{{end}} aria-label="{{.Name}}">{{else}}<input type="text" name="{{.Field}}" value="{{.Value}}" aria-label="{{.Name}}" placeholder="empty to remove it">{{end}}{{end}}
 {{define "content"}}
 <h1>Playbook</h1>
 <p class="muted small">What the project's Playbook is made of, and where each part comes from. Changing a value of the Playbook file here makes a Proposal and approves it as you save; the rest of the Playbook changes through Proposals.</p>
@@ -77,6 +78,48 @@
   </div>
   {{else}}
   <p class="empty">No Transition has a Gate.</p>
+  {{end}}
+</section>
+<section class="panel" id="connectors">
+  <h2>Connectors</h2>
+  <p class="muted small">The executables that keep an Artifact Type's Artifacts in an outside tracker, and the settings each is sent as they are. The project's declaration of a Connector replaces its Base Playbook's whole, so changing one the Base declares copies it into the Playbook file first. A token never is among them: a Connector reads it from its environment.</p>
+  {{range .Connectors}}
+  <div class="connector" id="connector-{{.Name}}">
+  <h3 class="id">{{.Name}} <span class="muted small">{{.From}}</span></h3>
+  {{if $.CanAct}}
+  <form method="post" action="/playbook/connectors/{{.Name}}" class="connector">
+  <table>
+    <tbody>
+    <tr><th>command</th><td><input type="text" name="command" value="{{.Command}}" aria-label="the command of Connector {{.Name}}" placeholder="an executable, such as jfl-connector-github"></td></tr>
+    <tr><th>args</th><td><textarea name="args" rows="2" aria-label="the args of Connector {{.Name}}, one per line" placeholder="one per line">{{.Args}}</textarea></td></tr>
+    <tr><th>marker</th><td><input type="text" name="marker" value="{{.Marker}}" aria-label="the AI-generated marker of Connector {{.Name}}"></td></tr>
+    {{range .Settings}}<tr><th>setting {{.Name}}</th><td>{{template "settingField" .}}</td></tr>{{end}}
+    <tr><th>new setting</th><td><input type="text" name="new-setting" value="" aria-label="the name of a setting to add" placeholder="name"> <input type="text" name="new-value" value="" aria-label="its value" placeholder="value, or true or false for a toggle"></td></tr>
+    {{range .Types}}
+    {{$type := .Name}}
+    {{range .Settings}}<tr><th>{{$type}} setting {{.Name}}</th><td>{{template "settingField" .}}</td></tr>{{end}}
+    <tr><th>new {{.Name}} setting</th><td><input type="hidden" name="type" value="{{.Name}}"><input type="text" name="{{.Prefix}}new-setting" value="" aria-label="the name of a {{.Name}} setting to add" placeholder="name"> <input type="text" name="{{.Prefix}}new-value" value="" aria-label="its value" placeholder="value, or true or false for a toggle"></td></tr>
+    {{end}}
+    </tbody>
+  </table>
+  <button type="submit">Save</button>
+  </form>
+  {{if .Base}}<form method="post" action="/playbook/connectors/{{.Name}}/base" class="value"><button type="submit">Back to the Base's</button></form>{{end}}
+  {{else}}
+  <table>
+    <tbody>
+    <tr><th>command</th><td><code>{{.Command}}</code></td></tr>
+    <tr><th>args</th><td>{{with .Args}}<code>{{.}}</code>{{else}}<span class="muted">none</span>{{end}}</td></tr>
+    <tr><th>marker</th><td>{{.Marker}}</td></tr>
+    {{range .Settings}}<tr><th>setting {{.Name}}</th><td>{{if .Toggle}}{{.On}}{{else}}<code>{{.Value}}</code>{{end}}</td></tr>{{end}}
+    {{range .Types}}{{$type := .Name}}{{range .Settings}}<tr><th>{{$type}} setting {{.Name}}</th><td>{{if .Toggle}}{{.On}}{{else}}<code>{{.Value}}</code>{{end}}</td></tr>{{end}}{{end}}
+    </tbody>
+  </table>
+  {{end}}
+  {{range .Pending}}<div class="small">pending Proposal <a class="id" href="/#{{.}}">{{.}}</a> changes it too</div>{{end}}
+  </div>
+  {{else}}
+  <p class="empty">No Connector: every Artifact is a file in the repository.</p>
   {{end}}
 </section>
 <section class="panel" id="adapters">

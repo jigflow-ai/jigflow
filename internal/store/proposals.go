@@ -51,10 +51,18 @@ type itemFile struct {
 	Move   string              `yaml:"move,omitempty"`
 	To     string              `yaml:"to,omitempty"`
 
-	Gate      string `yaml:"gate,omitempty"`
-	Cmd       string `yaml:"cmd,omitempty"`
-	Remove    bool   `yaml:"remove,omitempty"`
-	Mockups   string `yaml:"mockups,omitempty"`
+	Gate    string `yaml:"gate,omitempty"`
+	Cmd     string `yaml:"cmd,omitempty"`
+	Remove  bool   `yaml:"remove,omitempty"`
+	Mockups string `yaml:"mockups,omitempty"`
+
+	Connector      string                          `yaml:"connector,omitempty"`
+	Command        string                          `yaml:"command,omitempty"`
+	Args           engine.List                     `yaml:"args,omitempty,flow"`
+	Marker         string                          `yaml:"marker,omitempty"`
+	Settings       map[string]any                  `yaml:"settings,omitempty"`
+	ConnectorTypes map[string]engine.ConnectorType `yaml:"types,omitempty"`
+
 	Guideline string `yaml:"guideline,omitempty"`
 	Type      string `yaml:"type,omitempty"`
 	Skill     string `yaml:"skill,omitempty"`
@@ -77,13 +85,20 @@ type itemFile struct {
 //	  - {gate: lint, remove: true}
 //	  - {mockups: docs/mockups}
 //	  - {mockups: design/screens, remove: true}
+//	  - {connector: github, command: jfl-connector-github, args: [--verbose], marker: "_Drafted by an agent._"}
+//	  - {connector: github, settings: {repo: acme/web, create_labels: true, assignee: null}}
+//	  - {connector: github, types: {Ticket: {settings: {label: ticket}}}}
+//	  - {connector: linear, remove: true}
 //	  - {guideline: conventions, text: "# Conventions\n…"}
 //	  - {type: Note, text: "name: Note\nprefix: N\n…"}
 //	  - {skill: write-note, text: "---\ndescription: …"}
 //
 // An item with remove removes the value it names from the project's
 // Playbook file, which then gives the Base Playbook's, if any (ADR 0030):
-// the Mockup folder, named as the project's Playbook file gives it.
+// the Mockup folder, named as the project's Playbook file gives it, or the
+// whole of a Connector's declaration. An item changing a Connector sets the
+// values it gives, keeping the others, the project's declaration first
+// copied whole from the Base Playbook's; a setting given null is removed.
 func ParseProposal(data []byte) (summary string, items []engine.ProposalItem, err error) {
 	var in struct {
 		Summary string     `yaml:"summary"`

@@ -106,6 +106,7 @@ type call struct {
 	Protocol int            `json:"protocol"`
 	Op       string         `json:"op"`
 	Type     string         `json:"type"`
+	Settings map[string]any `json:"settings"`
 	ID       string         `json:"id"`
 	Item     trackerItem    `json:"item"`
 	From     map[string]any `json:"from"`

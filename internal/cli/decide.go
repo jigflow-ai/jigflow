@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bytes"
+	"cmp"
 	"crypto/subtle"
 	"errors"
 	"fmt"
@@ -13,6 +14,7 @@ import (
 	"strings"
 
 	"github.com/jigflow-ai/jigflow/internal/engine"
+	"github.com/jigflow-ai/jigflow/internal/playbook"
 	"github.com/jigflow-ai/jigflow/internal/store"
 )
 
@@ -155,6 +157,104 @@ func mockupsBackToBase(c *env, r *http.Request) error {
 		return err
 	}
 	return c.changePlaybook(engine.ProposalItem{Mockups: pb.Mockups, Remove: true})
+}
+
+// changeConnector gives the Connector the path names the values the person
+// posted that differ from those it has, in the project's Playbook file,
+// which first copies the Base Playbook's declaration of it, if it has none
+// (ADR 0030).
+func changeConnector(c *env, r *http.Request) error {
+	pb, _, err := c.load()
+	if err != nil {
+		return err
+	}
+	name := r.PathValue("name")
+	now := pb.Connectors[name]
+	if now == nil {
+		return fmt.Errorf("not proposed: the Playbook declares no Connector %q", name)
+	}
+	form := r.PostForm
+	it := engine.ProposalItem{Connector: name}
+	changed := false
+	command := strings.TrimSpace(form.Get("command"))
+	if command == "" {
+		return fmt.Errorf("not proposed: Connector %q needs a command, the executable it runs", name)
+	}
+	if command != now.Command {
+		it.Command, changed = command, true
+	}
+	// A browser sends a textarea's lines ending in CRLF.
+	args := engine.List{}
+	for line := range strings.Lines(strings.ReplaceAll(form.Get("args"), "\r\n", "\n")) {
+		if arg := strings.TrimSpace(line); arg != "" {
+			args = append(args, arg)
+		}
+	}
+	if !slices.Equal(args, now.Args) {
+		it.Args, changed = args, true
+	}
+	marker := cmp.Or(strings.TrimSpace(form.Get("marker")), playbook.DefaultMarker)
+	if marker != now.Marker {
+		it.Marker, changed = marker, true
+	}
+	if it.Settings, err = postedSettings(form, "", now.Settings); err != nil {
+		return err
+	}
+	for _, t := range form["type"] {
+		settings, err := postedSettings(form, "type."+t+".", now.Types[t].Settings)
+		if err != nil {
+			return err
+		}
+		if settings != nil {
+			if it.ConnectorTypes == nil {
+				it.ConnectorTypes = map[string]engine.ConnectorType{}
+			}
+			it.ConnectorTypes[t] = engine.ConnectorType{Settings: settings}
+		}
+	}
+	if !changed && it.Settings == nil && it.ConnectorTypes == nil {
+		return fmt.Errorf("not proposed: nothing to change in Connector %q", name)
+	}
+	return c.changePlaybook(it)
+}
+
+// postedSettings returns the settings, whose fields' names start with
+// prefix, that the person changed from those the Connector has, now, each
+// with its new value, or nil to remove it, and the one they added, if any;
+// nil if they changed none.
+func postedSettings(form url.Values, prefix string, now map[string]any) (map[string]any, error) {
+	var changed map[string]any
+	set := func(name string, v any) {
+		if changed == nil {
+			changed = map[string]any{}
+		}
+		changed[name] = v
+	}
+	for _, f := range settingFields(prefix, now) {
+		if v, ok := f.posted(form); ok {
+			set(f.Name, v)
+		}
+	}
+	name, value := strings.TrimSpace(form.Get(prefix+"new-setting")), strings.TrimSpace(form.Get(prefix+"new-value"))
+	switch {
+	case name == "" && value != "":
+		return nil, fmt.Errorf("not proposed: the new setting %s needs a name", value)
+	case name == "":
+	case value == "":
+		return nil, fmt.Errorf("not proposed: the new setting %s needs a value", name)
+	case value == "true" || value == "false":
+		set(name, value == "true")
+	default:
+		set(name, value)
+	}
+	return changed, nil
+}
+
+// connectorBackToBase removes from the project's Playbook file its
+// declaration of the Connector the path names, so that the Base Playbook's
+// is the Connector again.
+func connectorBackToBase(c *env, r *http.Request) error {
+	return c.changePlaybook(engine.ProposalItem{Connector: r.PathValue("name"), Remove: true})
 }
 
 // changePlaybook makes it, a change to the Playbook file, a Proposal of

@@ -198,7 +198,11 @@ Commands:
                           Gate its command or removing the one the project's
                           Playbook file gives it, setting the Mockup folder
                           or removing the project's, which is refused while
-                          the folder holds a Mockup, adding a Guideline, or
+                          the folder holds a Mockup, changing a Connector's
+                          command, args, marker, settings or an Artifact
+                          Type's settings, copying the Base Playbook's
+                          declaration of it first, or removing the
+                          project's declaration, adding a Guideline, or
                           declaring an Artifact Type or writing a Skill,
                           either replacing the one of that name; a Proposal whose
                           Playbook would fail check is refused. It says
@@ -348,7 +352,9 @@ Commands:
                           page, as jfl comment run by them, and give a Gate
                           its command, or its Base Playbook's back, and set
                           the Mockup folder, or its Base Playbook's back,
-                          unless it holds a Mockup, on the
+                          unless it holds a Mockup, and change a
+                          Connector's command, args, marker and settings,
+                          or take it back to its Base Playbook's, on the
                           Playbook page, as a Proposal of theirs approved
                           at once, never committed, and publish the
                           Playbook for an Adapter there, or stop, as jfl

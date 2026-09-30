@@ -36,10 +36,11 @@ type Playbook struct {
 
 // Origins says where each part of a Playbook comes from, by the part's
 // name: the Artifact Types, Skills, Personas and Guidelines it declares,
-// and the commands its Playbook file gives Gates; and the Mockup folder.
+// the commands its Playbook file gives Gates and the Connectors it
+// declares; and the Mockup folder.
 type Origins struct {
-	Types, Skills, Personas, Guidelines, Gates map[string]Origin
-	Mockups                                    Origin // the Playbook file declaring the Mockup folder
+	Types, Skills, Personas, Guidelines, Gates, Connectors map[string]Origin
+	Mockups                                                Origin // the Playbook file declaring the Mockup folder
 }
 
 // Origin is where one part of a Playbook comes from: the project's own

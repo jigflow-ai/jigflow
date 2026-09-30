@@ -33,7 +33,9 @@ type Proposal struct {
 // Playbook file gives them, so that they run the Base Playbook's (ADR
 // 0030), setting the Mockup folder to Mockups, or, with Remove, removing
 // the folder Mockups the project's Playbook file gives, so that the Base
-// Playbook's is the folder again, adding the Guideline named Guideline, whose Markdown is Text,
+// Playbook's is the folder again, changing the values of the Connector
+// named Connector, or, with Remove, removing the project's declaration of
+// it, adding the Guideline named Guideline, whose Markdown is Text,
 // declaring the Artifact Type named Type, whose YAML file is Text, or writing
 // the Skill named Skill, whose SKILL.md is Text. A Type or a Skill the
 // Playbook has already is replaced, so the Playbook's own Types and Skills,
@@ -53,15 +55,39 @@ type ProposalItem struct {
 	Move   string              // an id or a ref
 	To     string
 
-	Gate      string
-	Cmd       string
-	Remove    bool // removes the value the item names from the project's Playbook file
-	Mockups   string
-	Guideline string
-	Type      string
-	Skill     string
-	Text      string
+	Gate    string
+	Cmd     string
+	Remove  bool // removes the value the item names from the project's Playbook file
+	Mockups string
+	// Connector names the Connector whose values in the Playbook file the
+	// item changes: Command, Args, Marker, Settings and each Type's
+	// settings, those it gives and no others; or, with Remove, the
+	// project's declaration of it, so that the Base Playbook's is the
+	// Connector again. A setting given no value is removed.
+	Connector      string
+	Command        string
+	Args           List
+	Marker         string
+	Settings       map[string]any
+	ConnectorTypes map[string]ConnectorType
+	Guideline      string
+	Type           string
+	Skill          string
+	Text           string
 }
+
+// ConnectorType is what an item changing a Connector gives for one of the
+// Artifact Types it keeps: the settings merged over the Connector's for it.
+type ConnectorType struct {
+	Settings map[string]any `yaml:"settings,omitempty"`
+}
+
+// List is a list of values an item gives, which it gives even when empty,
+// as against not giving it at all, when nil.
+type List []string
+
+// IsZero reports whether the list isn't given, for encoding the item.
+func (l List) IsZero() bool { return l == nil }
 
 // Names returns the ids and refs the item names: the Artifact it moves and
 // those its Links point to, each once, sorted.
@@ -89,7 +115,7 @@ func (p Proposal) ProposedBy() string {
 // ChangesPlaybook reports whether the item changes the Playbook rather
 // than an Artifact.
 func (it ProposalItem) ChangesPlaybook() bool {
-	return it.Gate != "" || it.Mockups != "" || it.Guideline != "" || it.Type != "" || it.Skill != ""
+	return it.Gate != "" || it.Mockups != "" || it.Connector != "" || it.Guideline != "" || it.Type != "" || it.Skill != ""
 }
 
 // FileValue names the value of the Playbook file the item changes, as the
@@ -103,6 +129,8 @@ func (it ProposalItem) FileValue() string {
 		return "gates." + it.Gate
 	case it.Mockups != "":
 		return "mockups"
+	case it.Connector != "":
+		return "connectors." + it.Connector
 	}
 	return ""
 }
@@ -131,6 +159,22 @@ func (pb *Playbook) Now(it ProposalItem) (string, bool) {
 		return "", true
 	case it.Mockups != "":
 		return pb.Mockups, true
+	case it.Connector != "":
+		c := pb.Connectors[it.Connector]
+		if c == nil {
+			return "", true
+		}
+		if it.Remove {
+			// All the project's declaration says, which the Base's replaces.
+			it = ProposalItem{Command: c.Command, Args: List(c.Args), Marker: c.Marker, Settings: c.Settings}
+			for name, m := range c.Types {
+				if it.ConnectorTypes == nil {
+					it.ConnectorTypes = map[string]ConnectorType{}
+				}
+				it.ConnectorTypes[name] = ConnectorType{Settings: m.Settings}
+			}
+		}
+		return connectorValues(it, c), true
 	}
 	return "", false
 }
@@ -181,6 +225,10 @@ func (it ProposalItem) String() string {
 		return "remove the project's Mockup folder " + it.Mockups
 	case it.Mockups != "":
 		return "set the Mockup folder to " + it.Mockups
+	case it.Connector != "" && it.Remove:
+		return fmt.Sprintf("remove the project's declaration of Connector %q", it.Connector)
+	case it.Connector != "":
+		return fmt.Sprintf("change Connector %q: %s", it.Connector, connectorValues(it, nil))
 	case it.Guideline != "":
 		return fmt.Sprintf("add Guideline %q (%s)", it.Guideline, it.lines())
 	case it.Type != "":
@@ -189,6 +237,53 @@ func (it ProposalItem) String() string {
 		return fmt.Sprintf("write Skill %q (%s)", it.Skill, it.lines())
 	}
 	return fmt.Sprintf("move %s → %s", it.Move, it.To)
+}
+
+// connectorValues says the values of a Connector the item gives, as a person
+// reads them: those it gives, or, with c, those c has in their place.
+func connectorValues(it ProposalItem, c *Connector) string {
+	var parts []string
+	value := func(name string, given, now any) {
+		v := given
+		if c != nil {
+			v = now
+		}
+		switch v := v.(type) {
+		case nil:
+			parts = append(parts, name+": none")
+		case []string:
+			if len(v) == 0 {
+				parts = append(parts, name+": none")
+			} else {
+				parts = append(parts, name+": "+strings.Join(v, " "))
+			}
+		default:
+			parts = append(parts, fmt.Sprintf("%s: %v", name, v))
+		}
+	}
+	var now Connector
+	if c != nil {
+		now = *c
+	}
+	if it.Command != "" {
+		value("command", it.Command, now.Command)
+	}
+	if it.Args != nil {
+		value("args", []string(it.Args), now.Args)
+	}
+	if it.Marker != "" {
+		value("marker", it.Marker, now.Marker)
+	}
+	settings := func(prefix string, given, now map[string]any) {
+		for _, name := range slices.Sorted(maps.Keys(given)) {
+			value(prefix+"setting "+name, given[name], now[name])
+		}
+	}
+	settings("", it.Settings, now.Settings)
+	for _, t := range slices.Sorted(maps.Keys(it.ConnectorTypes)) {
+		settings(t+" ", it.ConnectorTypes[t].Settings, now.Types[t].Settings)
+	}
+	return strings.Join(parts, "; ")
 }
 
 // lines says how long the item's text is.
@@ -269,15 +364,26 @@ func Approve(pb *Playbook, p Proposal, all []Artifact) ([]Change, error) {
 			return nil, fmt.Errorf("item %d (%s): %w", i+1, it, err)
 		}
 		kinds := 0
-		for _, is := range []bool{it.Create != "", it.Move != "" || it.To != "", it.Gate != "" || it.Cmd != "", it.Mockups != "", it.Guideline != "", it.Type != "", it.Skill != ""} {
+		for _, is := range []bool{it.Create != "", it.Move != "" || it.To != "", it.Gate != "" || it.Cmd != "", it.Mockups != "", it.Connector != "" || it.changesConnector(), it.Guideline != "", it.Type != "", it.Skill != ""} {
 			if is {
 				kinds++
 			}
 		}
 		textual := it.Guideline != "" || it.Type != "" || it.Skill != ""
 		switch {
-		case kinds != 1 || (it.Text != "" && !textual) || (it.Remove && it.Gate == "" && it.Mockups == ""):
+		case kinds != 1 || (it.Text != "" && !textual) || (it.Remove && it.Gate == "" && it.Mockups == "" && it.Connector == ""):
 			return nil, fmt.Errorf("item %d: %s", i+1, itemKinds)
+		case it.Connector != "" || it.changesConnector():
+			if strings.TrimSpace(it.Connector) == "" {
+				return fail(errors.New("changing a Connector needs the Connector's name, as connector"))
+			}
+			if it.Remove && it.changesConnector() {
+				return fail(errors.New("removing a Connector's declaration from the Playbook file takes no other values"))
+			}
+			if !it.Remove && !it.changesConnector() {
+				return fail(errors.New("changing a Connector needs its command, args, marker, settings or an Artifact Type's settings"))
+			}
+			// Its values are checked with the Playbook they make.
 		case it.Mockups != "":
 			// The folder's place is checked with the Playbook it makes.
 		case it.Remove:
@@ -350,8 +456,13 @@ func Approve(pb *Playbook, p Proposal, all []Artifact) ([]Change, error) {
 	return changes, nil
 }
 
+// changesConnector reports whether the item gives any value of a Connector.
+func (it ProposalItem) changesConnector() bool {
+	return it.Command != "" || it.Args != nil || it.Marker != "" || it.Settings != nil || it.ConnectorTypes != nil
+}
+
 // itemKinds says what a Proposal item may be.
-const itemKinds = "an item either creates (create, title, and optionally status, fields and links), moves (move, to), gives a Gate its command (gate, cmd) or removes the one the project's Playbook file gives it (gate, remove: true), sets the Mockup folder (mockups) or removes the one the project's Playbook file gives (mockups, remove: true), adds a Guideline (guideline, text), declares an Artifact Type (type, text) or writes a Skill (skill, text)"
+const itemKinds = "an item either creates (create, title, and optionally status, fields and links), moves (move, to), gives a Gate its command (gate, cmd) or removes the one the project's Playbook file gives it (gate, remove: true), sets the Mockup folder (mockups) or removes the one the project's Playbook file gives (mockups, remove: true), changes a Connector (connector, and any of command, args, marker, settings and types) or removes the project's declaration of it (connector, remove: true), adds a Guideline (guideline, text), declares an Artifact Type (type, text) or writes a Skill (skill, text)"
 
 // touched returns, for every Artifact an item of a pending Proposal moves, the
 // id of that Proposal. Creations touch nothing yet: their Artifacts don't

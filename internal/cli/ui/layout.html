@@ -107,6 +107,11 @@ form.reject { margin-top: 10px; }
 form.value { display: inline-flex; gap: 6px; margin: 0 6px 4px 0; }
 form.value input { font: inherit; font-family: var(--mono, monospace); color: var(--text); background: var(--panel); border: 1px solid var(--line); border-radius: 7px; padding: 3px 8px; min-width: 14em; max-width: 100%; }
 form.value input:focus { border-color: var(--accent); outline: 3px solid var(--accent-soft); outline-offset: 0; }
+.connector + .connector { margin-top: 18px; }
+form.connector input[type="text"], form.connector textarea { box-sizing: border-box; width: 100%; font: inherit; font-family: var(--mono, monospace); color: var(--text); background: var(--panel); border: 1px solid var(--line); border-radius: 7px; padding: 3px 8px; }
+form.connector td input[type="text"] + input[type="text"] { margin-top: 4px; }
+form.connector input:focus, form.connector textarea:focus { border-color: var(--accent); outline: 3px solid var(--accent-soft); outline-offset: 0; }
+form.connector th { font-weight: normal; white-space: nowrap; }
 .changed { position: sticky; top: 0; z-index: 1; display: flex; flex-wrap: wrap; align-items: baseline; justify-content: center; gap: 4px 12px; padding: 10px 16px; background: var(--accent-soft); border-bottom: 1px solid var(--accent); color: var(--text); font-size: 14px; }
 .changed a { font-weight: 600; }
 .changed[hidden] { display: none; }
