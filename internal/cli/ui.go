@@ -99,7 +99,7 @@ func cmdUI(e *env, args []string) error {
 	}()
 	if d.key != "" {
 		fmt.Fprintf(e.stdout, "Dashboard at http://%s/?key=%s\n", ln.Addr(), d.key)
-		fmt.Fprintln(e.stdout, "Open this link in your browser to approve Proposals, make Human Transitions and comment there; it is yours alone, until jfl ui stops.")
+		fmt.Fprintln(e.stdout, "Open this link in your browser to approve Proposals, make Human Transitions, comment and change the Playbook file there; it is yours alone, until jfl ui stops.")
 	} else {
 		fmt.Fprintf(e.stdout, "Dashboard at http://%s/ (to look only: agent session %s started it)\n", ln.Addr(), e.actor.Session)
 	}
@@ -148,7 +148,7 @@ func (d *dashboard) handler() http.Handler {
 		d.render(w, http.StatusOK, "design", "", d.e.designView)
 	})
 	mux.HandleFunc("GET /playbook", func(w http.ResponseWriter, r *http.Request) {
-		d.render(w, http.StatusOK, "playbook", "", d.e.playbookView)
+		d.render(w, http.StatusOK, "playbook", "", d.playbookView(r, nil))
 	})
 	mux.HandleFunc("GET /playbook/{kind}/{name}", func(w http.ResponseWriter, r *http.Request) {
 		d.render(w, http.StatusOK, "playbookfile", r.URL.Path, d.e.playbookFileView(r.PathValue("kind"), r.PathValue("name")))
@@ -175,6 +175,8 @@ func (d *dashboard) handler() http.Handler {
 		return c.move(r.PathValue("id"), r.PostForm.Get("to"))
 	}, d.showBacklog))
 	mux.HandleFunc("POST /artifacts/{id}/comment", d.act(comment, d.showArtifact))
+	mux.HandleFunc("POST /playbook/gates/{name}", d.act(giveGateCommand, d.showPlaybook))
+	mux.HandleFunc("POST /playbook/gates/{name}/base", d.act(gateBackToBase, d.showPlaybook))
 	mux.HandleFunc("POST /proposals/{id}/reject", d.act(func(c *env, r *http.Request) error {
 		return c.reject(r.PathValue("id"))
 	}, d.showBacklog))

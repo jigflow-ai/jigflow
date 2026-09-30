@@ -195,9 +195,10 @@ Commands:
                           one unit; creations may give the Type's fields
                           values and Link to each other by ref;
                           an item may change the Playbook instead, giving a
-                          Gate its command, adding a Guideline, or declaring
-                          an Artifact Type or writing a Skill, either
-                          replacing the one of that name; a Proposal whose
+                          Gate its command or removing the one the project's
+                          Playbook file gives it, adding a Guideline, or
+                          declaring an Artifact Type or writing a Skill,
+                          either replacing the one of that name; a Proposal whose
                           Playbook would fail check is refused. It says
                           where the Proposal waits for a person
   query [--type <Type>] [--status <status>]
@@ -287,9 +288,10 @@ Commands:
                           in Focus; the time every Artifact of a Type spent in
                           each Status; agent time and tokens with nothing in
                           Focus, which are unattributed; and each Status
-                          change a Confirmation made, with the channel it
-                          came through: terminal, dashboard or agent. Every
-                          create, Transition, approved Proposal and
+                          change and change to the Playbook a Confirmation
+                          made, with the channel it came through: terminal,
+                          dashboard or agent. Every create, Transition,
+                          approved Proposal and
                           migration, and every change of a session's Focus,
                           adds an entry of its own to the committed
                           .jigflow/ledger, timed by jfl's clock; tokens come
@@ -331,9 +333,12 @@ Commands:
                           answer the Confirmation form. The browser that
                           opens the link it prints may approve or reject
                           Proposals, editing their creations first, make
-                          Human Transitions, and comment on an Artifact from
-                          its page, as jfl comment run by them; a Dashboard
-                          an agent session starts is only to look at. It
+                          Human Transitions, comment on an Artifact from its
+                          page, as jfl comment run by them, and give a Gate
+                          its command, or its Base Playbook's back, on the
+                          Playbook page, as a Proposal of theirs approved
+                          at once, never committed; a Dashboard an agent
+                          session starts is only to look at. It
                           never edits an Artifact's body, except to add such
                           a comment
   version                 print the version

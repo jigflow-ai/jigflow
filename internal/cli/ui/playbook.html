@@ -1,7 +1,9 @@
 {{define "title"}}Playbook{{end}}
 {{define "content"}}
 <h1>Playbook</h1>
-<p class="muted small">What the project's Playbook is made of, and where each part comes from. The Playbook changes through Proposals, not here.</p>
+<p class="muted small">What the project's Playbook is made of, and where each part comes from. Changing a value of the Playbook file here makes a Proposal and approves it as you save; the rest of the Playbook changes through Proposals.</p>
+{{with .Outcome}}{{template "outcome" .}}{{end}}
+{{if not .CanAct}}<p class="muted small note">{{.Cannot}}.</p>{{end}}
 <section class="panel" id="types">
   <h2>Artifact Types</h2>
   <div class="scroll">
@@ -70,7 +72,7 @@
   <div class="scroll">
   <table>
     <thead><tr><th>Gate</th><th>Artifact Type</th><th>Transition</th><th>Command</th><th>Declared in</th></tr></thead>
-    <tbody>{{range .Gates}}<tr><td>{{.Name}}</td><td>{{.Type}}</td><td>{{.Transition}}</td><td>{{with .Cmd}}<code>{{.}}</code> {{end}}<span class="small{{if .Missing}} pill human{{else}} muted{{end}}">{{.CmdFrom}}</span></td><td class="small">{{.From}}</td></tr>{{end}}</tbody>
+    <tbody>{{range .Gates}}<tr><td>{{.Name}}</td><td>{{.Type}}</td><td>{{.Transition}}</td><td>{{if $.CanAct}}<form method="post" action="/playbook/gates/{{.Name}}" class="value"><input type="text" name="cmd" value="{{.Cmd}}" aria-label="the command of Gate {{.Name}}" placeholder="a command, such as make test"><button type="submit">Save</button></form>{{if .Base}}<form method="post" action="/playbook/gates/{{.Name}}/base" class="value"><button type="submit">Back to the Base's</button></form>{{end}} {{else}}{{with .Cmd}}<code>{{.}}</code> {{end}}{{end}}<span class="small{{if .Missing}} pill human{{else}} muted{{end}}">{{.CmdFrom}}</span></td><td class="small">{{.From}}</td></tr>{{end}}</tbody>
   </table>
   </div>
   {{else}}

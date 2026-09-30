@@ -43,11 +43,11 @@ func (d *dashboard) open(w http.ResponseWriter, r *http.Request) {
 // only the browser that opened the link jfl ui printed may.
 func (d *dashboard) mayAct(r *http.Request) error {
 	if d.key == "" {
-		return fmt.Errorf("agent session %s started this Dashboard, so it is only to look at: approve Proposals, make Human Transitions and comment in a Dashboard you start yourself with jfl ui", d.e.actor.Session)
+		return fmt.Errorf("agent session %s started this Dashboard, so it is only to look at: approve Proposals, make Human Transitions, comment and change the Playbook file in a Dashboard you start yourself with jfl ui", d.e.actor.Session)
 	}
 	c, err := r.Cookie(d.cookie)
 	if err != nil || subtle.ConstantTimeCompare([]byte(c.Value), []byte(d.key)) != 1 {
-		return errors.New("to approve Proposals, make Human Transitions and comment here, open the link jfl ui printed in the terminal where you started it")
+		return errors.New("to approve Proposals, make Human Transitions, comment and change the Playbook file here, open the link jfl ui printed in the terminal where you started it")
 	}
 	return nil
 }
@@ -103,6 +103,45 @@ func comment(c *env, r *http.Request) error {
 		return errors.New("a comment needs some text: nothing was added")
 	}
 	return cmdComment(c, []string{r.PathValue("id"), text})
+}
+
+// showPlaybook shows the Playbook page after a change to the Playbook
+// file, with what it did.
+func (d *dashboard) showPlaybook(w http.ResponseWriter, r *http.Request, status int, done *outcome) {
+	d.render(w, status, "playbook", "/playbook", d.playbookView(r, done))
+}
+
+// giveGateCommand gives the Gates of the name the path names the command
+// the person posted, in the project's Playbook file.
+func giveGateCommand(c *env, r *http.Request) error {
+	return c.changePlaybook(engine.ProposalItem{Gate: r.PathValue("name"), Cmd: strings.TrimSpace(r.PostForm.Get("cmd"))})
+}
+
+// gateBackToBase removes from the project's Playbook file the command it
+// gives the Gates of the name the path names, which then run the Base
+// Playbook's.
+func gateBackToBase(c *env, r *http.Request) error {
+	return c.changePlaybook(engine.ProposalItem{Gate: r.PathValue("name"), Remove: true})
+}
+
+// changePlaybook makes it, a change to the Playbook file, a Proposal of
+// the person's, as jfl propose would, and approves it at once, as jfl
+// approve would with the click as its Confirmation (ADR 0030): the change
+// goes through the checks, the all-or-nothing writing and the Ledger entry
+// of any Proposal. One that can't be applied is rejected, so that nothing
+// the person meant to confirm at once waits for them afterwards.
+func (e *env) changePlaybook(it engine.ProposalItem) error {
+	p, _, err := e.propose(it.String(), []engine.ProposalItem{it})
+	if err != nil {
+		return err
+	}
+	if err := e.approve(p.ID, nil); err != nil {
+		if rejected := e.reject(p.ID); rejected != nil {
+			return errors.Join(err, rejected)
+		}
+		return err
+	}
+	return nil
 }
 
 // clickedBy is the env of a command a person runs by clicking in the

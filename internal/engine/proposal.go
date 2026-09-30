@@ -29,7 +29,9 @@ type Proposal struct {
 // ProposalItem is one change in a Proposal: the creation of an Artifact of
 // the Type Create, with values for its fields, the Transition of the Artifact Move to the Status To, or
 // a change to the Playbook (ADR 0004): giving the Gates named Gate the
-// command Cmd, adding the Guideline named Guideline, whose Markdown is Text,
+// command Cmd, or, with Remove, removing the command the project's
+// Playbook file gives them, so that they run the Base Playbook's (ADR
+// 0030), adding the Guideline named Guideline, whose Markdown is Text,
 // declaring the Artifact Type named Type, whose YAML file is Text, or writing
 // the Skill named Skill, whose SKILL.md is Text. A Type or a Skill the
 // Playbook has already is replaced, so the Playbook's own Types and Skills,
@@ -51,6 +53,7 @@ type ProposalItem struct {
 
 	Gate      string
 	Cmd       string
+	Remove    bool // removes the value the item names from the project's Playbook file
 	Guideline string
 	Type      string
 	Skill     string
@@ -106,6 +109,8 @@ func (it ProposalItem) String() string {
 		return s
 	}
 	switch {
+	case it.Gate != "" && it.Remove:
+		return fmt.Sprintf("remove the project's command for Gate %q", it.Gate)
 	case it.Gate != "":
 		return fmt.Sprintf("give Gate %q the command %s", it.Gate, it.Cmd)
 	case it.Guideline != "":
@@ -203,8 +208,12 @@ func Approve(pb *Playbook, p Proposal, all []Artifact) ([]Change, error) {
 		}
 		textual := it.Guideline != "" || it.Type != "" || it.Skill != ""
 		switch {
-		case kinds != 1 || (it.Text != "" && !textual):
+		case kinds != 1 || (it.Text != "" && !textual) || (it.Remove && it.Gate == ""):
 			return nil, fmt.Errorf("item %d: %s", i+1, itemKinds)
+		case it.Remove:
+			if it.Cmd != "" {
+				return fail(errors.New("removing a Gate's command from the Playbook file takes no cmd"))
+			}
 		case it.Gate != "" || it.Cmd != "":
 			if strings.TrimSpace(it.Gate) == "" || strings.TrimSpace(it.Cmd) == "" {
 				return fail(errors.New("giving a Gate its command needs the Gate's name and a cmd"))
@@ -272,7 +281,7 @@ func Approve(pb *Playbook, p Proposal, all []Artifact) ([]Change, error) {
 }
 
 // itemKinds says what a Proposal item may be.
-const itemKinds = "an item either creates (create, title, and optionally status, fields and links), moves (move, to), gives a Gate its command (gate, cmd), adds a Guideline (guideline, text), declares an Artifact Type (type, text) or writes a Skill (skill, text)"
+const itemKinds = "an item either creates (create, title, and optionally status, fields and links), moves (move, to), gives a Gate its command (gate, cmd) or removes the one the project's Playbook file gives it (gate, remove: true), adds a Guideline (guideline, text), declares an Artifact Type (type, text) or writes a Skill (skill, text)"
 
 // touched returns, for every Artifact an item of a pending Proposal moves, the
 // id of that Proposal. Creations touch nothing yet: their Artifacts don't

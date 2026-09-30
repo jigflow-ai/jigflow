@@ -38,6 +38,16 @@ const (
 	ViaAgent     Channel = "agent"     // answered a form the agent's client showed only to the person
 )
 
+// PlaybookChange is a Ledger entry: an approved Proposal changing the
+// Playbook, through a Confirmation given via Via. Its changes to Artifacts,
+// if any, are Status changes of their own.
+type PlaybookChange struct {
+	At       time.Time
+	Proposal string   // its id
+	Changes  []string // each item changing the Playbook, as a person reads it
+	Via      Channel
+}
+
 // FocusChange is a Ledger entry: an agent session's Focus becoming the
 // Artifact Focus, or none when it is empty.
 type FocusChange struct {
@@ -72,15 +82,16 @@ func (t *Tokens) add(u Tokens) {
 	t.CacheWrite += u.CacheWrite
 }
 
-// Ledger is the record of time: every Status change and every Focus change,
-// each in the order they happened, and the tokens agent sessions used
+// Ledger is the record of time: every Status change, change to the
+// Playbook and Focus change, each in the order they happened, and the tokens agent sessions used
 // where their agent's records expose them. The times of its changes come
 // from jfl's own clock, those of usage from the agent's records, never from
 // the agent itself (ADR 0007).
 type Ledger struct {
-	Statuses []StatusChange
-	Focuses  []FocusChange
-	Usages   []Usage
+	Statuses  []StatusChange
+	Playbooks []PlaybookChange
+	Focuses   []FocusChange
+	Usages    []Usage
 }
 
 // LedgerSummary is the Ledger summed per Artifact and per Status.
@@ -98,6 +109,9 @@ type LedgerSummary struct {
 	// Confirmations are the Status changes a Confirmation made, in the
 	// order they happened.
 	Confirmations []StatusChange
+	// PlaybookChanges are the changes to the Playbook approved Proposals
+	// made, each through a Confirmation, in the order they happened.
+	PlaybookChanges []PlaybookChange
 }
 
 // ArtifactTime is the time one Artifact spent in each Status, and the agent
@@ -161,6 +175,8 @@ func Summarise(pb *Playbook, l Ledger, now time.Time) LedgerSummary {
 		statuses[k] = s
 		return s
 	}
+
+	sum.PlaybookChanges = l.Playbooks
 
 	// Each Artifact's changes, in the order they happened.
 	changes := map[string][]StatusChange{}

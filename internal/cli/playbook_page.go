@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"html/template"
 	"maps"
+	"net/http"
 	"net/url"
 	"path/filepath"
 	"slices"
@@ -16,10 +17,14 @@ import (
 )
 
 // playbookPage is what the project's Playbook is made of, and where each
-// part of it comes from. It is read-only: the Playbook changes through
-// Proposals (ADR 0004).
+// part of it comes from. The person who opened the link jfl ui printed
+// changes the values of the Playbook file on it, each change a Proposal
+// they confirm as they make it (ADR 0030); to anyone else it is read-only.
 type playbookPage struct {
 	chrome
+	Outcome    *outcome // what the person's last change did, if they just made one
+	CanAct     bool     // whether the person viewing it may change the Playbook file here
+	Cannot     string   // why not, when they may not
 	Types      []typePart
 	Bindings   []bindingPart
 	Skills     []skillPart
@@ -36,6 +41,9 @@ type gatePart struct {
 	CmdFrom                     string // who gives it its command
 	Missing                     bool   // declared by name only, with no command yet
 	From                        string // the Artifact Type's origin, which declares it
+	// Base is whether the project's Playbook file gives it a command over
+	// one its Base Playbook's gives, which it can go back to.
+	Base bool
 }
 
 // namedPart is a part of the Playbook known by its name alone, such as a
@@ -76,10 +84,34 @@ type typePart struct {
 	Name, Prefix, Store, From string
 }
 
-func (e *env) playbookView() (any, error) {
+// playbookView builds the Playbook page as the person making the request
+// sees it, with the outcome of the change they just made, if any.
+func (d *dashboard) playbookView(r *http.Request, done *outcome) func() (any, error) {
+	return func() (any, error) {
+		v, err := d.e.playbookPage()
+		if err != nil && done != nil {
+			// The change was made, or refused, all the same.
+			said := strings.TrimSpace(done.Problem + "\n" + done.Said)
+			return nil, fmt.Errorf("%s\n\nThe Playbook can't be shown now: %w", said, err)
+		}
+		if err != nil {
+			return nil, err
+		}
+		v.Outcome = done
+		if err := d.mayAct(r); err != nil {
+			v.Cannot = err.Error()
+		} else {
+			v.CanAct = true
+		}
+		return v, nil
+	}
+}
+
+// playbookPage is what the project's Playbook is made of, as anyone sees it.
+func (e *env) playbookPage() (playbookPage, error) {
 	pb, _, err := e.load()
 	if err != nil {
-		return nil, err
+		return playbookPage{}, err
 	}
 	v := playbookPage{chrome: chrome{Playbook: pb.Name, Page: "playbook"}}
 	for _, t := range pb.Types {
@@ -113,10 +145,12 @@ func (e *env) playbookView() (any, error) {
 	for _, t := range pb.Types {
 		for _, tr := range t.Transitions {
 			for _, g := range tr.Gates {
+				o := pb.Origins.Gates[g.Name]
 				v.Gates = append(v.Gates, gatePart{
 					Name: g.Name, Type: t.Name, Transition: tr.From + " → " + tr.To, Cmd: g.Cmd,
 					CmdFrom: gateCmdFrom(pb, g), Missing: g.Cmd == "",
 					From: from(pb.Origins.Types[t.Name]),
+					Base: o.Project && o.Base != "",
 				})
 			}
 		}
@@ -125,7 +159,7 @@ func (e *env) playbookView() (any, error) {
 		v.Mockups = &namedPart{pb.Mockups, from(pb.Origins.Mockups)}
 	}
 	if v.Personas, err = e.personaParts(pb); err != nil {
-		return nil, err
+		return playbookPage{}, err
 	}
 	return v, nil
 }
@@ -137,6 +171,8 @@ func gateCmdFrom(pb *engine.Playbook, g engine.Command) string {
 	switch {
 	case g.Cmd == "":
 		return "no command yet: give it one under gates in " + playbook.Dir + "/playbook.yaml"
+	case given && o.Project && o.Base != "":
+		return "given by the project's Playbook file, over " + baseName(o.Base) + "'s"
 	case given && o.Project:
 		return "given by the project's Playbook file"
 	case given:

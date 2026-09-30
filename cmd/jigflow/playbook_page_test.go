@@ -85,7 +85,7 @@ func TestThePlaybookPageSaysWhetherTheProjectGivesAGateDeclaredByNameACommandYet
 	p.Write(".jigflow/playbook.yaml", "name: shop\nextends: {builtin: larapilot}\ngates:\n  tests: go test ./...\n")
 	ui := p.StartUI()
 
-	wantText(t, section(t, get(t, ui, "/playbook"), "Gates"),
+	wantText(t, section(t, look(t, ui, "/playbook"), "Gates"),
 		"tests Task in-progress → in-review go test ./... given by the project's Playbook file builtin larapilot",
 		"lint Task in-progress → in-review no command yet: give it one under gates in .jigflow/playbook.yaml builtin larapilot")
 }
@@ -94,7 +94,7 @@ func TestThePlaybookPageShowsAGateDeclaredWithItsCommand(t *testing.T) {
 	p := gatedPlaybook(t, "      - {name: tests, cmd: make test}\n", "")
 	ui := p.StartUI()
 
-	wantText(t, section(t, get(t, ui, "/playbook"), "Gates"),
+	wantText(t, section(t, look(t, ui, "/playbook"), "Gates"),
 		"tests Ticket in-progress → in-review make test declared with its Transition project")
 }
 
@@ -170,12 +170,12 @@ func TestAPartThePlaybookDoesNotHaveGetsAPageSayingSo(t *testing.T) {
 	}
 }
 
-func TestThePlaybookPageOffersNoWayToChangeThePlaybook(t *testing.T) {
+func TestWithoutTheKeyThePlaybookPagesOfferNoWayToChangeThePlaybook(t *testing.T) {
 	p := larapilot(t)
 	ui := p.StartUI()
 
 	for _, path := range []string{"/playbook", "/playbook/skills/implement", "/playbook/guidelines/conventions", "/playbook/personas/reviewer"} {
-		if page := get(t, ui, path); strings.Contains(page, "<form") {
+		if page := look(t, ui, path); strings.Contains(page, "<form") {
 			t.Errorf("%s offers a form:\n%s", path, text(page))
 		}
 		if page := ui.Post(path, nil); page.Status != http.StatusMethodNotAllowed {

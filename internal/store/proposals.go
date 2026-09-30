@@ -53,6 +53,7 @@ type itemFile struct {
 
 	Gate      string `yaml:"gate,omitempty"`
 	Cmd       string `yaml:"cmd,omitempty"`
+	Remove    bool   `yaml:"remove,omitempty"`
 	Guideline string `yaml:"guideline,omitempty"`
 	Type      string `yaml:"type,omitempty"`
 	Skill     string `yaml:"skill,omitempty"`
@@ -72,9 +73,13 @@ type itemFile struct {
 //
 //	items:
 //	  - {gate: tests, cmd: go test ./...}
+//	  - {gate: lint, remove: true}
 //	  - {guideline: conventions, text: "# Conventions\n…"}
 //	  - {type: Note, text: "name: Note\nprefix: N\n…"}
 //	  - {skill: write-note, text: "---\ndescription: …"}
+//
+// An item with remove removes the value it names from the project's
+// Playbook file, which then gives the Base Playbook's, if any (ADR 0030).
 func ParseProposal(data []byte) (summary string, items []engine.ProposalItem, err error) {
 	var in struct {
 		Summary string     `yaml:"summary"`

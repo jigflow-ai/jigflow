@@ -42,8 +42,9 @@ func NewLedger(root string) *Ledger {
 	return &Ledger{dir: filepath.Join(root, LedgerDir), writer: hex.EncodeToString(b)}
 }
 
-// ledgerEntry is the on-disk form of an entry: a Status change, a Focus
-// change, or the usage one collection read from an agent's records.
+// ledgerEntry is the on-disk form of an entry: a Status change, a change
+// to the Playbook, a Focus change, or the usage one collection read from an
+// agent's records.
 type ledgerEntry struct {
 	At time.Time `yaml:"at"`
 	// A Status change.
@@ -53,6 +54,9 @@ type ledgerEntry struct {
 	From     string `yaml:"from,omitempty"`
 	To       string `yaml:"to,omitempty"`
 	Via      string `yaml:"via,omitempty"` // the channel of its Confirmation, if it needed one
+	// A change to the Playbook, with Via.
+	Proposal string   `yaml:"proposal,omitempty"`
+	Playbook []string `yaml:"playbook,omitempty"`
 	// A Focus change.
 	Session string `yaml:"session,omitempty"`
 	Focus   string `yaml:"focus,omitempty"`
@@ -74,6 +78,11 @@ type usageEntry struct {
 // RecordStatus adds a Status change to the Ledger.
 func (l *Ledger) RecordStatus(c engine.StatusChange) error {
 	return l.write(ledgerEntry{At: c.At, Artifact: c.Artifact, Type: c.Type, Title: c.Title, From: c.From, To: c.To, Via: string(c.Via)})
+}
+
+// RecordPlaybook adds a change to the Playbook to the Ledger.
+func (l *Ledger) RecordPlaybook(c engine.PlaybookChange) error {
+	return l.write(ledgerEntry{At: c.At, Proposal: c.Proposal, Playbook: c.Changes, Via: string(c.Via)})
 }
 
 // RecordFocus adds a Focus change to the Ledger.
@@ -164,6 +173,8 @@ func (l *Ledger) Read() (engine.Ledger, error) {
 				out.Usages = append(out.Usages, engine.Usage{At: u.At, Session: e.Session, Agent: e.Agent, Message: u.Message,
 					Tokens: engine.Tokens{Input: u.Input, Output: u.Output, CacheRead: u.CacheRead, CacheWrite: u.CacheWrite}})
 			}
+		case e.Proposal != "":
+			out.Playbooks = append(out.Playbooks, engine.PlaybookChange{At: e.At, Proposal: e.Proposal, Changes: e.Playbook, Via: engine.Channel(e.Via)})
 		case e.Artifact != "":
 			out.Statuses = append(out.Statuses, engine.StatusChange{At: e.At, Artifact: e.Artifact, Type: e.Type, Title: e.Title, From: e.From, To: e.To, Via: engine.Channel(e.Via)})
 		case e.Session != "":

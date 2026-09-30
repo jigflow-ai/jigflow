@@ -2,6 +2,7 @@ package cli
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 	"text/tabwriter"
 	"time"
@@ -36,6 +37,16 @@ func (e *env) recordStatus(a engine.Artifact, from string, via engine.Channel) e
 	return e.ledger().RecordStatus(engine.StatusChange{At: e.now(), Artifact: a.ID, Type: a.Type, Title: a.Title, From: from, To: a.Status, Via: via})
 }
 
+// recordPlaybook adds to the Ledger that the approved Proposal id made the
+// changes to the Playbook, through a Confirmation given via that channel.
+func (e *env) recordPlaybook(id string, changes []engine.ProposalItem, via engine.Channel) error {
+	c := engine.PlaybookChange{At: e.now(), Proposal: id, Via: via}
+	for _, it := range changes {
+		c.Changes = append(c.Changes, it.String())
+	}
+	return e.ledger().RecordPlaybook(c)
+}
+
 // setFocus makes id the agent session's Focus, none when it is empty, and
 // adds the change to the Ledger when there is one.
 func (e *env) setFocus(session, id string) error {
@@ -67,7 +78,7 @@ func cmdLedger(e *env, args []string) error {
 		return err
 	}
 	sum := engine.Summarise(pb, l, e.now())
-	if len(sum.Artifacts) == 0 && sum.Unattributed == 0 && !sum.Usage {
+	if len(sum.Artifacts) == 0 && sum.Unattributed == 0 && !sum.Usage && len(sum.PlaybookChanges) == 0 {
 		fmt.Fprintln(e.stdout, "the Ledger is empty")
 		return nil
 	}
@@ -111,14 +122,28 @@ func cmdLedger(e *env, args []string) error {
 			fmt.Fprintf(w, "    %s\t%s over %s%s\n", s.Status, duration(s.Time), plural(s.Artifacts, "Artifact"), now)
 		}
 	}
-	if len(sum.Confirmations) > 0 {
+	if len(sum.Confirmations) > 0 || len(sum.PlaybookChanges) > 0 {
 		fmt.Fprintln(w, "Confirmations:")
+		// A change to the Playbook is listed with the Status changes, in
+		// the order they happened.
+		type confirmation struct {
+			at                time.Time
+			what, change, via string
+		}
+		var cs []confirmation
 		for _, c := range sum.Confirmations {
 			change := "created in " + c.To
 			if c.From != "" {
 				change = c.From + " → " + c.To
 			}
-			fmt.Fprintf(w, "  %s\t%s\t%s\tvia %s\n", c.At.UTC().Format("2006-01-02 15:04"), c.Artifact, change, c.Via)
+			cs = append(cs, confirmation{c.At, c.Artifact, change, string(c.Via)})
+		}
+		for _, c := range sum.PlaybookChanges {
+			cs = append(cs, confirmation{c.At, c.Proposal, strings.Join(c.Changes, "; "), string(c.Via)})
+		}
+		slices.SortStableFunc(cs, func(x, y confirmation) int { return x.at.Compare(y.at) })
+		for _, c := range cs {
+			fmt.Fprintf(w, "  %s\t%s\t%s\tvia %s\n", c.at.UTC().Format("2006-01-02 15:04"), c.what, c.change, c.via)
 		}
 	}
 	if err := w.Flush(); err != nil {

@@ -19,7 +19,7 @@ import (
 
 // Apply writes the items of an approved Proposal that change the Playbook
 // into the project rooted at root: a Gate's command into the Playbook file,
-// which keeps the rest of what it says, a Guideline, an Artifact Type or a
+// or out of it, which keeps the rest of what it says, a Guideline, an Artifact Type or a
 // Skill into its own file, overriding the Base Playbook's of the same name.
 // It applies all of them or none: when one can't be, or the Playbook they
 // make fails its checks or verify, it puts every file back as it was.
@@ -123,7 +123,11 @@ func changes(root string, items []engine.ProposalItem) (map[string][]byte, error
 			if err != nil {
 				return nil, err
 			}
-			if err := f.Set(it.Cmd, "gates", it.Gate); err != nil {
+			if it.Remove {
+				if !f.Remove("gates", it.Gate) {
+					return nil, fmt.Errorf("%s gives Gate %q no command to remove", path.Join(Dir, "playbook.yaml"), it.Gate)
+				}
+			} else if err := f.Set(it.Cmd, "gates", it.Gate); err != nil {
 				return nil, err
 			}
 			if files["playbook.yaml"], err = f.encode(); err != nil {
@@ -242,6 +246,8 @@ func (f *File) Set(value any, keys ...string) error {
 		child := lookup(n, k)
 		if i == len(keys)-1 {
 			if child != nil {
+				// The value is replaced, the comments on it kept.
+				v.HeadComment, v.LineComment, v.FootComment = child.HeadComment, child.LineComment, child.FootComment
 				*child = v
 			} else {
 				n.Content = append(n.Content, &yaml.Node{Kind: yaml.ScalarNode, Value: k}, &v)
@@ -256,6 +262,34 @@ func (f *File) Set(value any, keys ...string) error {
 	}
 	f.changed = true
 	return nil
+}
+
+// Remove makes the file say nothing at the path of keys, and drops each
+// mapping on the way that is left empty, reporting whether it said
+// something there.
+func (f *File) Remove(keys ...string) bool {
+	nodes := []*yaml.Node{f.doc.Content[0]}
+	for _, k := range keys {
+		n := lookup(nodes[len(nodes)-1], k)
+		if n == nil {
+			return false
+		}
+		nodes = append(nodes, n)
+	}
+	for i := len(keys) - 1; i >= 0; i-- {
+		m := nodes[i]
+		for j := 0; j+1 < len(m.Content); j += 2 {
+			if m.Content[j].Value == keys[i] {
+				m.Content = slices.Delete(m.Content, j, j+2)
+				break
+			}
+		}
+		if i == 0 || len(m.Content) > 0 {
+			break
+		}
+	}
+	f.changed = true
+	return true
 }
 
 // DeclareConnector makes the file declare the Connector c, as its Base

@@ -28,38 +28,8 @@ func cmdPropose(e *env, args []string) error {
 	if err != nil {
 		return fmt.Errorf("%s: %w", args[0], err)
 	}
-	pb, st, err := e.load()
+	p, dashboard, err := e.propose(summary, items)
 	if err != nil {
-		return err
-	}
-	all, err := st.List()
-	if err != nil {
-		return err
-	}
-	ps := store.NewProposals(e.dir)
-	existing, err := ps.List()
-	if err != nil {
-		return err
-	}
-	p, err := engine.Propose(pb, e.actor, summary, items, all, existing)
-	if err != nil {
-		return fmt.Errorf("not proposed: %w", err)
-	}
-	// A Playbook the Proposal would break is reported now, to the agent,
-	// rather than to the person approving it.
-	if changes := playbookItems(items); len(changes) > 0 {
-		if _, err := e.candidate(changes); err != nil {
-			return fmt.Errorf("not proposed: as the Proposal would make it, %w", err)
-		}
-	}
-	// A Proposal making a Transition the Playbook requires the Dashboard
-	// for is approved there only, so no one is asked about it here.
-	changes, err := engine.Approve(pb, p, all)
-	if err != nil {
-		return fmt.Errorf("not proposed: %w", err)
-	}
-	dashboard := dashboardChange(changes)
-	if err := ps.Save(p); err != nil {
 		return err
 	}
 	fmt.Fprint(e.stdout, proposedForAHuman(p))
@@ -68,6 +38,47 @@ func cmdPropose(e *env, args []string) error {
 		return nil
 	}
 	return e.askNow(p.ID)
+}
+
+// propose records a pending Proposal of items, with summary, as this
+// command's actor puts it forward, refusing it unless every item would
+// apply as things stand. It says too which Transition of the Proposal the
+// Playbook requires the Dashboard for, if one does.
+func (e *env) propose(summary string, items []engine.ProposalItem) (engine.Proposal, string, error) {
+	pb, st, err := e.load()
+	if err != nil {
+		return engine.Proposal{}, "", err
+	}
+	all, err := st.List()
+	if err != nil {
+		return engine.Proposal{}, "", err
+	}
+	ps := store.NewProposals(e.dir)
+	existing, err := ps.List()
+	if err != nil {
+		return engine.Proposal{}, "", err
+	}
+	p, err := engine.Propose(pb, e.actor, summary, items, all, existing)
+	if err != nil {
+		return engine.Proposal{}, "", fmt.Errorf("not proposed: %w", err)
+	}
+	// A Playbook the Proposal would break is reported now, to the agent,
+	// rather than to the person approving it.
+	if changes := playbookItems(items); len(changes) > 0 {
+		if _, err := e.candidate(changes); err != nil {
+			return engine.Proposal{}, "", fmt.Errorf("not proposed: as the Proposal would make it, %w", err)
+		}
+	}
+	// A Proposal making a Transition the Playbook requires the Dashboard
+	// for is approved there only, so no one is asked about it here.
+	changes, err := engine.Approve(pb, p, all)
+	if err != nil {
+		return engine.Proposal{}, "", fmt.Errorf("not proposed: %w", err)
+	}
+	if err := ps.Save(p); err != nil {
+		return engine.Proposal{}, "", err
+	}
+	return p, dashboardChange(changes), nil
 }
 
 // proposedForAHuman says that an agent session put the Proposal p forward,
@@ -293,6 +304,9 @@ func (e *env) approve(id string, edit func(pb *engine.Playbook, p *engine.Propos
 	if len(changesPlaybook) > 0 {
 		if err := playbook.Apply(e.dir, changesPlaybook, e.checkOrphans); err != nil {
 			return notApplied(err)
+		}
+		if err := e.recordPlaybook(p.ID, changesPlaybook, via); err != nil {
+			return err
 		}
 	}
 	// A tracker gives each Artifact it creates its own id, so the ids the
