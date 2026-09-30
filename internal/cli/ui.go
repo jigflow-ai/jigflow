@@ -177,6 +177,8 @@ func (d *dashboard) handler() http.Handler {
 	mux.HandleFunc("POST /artifacts/{id}/comment", d.act(comment, d.showArtifact))
 	mux.HandleFunc("POST /playbook/gates/{name}", d.act(giveGateCommand, d.showPlaybook))
 	mux.HandleFunc("POST /playbook/gates/{name}/base", d.act(gateBackToBase, d.showPlaybook))
+	mux.HandleFunc("POST /playbook/adapters/{name}/publish", d.act(publishFor, d.showPlaybook))
+	mux.HandleFunc("POST /playbook/adapters/{name}/remove", d.act(stopPublishingFor, d.showPlaybook))
 	mux.HandleFunc("POST /proposals/{id}/reject", d.act(func(c *env, r *http.Request) error {
 		return c.reject(r.PathValue("id"))
 	}, d.showBacklog))

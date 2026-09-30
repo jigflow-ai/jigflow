@@ -12,12 +12,19 @@ import (
 // warns about hooks that can answer the Confirmation form jfl's MCP server
 // asks for.
 func cmdPublish(e *env, args []string) error {
-	if len(args) != 1 {
-		return fmt.Errorf("%w: jfl publish <adapter> (%s)", errUsage, adapterNames())
+	remove := len(args) == 2 && args[0] == "--remove"
+	if remove {
+		args = args[1:]
+	}
+	if len(args) != 1 || strings.HasPrefix(args[0], "-") {
+		return fmt.Errorf("%w: jfl publish [--remove] <adapter> (%s)", errUsage, adapterNames())
 	}
 	a := adapter.Find(args[0])
 	if a == nil {
 		return fmt.Errorf("unknown Adapter %q (want %s)", args[0], adapterNames())
+	}
+	if remove {
+		return e.unpublish(a)
 	}
 	if err := e.publish(a); err != nil {
 		return err
@@ -60,6 +67,25 @@ func (e *env) publishFiles(a *adapter.Adapter) error {
 		fmt.Fprintf(e.stdout, "  wrote %s\n", p)
 	}
 	for _, p := range ch.Removed {
+		fmt.Fprintf(e.stdout, "  removed %s\n", p)
+	}
+	return nil
+}
+
+// unpublish removes what the Adapter a published into the project, and
+// reports what it removed; jfl init no longer publishes through a after it.
+// It needs no Playbook, so that one that fails to load can be stopped too.
+func (e *env) unpublish(a *adapter.Adapter) error {
+	removed, ok, err := a.Unpublish(e.dir)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		fmt.Fprintf(e.stdout, "nothing is published for %s: nothing changed\n", a.Agent)
+		return nil
+	}
+	fmt.Fprintf(e.stdout, "stopped publishing the Playbook for %s\n", a.Agent)
+	for _, p := range removed {
 		fmt.Fprintf(e.stdout, "  removed %s\n", p)
 	}
 	return nil

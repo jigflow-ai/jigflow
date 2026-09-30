@@ -154,6 +154,37 @@ func (a *Adapter) Publish(root string, pb *engine.Playbook, personas map[string]
 	return ch, writeManifest(root, manifest)
 }
 
+// Unpublish removes every file a published into the project rooted at
+// root, or only jfl's part of those a person writes too, and takes a out
+// of the Manifest, so that nothing publishes through it again until it is
+// published anew. It touches no file the Manifest doesn't list for a, and
+// reports, with ok false, when a has published nothing.
+func (a *Adapter) Unpublish(root string) (removed []string, ok bool, err error) {
+	manifest, err := readManifest(root)
+	if err != nil {
+		return nil, false, err
+	}
+	owned, ok := manifest[a.Name]
+	if !ok {
+		return nil, false, nil
+	}
+	// As in Publish: never trust the Manifest to remove a file the Adapter
+	// couldn't have published.
+	for _, p := range owned {
+		if !a.publishes(p) {
+			return nil, true, fmt.Errorf("%s lists %s, which the %s Adapter doesn't publish; remove it from the list", Manifest, p, a.Name)
+		}
+	}
+	for _, p := range owned {
+		if err := removeFile(root, p); err != nil {
+			return removed, true, err
+		}
+		removed = append(removed, p)
+	}
+	delete(manifest, a.Name)
+	return removed, true, writeManifest(root, manifest)
+}
+
 // publishes reports whether rel is a file a publishes into.
 func (a *Adapter) publishes(rel string) bool {
 	if rel != path.Clean(rel) || strings.HasPrefix(rel, "../") {

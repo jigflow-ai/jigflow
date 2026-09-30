@@ -88,7 +88,7 @@ From there `/spec` turns the PRD into Requirements, `/plan` into Stories and Tas
 | `jfl propose`, `approve`, `reject` | Proposals: changes a person approves as one unit |
 | `jfl check`, `simulate`, `migrate` | validate a Playbook (warning about agent hooks that could answer a Confirmation for you), walk an Artifact Type through it, migrate Artifacts after a change |
 | `jfl install claude-code` | install the `/jigflow-init` Skill for every project, which sets a project up from Claude Code |
-| `jfl publish <adapter>` | publish the Skills for `claude-code` or `agents-md`, and register `jfl mcp` for the agent: in `.mcp.json` for Claude Code, or by printing the command for an `AGENTS.md` agent |
+| `jfl publish [--remove] <adapter>` | publish the Skills for `claude-code` or `agents-md`, and register `jfl mcp` for the agent: in `.mcp.json` for Claude Code, or by printing the command for an `AGENTS.md` agent; `--remove` deletes what that Adapter published, and nothing else |
 | `jfl ui`, `ledger` | the local Dashboard, with a page for each Artifact, where you can comment on it, one for what the Playbook is made of and where each part comes from, a Timeline of how long each Artifact spent in each Status, in a git repository the branch's commits, each linked to the Artifact it names, and the Mockups in the folder the Playbook declares, sandboxed, on a Design page and on the pages of the Artifacts linking them; time and tokens per Artifact, and where each Confirmation came from |
 | `jfl mcp` | the agent-safe commands as an MCP server, and approving a Proposal, as soon as it is proposed or later, or making a Human Transition, in a form your agent's client shows only to you |
 

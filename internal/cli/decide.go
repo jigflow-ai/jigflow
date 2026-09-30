@@ -124,6 +124,19 @@ func gateBackToBase(c *env, r *http.Request) error {
 	return c.changePlaybook(engine.ProposalItem{Gate: r.PathValue("name"), Remove: true})
 }
 
+// publishFor runs jfl publish as the person, for the Adapter the path
+// names. It is no Proposal: it changes no workflow state, and an agent may
+// run it too (ADR 0030).
+func publishFor(c *env, r *http.Request) error {
+	return cmdPublish(c, []string{r.PathValue("name")})
+}
+
+// stopPublishingFor runs jfl publish --remove as the person, for the
+// Adapter the path names.
+func stopPublishingFor(c *env, r *http.Request) error {
+	return cmdPublish(c, []string{"--remove", r.PathValue("name")})
+}
+
 // changePlaybook makes it, a change to the Playbook file, a Proposal of
 // the person's, as jfl propose would, and approves it at once, as jfl
 // approve would with the click as its Confirmation (ADR 0030): the change

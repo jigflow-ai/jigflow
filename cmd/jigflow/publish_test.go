@@ -537,3 +537,70 @@ func TestTheAgentsMdAdapterPrintsTheCommandThatRegistersJflsMCPServer(t *testing
 		t.Errorf("agents-md wrote into the user's home: %v (err %v)", entries, err)
 	}
 }
+
+func TestPublishRemoveDeletesWhatThatAdapterPublishedAndNothingElse(t *testing.T) {
+	p := published(t)
+	p.Write(".claude/skills/mine/SKILL.md", "---\nname: mine\n---\nMine.\n")
+	p.Write(".claude/settings.json", `{"permissions": {"allow": ["Bash(make test)"]}}`+"\n")
+	p.Write(".mcp.json", `{"mcpServers": {"db": {"command": "db-mcp"}}}`+"\n")
+	p.MustRun("publish", "claude-code")
+	p.MustRun("publish", "agents-md")
+	agents := p.Read("AGENTS.md")
+
+	r := p.MustRun("publish", "--remove", "claude-code")
+	for _, want := range []string{"stopped publishing the Playbook for Claude Code", "  removed .claude/skills/implement/SKILL.md", "  removed .mcp.json"} {
+		if !strings.Contains(r.Stdout, want) {
+			t.Errorf("publish --remove should say %q:\n%s", want, r.Stdout)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(p.Dir, ".claude/skills/implement")); !os.IsNotExist(err) {
+		t.Errorf("the implement Skill Claude Code was published is still there")
+	}
+	if got := p.Read(".claude/skills/mine/SKILL.md"); got != "---\nname: mine\n---\nMine.\n" {
+		t.Errorf("a Skill a person wrote was changed:\n%s", got)
+	}
+	if got := hookCommands(t, p.Read(".claude/settings.json")); len(got) != 0 {
+		t.Errorf("jfl's hooks are still in .claude/settings.json: %v", got)
+	}
+	if !strings.Contains(p.Read(".claude/settings.json"), "Bash(make test)") {
+		t.Errorf("the person's settings were not kept:\n%s", p.Read(".claude/settings.json"))
+	}
+	if servers := mcpServers(t, p.Read(".mcp.json")); servers["jfl"] != nil || servers["db"] == nil {
+		t.Errorf(".mcp.json servers = %v, want the person's db and not jfl", servers)
+	}
+	if p.Read("AGENTS.md") != agents || !strings.Contains(p.Read(".agents/skills/implement/SKILL.md"), "Work on the Ticket in Focus") {
+		t.Errorf("removing claude-code changed what agents-md published")
+	}
+	if manifest := p.Read(".jigflow/published.yaml"); strings.Contains(manifest, "claude-code") || !strings.Contains(manifest, "agents-md:") {
+		t.Errorf("the Manifest should list agents-md alone:\n%s", manifest)
+	}
+}
+
+func TestPublishRemoveSaysSoWhenNothingIsPublishedForTheAdapter(t *testing.T) {
+	p := published(t)
+	p.MustRun("publish", "agents-md")
+	before := tree(t, p)
+
+	r := p.MustRun("publish", "--remove", "claude-code")
+	if want := "nothing is published for Claude Code: nothing changed\n"; r.Stdout != want {
+		t.Errorf("publish --remove = %q, want %q", r.Stdout, want)
+	}
+	if after := tree(t, p); !maps.Equal(after, before) {
+		t.Errorf("removing what was never published changed the project")
+	}
+}
+
+func TestInitNoLongerRepublishesThroughAnAdapterPublishRemoveStopped(t *testing.T) {
+	p := initialised(t)
+	p.MustRun("init", "--adapter", "claude-code")
+	p.MustRun("publish", "agents-md")
+	p.MustRun("publish", "--remove", "claude-code")
+
+	p.MustRun("init")
+	if _, err := os.Stat(filepath.Join(p.Dir, ".claude")); !os.IsNotExist(err) {
+		t.Errorf("init published through claude-code again: %v", tree(t, p))
+	}
+	if manifest := p.Read(".jigflow/published.yaml"); strings.Contains(manifest, "claude-code") || !strings.Contains(manifest, "agents-md:") {
+		t.Errorf("the Manifest should list agents-md alone:\n%s", manifest)
+	}
+}

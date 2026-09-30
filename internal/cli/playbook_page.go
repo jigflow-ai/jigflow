@@ -11,6 +11,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/jigflow-ai/jigflow/internal/adapter"
 	"github.com/jigflow-ai/jigflow/internal/engine"
 	"github.com/jigflow-ai/jigflow/internal/playbook"
 	"github.com/jigflow-ai/jigflow/internal/store"
@@ -32,6 +33,14 @@ type playbookPage struct {
 	Personas   []personaPart
 	Gates      []gatePart
 	Mockups    *namedPart // the Mockup folder, when the Playbook declares one
+	Adapters   []adapterPart
+}
+
+// adapterPart is an Adapter, and whether the Playbook's Skills are published
+// through it: what jfl init publishes through again (ADR 0030).
+type adapterPart struct {
+	Name, Agent string
+	Published   bool
 }
 
 // gatePart is a Gate on one Transition, the command it runs, and where
@@ -160,6 +169,13 @@ func (e *env) playbookPage() (playbookPage, error) {
 	}
 	if v.Personas, err = e.personaParts(pb); err != nil {
 		return playbookPage{}, err
+	}
+	published, err := adapter.Published(e.dir)
+	if err != nil {
+		return playbookPage{}, err
+	}
+	for i, a := range adapter.Adapters {
+		v.Adapters = append(v.Adapters, adapterPart{a.Name, a.Agent, slices.Contains(published, &adapter.Adapters[i])})
 	}
 	return v, nil
 }

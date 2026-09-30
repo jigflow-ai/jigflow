@@ -79,6 +79,16 @@
   <p class="empty">No Transition has a Gate.</p>
   {{end}}
 </section>
+<section class="panel" id="adapters">
+  <h2>Adapters</h2>
+  <p class="muted small">The coding agents the Playbook's Skills are published for, as jfl publish does; jfl init publishes for them again.</p>
+  <div class="scroll">
+  <table>
+    <thead><tr><th>Adapter</th><th>Coding agent</th><th>Skills</th></tr></thead>
+    <tbody>{{range .Adapters}}<tr><td class="id">{{.Name}}</td><td>{{.Agent}}</td><td>{{if .Published}}<span class="pill finished">published</span>{{else}}<span class="pill">not published</span>{{end}}{{if $.CanAct}} {{if .Published}}<form method="post" action="/playbook/adapters/{{.Name}}/remove" class="value"><button type="submit">Stop publishing for {{.Agent}}</button></form>{{else}}<form method="post" action="/playbook/adapters/{{.Name}}/publish" class="value"><button type="submit">Publish for {{.Agent}}</button></form>{{end}}{{end}}</td></tr>{{end}}</tbody>
+  </table>
+  </div>
+</section>
 {{with .Mockups}}
 <section class="panel" id="mockups">
   <h2>Mockups</h2>

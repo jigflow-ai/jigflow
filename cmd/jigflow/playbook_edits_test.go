@@ -4,7 +4,9 @@ import (
 	"maps"
 	"net/http"
 	"net/url"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -247,5 +249,86 @@ func TestAChangeToThePlaybookFileMadeInTheDashboardIsNotCommitted(t *testing.T) 
 	}
 	if status := git(t, p, "status", "--porcelain"); !strings.Contains(status, "M .jigflow/playbook.yaml") {
 		t.Errorf("the Playbook file should be changed and left uncommitted:\n%s", status)
+	}
+}
+
+func TestThePlaybookPageListsEveryAdapterAndMarksThoseSkillsArePublishedFor(t *testing.T) {
+	p := published(t)
+	p.MustRun("publish", "claude-code")
+	ui := p.StartUI()
+
+	adapters := section(t, get(t, ui, "/playbook"), "Adapters")
+	wantText(t, adapters,
+		"claude-code Claude Code published Stop publishing for Claude Code",
+		"agents-md agents that read AGENTS.md not published Publish for agents that read AGENTS.md")
+
+	adapters = section(t, look(t, ui, "/playbook"), "Adapters")
+	if strings.Contains(adapters, "<form") {
+		t.Errorf("without the link, the Adapters offer a form:\n%s", text(adapters))
+	}
+	wantText(t, adapters, "claude-code Claude Code published", "agents-md agents that read AGENTS.md not published")
+}
+
+func TestPublishForAnAgentPublishesTheSkillsAsJflPublishDoesAndThePageSaysWhatItSaid(t *testing.T) {
+	p := published(t)
+	ui := p.StartUI()
+
+	action, form, ok := findForm(section(t, get(t, ui, "/playbook"), "Adapters"), "Publish for agents that read AGENTS.md")
+	if !ok {
+		t.Fatal("no form to publish for agents that read AGENTS.md")
+	}
+	page := ui.Post(action, form)
+	if page.Status != http.StatusOK {
+		t.Fatalf("publishing for agents-md: status %d\n%s", page.Status, text(page.HTML))
+	}
+	wantText(t, section(t, page.HTML, "Done"), `published Playbook "skeleton" for agents that read AGENTS.md`, "wrote .agents/skills/implement/SKILL.md", "codex mcp add jfl -- jfl mcp")
+	wantText(t, section(t, page.HTML, "Adapters"), "agents-md agents that read AGENTS.md published Stop publishing for agents that read AGENTS.md")
+	if !strings.Contains(p.Read(".agents/skills/implement/SKILL.md"), "Work on the Ticket in Focus") {
+		t.Errorf("the implement Skill wasn't published for agents-md")
+	}
+}
+
+func TestStopPublishingForAnAgentRemovesWhatItPublishedAndInitNoLongerRepublishesThroughIt(t *testing.T) {
+	p := initialised(t)
+	p.MustRun("init", "--adapter", "claude-code")
+	p.MustRun("publish", "agents-md")
+	ui := p.StartUI()
+
+	action, form, ok := findForm(section(t, get(t, ui, "/playbook"), "Adapters"), "Stop publishing for Claude Code")
+	if !ok {
+		t.Fatal("no form to stop publishing for Claude Code")
+	}
+	page := ui.Post(action, form)
+	if page.Status != http.StatusOK {
+		t.Fatalf("stopping publishing for claude-code: status %d\n%s", page.Status, text(page.HTML))
+	}
+	wantText(t, section(t, page.HTML, "Done"), "stopped publishing the Playbook for Claude Code", "removed .claude/skills/jigflow/SKILL.md")
+	wantText(t, section(t, page.HTML, "Adapters"), "claude-code Claude Code not published Publish for Claude Code")
+
+	p.MustRun("init")
+	if _, err := os.Stat(filepath.Join(p.Dir, ".claude")); !os.IsNotExist(err) {
+		t.Errorf("init published through claude-code again: %v", tree(t, p))
+	}
+}
+
+func TestOnlyTheBrowserThatOpenedTheLinkMayPublishOrStopPublishing(t *testing.T) {
+	p := published(t)
+	p.MustRun("publish", "claude-code")
+	ui := p.StartUI()
+	adapters := section(t, get(t, ui, "/playbook"), "Adapters")
+	stop, stopForm, _ := findForm(adapters, "Stop publishing for Claude Code")
+	publish, publishForm, _ := findForm(adapters, "Publish for agents that read AGENTS.md")
+	before := tree(t, p)
+
+	for path, form := range map[string]url.Values{stop: stopForm, publish: publishForm} {
+		if page := ui.Curl(ui.NewRequest(http.MethodPost, path, form)); page.Status != http.StatusForbidden {
+			t.Errorf("POST %s without the link: status %d, want 403", path, page.Status)
+		}
+		if page := p.StartUIInSession("A").Post(path, form); page.Status != http.StatusForbidden {
+			t.Errorf("POST %s in a Dashboard agent session A started: status %d, want 403", path, page.Status)
+		}
+	}
+	if after := tree(t, p); !maps.Equal(after, before) {
+		t.Errorf("a refused request changed the project")
 	}
 }

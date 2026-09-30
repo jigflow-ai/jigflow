@@ -248,7 +248,8 @@ Commands:
                           Gates or Actions. --proposal walks it through the
                           Playbook as that pending Proposal would make it;
                           --source first prints the file declaring the Type
-  publish <adapter>       publish the Playbook's Skills, the Guidelines and
+  publish [--remove] <adapter>
+                          publish the Playbook's Skills, the Guidelines and
                           Personas they name, every active Persona and a
                           router Skill built from its Bindings, which also
                           names the Skills only a person starts, for a coding
@@ -267,7 +268,12 @@ Commands:
                           active or retired, override the Library's by name.
                           It warns about hooks that can answer the
                           Confirmation form, as check does, whichever the
-                          Adapter, since any agent may run in Claude Code
+                          Adapter, since any agent may run in Claude Code.
+                          --remove deletes what the Adapter published, or
+                          only jfl's part of a file a person writes too, and
+                          nothing else, so jfl init no longer publishes
+                          through it; with nothing published for it, it
+                          says so
   install <adapter>       install jfl's own Skills, which belong to no
                           Playbook, for a coding agent at user level, so
                           every project has them before it is set up:
@@ -337,7 +343,9 @@ Commands:
                           page, as jfl comment run by them, and give a Gate
                           its command, or its Base Playbook's back, on the
                           Playbook page, as a Proposal of theirs approved
-                          at once, never committed; a Dashboard an agent
+                          at once, never committed, and publish the
+                          Playbook for an Adapter there, or stop, as jfl
+                          publish run by them; a Dashboard an agent
                           session starts is only to look at. It
                           never edits an Artifact's body, except to add such
                           a comment

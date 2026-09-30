@@ -38,7 +38,7 @@
 <h1>Playbook reference</h1>
 <p class="lede">A Playbook is a directory of plain files: YAML for the workflow, Markdown for what agents read. This page lists every file and every key. The examples come from the Larapilot-style and Pocock Playbooks, which both pass <code>jfl check</code>.</p>
 
-<p>You rarely write one from scratch. Usually a project <a href="#extends">extends</a> a shipped Playbook and overrides a few parts by name, or asks <a href="playbooks.html#playbook-author"><code>/playbook-author</code></a> to propose the changes. Either way, agents never edit these files. A change to the Playbook reaches the project as a <a href="proposals.html">Proposal</a> a person approves, or as a person's own edit. A Gate's command can also be changed from the Dashboard's Playbook page, as a Proposal you approve as you save it (<a href="proposals.html#playbook-file">Changing the Playbook file</a>).</p>
+<p>You rarely write one from scratch. Usually a project <a href="#extends">extends</a> a shipped Playbook and overrides a few parts by name, or asks <a href="playbooks.html#playbook-author"><code>/playbook-author</code></a> to propose the changes. Either way, agents never edit these files. A change to the Playbook reaches the project as a <a href="proposals.html">Proposal</a> a person approves, or as a person's own edit. A Gate's command can also be changed from the Dashboard's Playbook page, as a Proposal you approve as you save it (<a href="proposals.html#playbook-file">Changing the Playbook file</a>), and the page publishes the Skills for another coding agent, or stops (<a href="proposals.html#adapters">Adapters</a>).</p>
 
 <h2 id="layout">Layout</h2>
 <pre><code>.jigflow/
