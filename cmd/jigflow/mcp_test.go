@@ -23,6 +23,33 @@ func TestTheMCPServerListsOnlyTheAgentSafeTools(t *testing.T) {
 	}
 }
 
+func TestTheMCPProposeToolSaysAnItemMaySetTheMockupFolderOrRemoveTheProjects(t *testing.T) {
+	p := pocockPlaybook(t)
+	m := p.StartMCP("A")
+
+	var res struct {
+		Tools []struct {
+			Name        string `json:"name"`
+			Description string `json:"description"`
+		} `json:"tools"`
+	}
+	if err := m.Call("tools/list", map[string]any{}, &res); err != nil {
+		t.Fatalf("tools/list: %v", err)
+	}
+	for _, tool := range res.Tools {
+		if tool.Name != "propose" {
+			continue
+		}
+		for _, want := range []string{"{mockups: <folder>}", "{mockups: <folder>, remove: true}"} {
+			if !strings.Contains(tool.Description, want) {
+				t.Errorf("the propose tool's description should list %s:\n%s", want, tool.Description)
+			}
+		}
+		return
+	}
+	t.Fatal("no propose tool")
+}
+
 func TestTheMCPServerCannotApproveOrRejectAProposalForAClientThatCannotShowAForm(t *testing.T) {
 	p := pocockPlaybook(t)
 	p.MustRun("create", "Spec", "--title", "Password reset by email")

@@ -65,8 +65,12 @@ func (e *env) propose(summary string, items []engine.ProposalItem) (engine.Propo
 	// A Playbook the Proposal would break is reported now, to the agent,
 	// rather than to the person approving it.
 	if changes := playbookItems(items); len(changes) > 0 {
-		if _, err := e.candidate(changes); err != nil {
+		next, err := e.candidate(changes)
+		if err != nil {
 			return engine.Proposal{}, "", fmt.Errorf("not proposed: as the Proposal would make it, %w", err)
+		}
+		if err := e.mockupsStay(pb, next); err != nil {
+			return engine.Proposal{}, "", fmt.Errorf("not proposed: %w", err)
 		}
 	}
 	// A Proposal making a Transition the Playbook requires the Dashboard
@@ -290,6 +294,18 @@ func (e *env) approve(id string, edit func(pb *engine.Playbook, p *engine.Propos
 			return notApplied(fmt.Errorf("item %d (%s): %s and approve %s there", c.Item+1, p.Items[c.Item], dashboardOnly(c.Artifact.ID, c.Transition), p.ID))
 		}
 	}
+	// A Mockup folder that holds a Mockup now, as it may not when the
+	// Proposal was made, is refused before the person is asked.
+	changesPlaybook := playbookItems(p.Items)
+	if slices.ContainsFunc(changesPlaybook, func(it engine.ProposalItem) bool { return it.Mockups != "" }) {
+		next, err := e.candidate(changesPlaybook)
+		if err != nil {
+			return notApplied(err)
+		}
+		if err := e.mockupsStay(pb, next); err != nil {
+			return notApplied(err)
+		}
+	}
 	via, err := e.confirmApproval(pb, p)
 	if err != nil {
 		return err
@@ -311,7 +327,6 @@ func (e *env) approve(id string, edit func(pb *engine.Playbook, p *engine.Propos
 	}
 	// The Playbook's changes are written first, all of them or none, so
 	// that a Playbook they'd break changes no Artifact either.
-	changesPlaybook := playbookItems(p.Items)
 	if len(changesPlaybook) > 0 {
 		if err := playbook.Apply(e.dir, changesPlaybook, e.checkOrphans); err != nil {
 			return notApplied(err)

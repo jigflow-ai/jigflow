@@ -216,10 +216,10 @@ func TestAnArtifactsPageLinkingNoMockupHasNoMockupsSection(t *testing.T) {
 func TestThePlaybookPageShowsTheMockupFolderAndWhereItComesFrom(t *testing.T) {
 	p := larapilot(t)
 	ui := p.StartUI()
-	wantText(t, section(t, get(t, ui, "/playbook"), "Mockups"), ".jigflow/mockups builtin larapilot")
+	wantText(t, section(t, look(t, ui, "/playbook"), "Mockups"), ".jigflow/mockups builtin larapilot")
 
 	p.Write(".jigflow/playbook.yaml", "name: shop\nextends: {builtin: larapilot}\nmockups: design/screens\n")
-	wantText(t, section(t, get(t, ui, "/playbook"), "Mockups"), "design/screens project, overriding builtin larapilot")
+	wantText(t, section(t, look(t, ui, "/playbook"), "Mockups"), "design/screens project, overriding builtin larapilot")
 }
 
 func TestThePlaybookPageHasNoMockupFolderWhenNoneIsDeclared(t *testing.T) {

@@ -31,7 +31,9 @@ type Proposal struct {
 // a change to the Playbook (ADR 0004): giving the Gates named Gate the
 // command Cmd, or, with Remove, removing the command the project's
 // Playbook file gives them, so that they run the Base Playbook's (ADR
-// 0030), adding the Guideline named Guideline, whose Markdown is Text,
+// 0030), setting the Mockup folder to Mockups, or, with Remove, removing
+// the folder Mockups the project's Playbook file gives, so that the Base
+// Playbook's is the folder again, adding the Guideline named Guideline, whose Markdown is Text,
 // declaring the Artifact Type named Type, whose YAML file is Text, or writing
 // the Skill named Skill, whose SKILL.md is Text. A Type or a Skill the
 // Playbook has already is replaced, so the Playbook's own Types and Skills,
@@ -54,6 +56,7 @@ type ProposalItem struct {
 	Gate      string
 	Cmd       string
 	Remove    bool // removes the value the item names from the project's Playbook file
+	Mockups   string
 	Guideline string
 	Type      string
 	Skill     string
@@ -86,7 +89,7 @@ func (p Proposal) ProposedBy() string {
 // ChangesPlaybook reports whether the item changes the Playbook rather
 // than an Artifact.
 func (it ProposalItem) ChangesPlaybook() bool {
-	return it.Gate != "" || it.Guideline != "" || it.Type != "" || it.Skill != ""
+	return it.Gate != "" || it.Mockups != "" || it.Guideline != "" || it.Type != "" || it.Skill != ""
 }
 
 // FileValue names the value of the Playbook file the item changes, as the
@@ -98,6 +101,8 @@ func (it ProposalItem) FileValue() string {
 	switch {
 	case it.Gate != "":
 		return "gates." + it.Gate
+	case it.Mockups != "":
+		return "mockups"
 	}
 	return ""
 }
@@ -124,6 +129,8 @@ func (pb *Playbook) Now(it ProposalItem) (string, bool) {
 			}
 		}
 		return "", true
+	case it.Mockups != "":
+		return pb.Mockups, true
 	}
 	return "", false
 }
@@ -170,6 +177,10 @@ func (it ProposalItem) String() string {
 		return fmt.Sprintf("remove the project's command for Gate %q", it.Gate)
 	case it.Gate != "":
 		return fmt.Sprintf("give Gate %q the command %s", it.Gate, it.Cmd)
+	case it.Mockups != "" && it.Remove:
+		return "remove the project's Mockup folder " + it.Mockups
+	case it.Mockups != "":
+		return "set the Mockup folder to " + it.Mockups
 	case it.Guideline != "":
 		return fmt.Sprintf("add Guideline %q (%s)", it.Guideline, it.lines())
 	case it.Type != "":
@@ -258,15 +269,17 @@ func Approve(pb *Playbook, p Proposal, all []Artifact) ([]Change, error) {
 			return nil, fmt.Errorf("item %d (%s): %w", i+1, it, err)
 		}
 		kinds := 0
-		for _, is := range []bool{it.Create != "", it.Move != "" || it.To != "", it.Gate != "" || it.Cmd != "", it.Guideline != "", it.Type != "", it.Skill != ""} {
+		for _, is := range []bool{it.Create != "", it.Move != "" || it.To != "", it.Gate != "" || it.Cmd != "", it.Mockups != "", it.Guideline != "", it.Type != "", it.Skill != ""} {
 			if is {
 				kinds++
 			}
 		}
 		textual := it.Guideline != "" || it.Type != "" || it.Skill != ""
 		switch {
-		case kinds != 1 || (it.Text != "" && !textual) || (it.Remove && it.Gate == ""):
+		case kinds != 1 || (it.Text != "" && !textual) || (it.Remove && it.Gate == "" && it.Mockups == ""):
 			return nil, fmt.Errorf("item %d: %s", i+1, itemKinds)
+		case it.Mockups != "":
+			// The folder's place is checked with the Playbook it makes.
 		case it.Remove:
 			if it.Cmd != "" {
 				return fail(errors.New("removing a Gate's command from the Playbook file takes no cmd"))
@@ -338,7 +351,7 @@ func Approve(pb *Playbook, p Proposal, all []Artifact) ([]Change, error) {
 }
 
 // itemKinds says what a Proposal item may be.
-const itemKinds = "an item either creates (create, title, and optionally status, fields and links), moves (move, to), gives a Gate its command (gate, cmd) or removes the one the project's Playbook file gives it (gate, remove: true), adds a Guideline (guideline, text), declares an Artifact Type (type, text) or writes a Skill (skill, text)"
+const itemKinds = "an item either creates (create, title, and optionally status, fields and links), moves (move, to), gives a Gate its command (gate, cmd) or removes the one the project's Playbook file gives it (gate, remove: true), sets the Mockup folder (mockups) or removes the one the project's Playbook file gives (mockups, remove: true), adds a Guideline (guideline, text), declares an Artifact Type (type, text) or writes a Skill (skill, text)"
 
 // touched returns, for every Artifact an item of a pending Proposal moves, the
 // id of that Proposal. Creations touch nothing yet: their Artifacts don't

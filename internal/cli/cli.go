@@ -196,7 +196,9 @@ Commands:
                           values and Link to each other by ref;
                           an item may change the Playbook instead, giving a
                           Gate its command or removing the one the project's
-                          Playbook file gives it, adding a Guideline, or
+                          Playbook file gives it, setting the Mockup folder
+                          or removing the project's, which is refused while
+                          the folder holds a Mockup, adding a Guideline, or
                           declaring an Artifact Type or writing a Skill,
                           either replacing the one of that name; a Proposal whose
                           Playbook would fail check is refused. It says
@@ -344,7 +346,9 @@ Commands:
                           Proposals, editing their creations first, make
                           Human Transitions, comment on an Artifact from its
                           page, as jfl comment run by them, and give a Gate
-                          its command, or its Base Playbook's back, on the
+                          its command, or its Base Playbook's back, and set
+                          the Mockup folder, or its Base Playbook's back,
+                          unless it holds a Mockup, on the
                           Playbook page, as a Proposal of theirs approved
                           at once, never committed, and publish the
                           Playbook for an Adapter there, or stop, as jfl
@@ -391,6 +395,9 @@ func cmdCheck(e *env, args []string) error {
 			return err
 		}
 		fmt.Fprintf(e.stdout, "Playbook %q, as %s would make it: no problems\n", pb.Name, *proposal)
+		if pb.Mockups != "" {
+			fmt.Fprintf(e.stdout, "Mockups in %s\n", pb.Mockups)
+		}
 		e.warnFormHooks()
 		return nil
 	}
@@ -451,7 +458,8 @@ func (e *env) checkOrphans(pb *engine.Playbook) error {
 // proposed loads the Playbook as the pending Proposal id would make it once
 // approved, writing nothing, so that it can be checked and simulated first.
 func (e *env) proposed(id string) (*engine.Playbook, error) {
-	if _, _, err := e.load(); err != nil {
+	pb, _, err := e.load()
+	if err != nil {
 		return nil, err
 	}
 	p, err := store.NewProposals(e.dir).Get(id)
@@ -465,7 +473,14 @@ func (e *env) proposed(id string) (*engine.Playbook, error) {
 	if len(items) == 0 {
 		return nil, fmt.Errorf("%s changes nothing in the Playbook", p.ID)
 	}
-	return e.candidate(items)
+	next, err := e.candidate(items)
+	if err != nil {
+		return nil, err
+	}
+	if err := e.mockupsStay(pb, next); err != nil {
+		return nil, err
+	}
+	return next, nil
 }
 
 // candidate loads the Playbook as the items, which change it, would make

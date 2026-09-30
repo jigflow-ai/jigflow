@@ -432,3 +432,213 @@ func TestShowOfAPendingProposalListsItsItemsWithTheValueOfThePlaybookFileEachRep
 		t.Errorf("jfl show P-9, which is neither an Artifact nor a Proposal, succeeded:\n%s", r.Stdout)
 	}
 }
+
+// mockupsOverBase is a project whose Playbook file gives the Mockup folder
+// design/screens over the one its Base Playbook, the Larapilot-style one,
+// gives, .jigflow/mockups, with comments of its own.
+func mockupsOverBase(t *testing.T) *clitest.Project {
+	t.Helper()
+	p := bin.NewProject(t)
+	p.Write(".jigflow/playbook.yaml", "# The shop's Playbook.\nname: shop\nextends: {builtin: larapilot} # ours\nmockups: design/screens # the designers'\n")
+	return p
+}
+
+func TestAnAgentProposesAMockupFolderCheckChecksItAndApprovingWritesItIntoThePlaybookFile(t *testing.T) {
+	p := mockupsOverBase(t)
+	p.Write("move.yaml", "summary: keep Mockups with the docs\nitems:\n  - {mockups: docs/mockups}\n")
+
+	r := p.RunInSession("A", "propose", "move.yaml")
+	if r.ExitCode != 0 || !strings.Contains(r.Stdout, "1. set the Mockup folder to docs/mockups") {
+		t.Fatalf("proposing the Mockup folder exited %d:\n%s%s", r.ExitCode, r.Stdout, r.Stderr)
+	}
+	if got := p.MustRun("check", "--proposal", "P-1").Stdout; got != "Playbook \"shop\", as P-1 would make it: no problems\nMockups in docs/mockups\n" {
+		t.Errorf("check --proposal P-1 printed:\n%s", got)
+	}
+	if got := p.MustRun("show", "P-1").Stdout; !strings.Contains(got, "1. set the Mockup folder to docs/mockups (replacing design/screens)") {
+		t.Errorf("jfl show P-1 should say the folder it replaces:\n%s", got)
+	}
+	approveInTerminal(t, p, "P-1")
+	want := "# The shop's Playbook.\nname: shop\nextends: {builtin: larapilot} # ours\nmockups: docs/mockups # the designers'\n"
+	if got := p.Read(".jigflow/playbook.yaml"); got != want {
+		t.Errorf("the Playbook file reads:\n%s\nwant:\n%s", got, want)
+	}
+	if got := p.MustRun("check").Stdout; !strings.Contains(got, "Mockups in docs/mockups") {
+		t.Errorf("check should say the new Mockup folder:\n%s", got)
+	}
+
+	p.Write("out.yaml", "summary: outside\nitems:\n  - {mockups: ../designs}\n")
+	if r := p.RunInSession("A", "propose", "out.yaml"); r.ExitCode != 1 || !strings.Contains(r.Stderr, `mockups "../designs" must name a folder inside the project`) {
+		t.Errorf("proposing a Mockup folder outside the project exited %d: %s", r.ExitCode, r.Stderr)
+	}
+}
+
+func TestMovingTheMockupFolderWhileItHoldsAMockupIsRefusedNamingItAndChangesNothing(t *testing.T) {
+	p := mockupsOverBase(t)
+	p.Write("move.yaml", "summary: keep Mockups with the docs\nitems:\n  - {mockups: docs/mockups}\n")
+	p.MustRun("propose", "move.yaml")
+	p.Write("design/screens/REQ-1/checkout.html", "<p>Checkout</p>")
+	before := tree(t, p)
+
+	const why = "the Mockup folder design/screens holds 1 Mockup"
+	if r := p.RunInSession("A", "propose", "move.yaml"); r.ExitCode != 1 || !strings.Contains(r.Stderr, why) {
+		t.Errorf("proposing to move a folder holding a Mockup exited %d, want a refusal saying %q: %s", r.ExitCode, why, r.Stderr)
+	}
+	if r := p.Run("check", "--proposal", "P-1"); r.ExitCode != 1 || !strings.Contains(r.Stderr, why) {
+		t.Errorf("check --proposal P-1 exited %d, want a refusal saying %q: %s", r.ExitCode, why, r.Stderr)
+	}
+	if r := p.Run("approve", "P-1"); r.ExitCode != 1 || !strings.Contains(r.Stderr, why) {
+		t.Errorf("approve P-1 exited %d, want a refusal saying %q: %s", r.ExitCode, why, r.Stderr)
+	}
+	if after := tree(t, p); !maps.Equal(after, before) {
+		t.Errorf("a refused change changed the project:\n%s", p.Read(".jigflow/playbook.yaml"))
+	}
+
+	// Setting the folder it is already is no move.
+	p.Write("same.yaml", "summary: say it again\nitems:\n  - {mockups: design/screens/}\n")
+	if r := p.RunInSession("A", "propose", "same.yaml"); r.ExitCode != 0 {
+		t.Errorf("proposing the folder it is already exited %d: %s", r.ExitCode, r.Stderr)
+	}
+}
+
+// mockupsForm returns where the form in the Playbook page's Mockups section
+// that a person reads as button posts to, and what it sends as it is.
+func mockupsForm(t *testing.T, page, button string) (string, url.Values) {
+	t.Helper()
+	action, values, ok := findForm(section(t, page, "Mockups"), button)
+	if !ok {
+		t.Fatalf("no %q form for the Mockup folder in:\n%s", button, text(section(t, page, "Mockups")))
+	}
+	return action, values
+}
+
+func TestWithTheKeyThePlaybookPageEditsTheMockupFolderShowingWhereItComesFrom(t *testing.T) {
+	p := mockupsOverBase(t)
+	ui := p.StartUI()
+
+	page := get(t, ui, "/playbook")
+	if _, form := mockupsForm(t, page, "Save"); form.Get("folder") != "design/screens" {
+		t.Errorf("the Mockup folder field holds %q, want design/screens", form.Get("folder"))
+	}
+	wantText(t, section(t, page, "Mockups"), "Save Back to the Base's project, overriding builtin larapilot")
+
+	mockups := section(t, look(t, ui, "/playbook"), "Mockups")
+	if strings.Contains(mockups, "<form") {
+		t.Errorf("without the link, the Mockup folder offers a form:\n%s", text(mockups))
+	}
+	wantText(t, mockups, "design/screens project, overriding builtin larapilot")
+}
+
+func TestSavingTheMockupFolderApprovesItAtOnceAndTheDesignPageServesTheNewFolder(t *testing.T) {
+	p := mockupsOverBase(t)
+	p.Write("docs/mockups/REQ-1/checkout.html", "<p>Checkout</p>")
+	ui := p.StartUI()
+
+	action, form := mockupsForm(t, get(t, ui, "/playbook"), "Save")
+	form.Set("folder", "docs/mockups")
+	page := ui.Post(action, form)
+	if page.Status != http.StatusOK {
+		t.Fatalf("saving the Mockup folder: status %d\n%s", page.Status, text(page.HTML))
+	}
+	wantText(t, section(t, page.HTML, "Done"), "approved P-1 as one unit: set the Mockup folder to docs/mockups")
+	if _, form := mockupsForm(t, page.HTML, "Save"); form.Get("folder") != "docs/mockups" {
+		t.Errorf("after saving, the Mockup folder field holds %q", form.Get("folder"))
+	}
+	want := "# The shop's Playbook.\nname: shop\nextends: {builtin: larapilot} # ours\nmockups: docs/mockups # the designers'\n"
+	if got := p.Read(".jigflow/playbook.yaml"); got != want {
+		t.Errorf("the Playbook file reads:\n%s\nwant:\n%s", got, want)
+	}
+	if got := p.Read(".jigflow/proposals/P-1.yaml"); !strings.Contains(got, "status: approved") || !strings.Contains(got, "mockups: docs/mockups") {
+		t.Errorf("P-1 should be approved, setting the folder:\n%s", got)
+	}
+	wantText(t, get(t, ui, "/design"), "checkout.html")
+	if m := ui.Get("/mockups/REQ-1/checkout.html"); m.Status != http.StatusOK || m.HTML != "<p>Checkout</p>" {
+		t.Errorf("GET /mockups/REQ-1/checkout.html from the new folder: status %d, %q", m.Status, m.HTML)
+	}
+}
+
+func TestSavingTheMockupFolderWhileItHoldsAMockupIsRefusedOnThePageNamingItAndChangesNothing(t *testing.T) {
+	p := mockupsOverBase(t)
+	p.Write("design/screens/REQ-1/checkout.html", "<p>Checkout</p>")
+	ui := p.StartUI()
+	page := get(t, ui, "/playbook")
+	before := tree(t, p)
+
+	action, form := mockupsForm(t, page, "Save")
+	form.Set("folder", "docs/mockups")
+	for _, post := range []func() clitest.Page{
+		func() clitest.Page { return ui.Post(action, form) },
+		func() clitest.Page { a, f := mockupsForm(t, page, "Back to the Base's"); return ui.Post(a, f) },
+	} {
+		got := post()
+		if got.Status != http.StatusConflict {
+			t.Fatalf("moving the Mockup folder holding a Mockup: status %d, want 409\n%s", got.Status, text(got.HTML))
+		}
+		wantText(t, section(t, got.HTML, "Not done"), "the Mockup folder design/screens holds 1 Mockup")
+	}
+	if after := tree(t, p); !maps.Equal(after, before) {
+		t.Errorf("a refused change changed the project:\n%s", p.Read(".jigflow/playbook.yaml"))
+	}
+}
+
+func TestBackToTheBasesRemovesTheProjectsMockupFolderAndThePageShowsTheBasesAgain(t *testing.T) {
+	p := mockupsOverBase(t)
+	ui := p.StartUI()
+
+	action, form := mockupsForm(t, get(t, ui, "/playbook"), "Back to the Base's")
+	page := ui.Post(action, form)
+	if page.Status != http.StatusOK {
+		t.Fatalf("going back to the Base's Mockup folder: status %d\n%s", page.Status, text(page.HTML))
+	}
+	wantText(t, section(t, page.HTML, "Done"), "approved P-1 as one unit: remove the project's Mockup folder design/screens")
+	if _, form := mockupsForm(t, page.HTML, "Save"); form.Get("folder") != ".jigflow/mockups" {
+		t.Errorf("the Mockup folder field holds %q, want the Base Playbook's", form.Get("folder"))
+	}
+	if strings.Contains(section(t, page.HTML, "Mockups"), "Back to the Base's") {
+		t.Errorf("the Base Playbook's folder offers going back to it:\n%s", text(section(t, page.HTML, "Mockups")))
+	}
+	want := "# The shop's Playbook.\nname: shop\nextends: {builtin: larapilot} # ours\n"
+	if got := p.Read(".jigflow/playbook.yaml"); got != want {
+		t.Errorf("the Playbook file reads:\n%s\nwant:\n%s", got, want)
+	}
+
+	// With no folder of the project's, there is none to remove.
+	p.Write("back.yaml", "summary: back\nitems:\n  - {mockups: design/screens, remove: true}\n")
+	if r := p.RunInSession("A", "propose", "back.yaml"); r.ExitCode != 1 || !strings.Contains(r.Stderr, ".jigflow/playbook.yaml gives no Mockup folder design/screens to remove") {
+		t.Errorf("proposing to remove a folder the project doesn't give exited %d: %s", r.ExitCode, r.Stderr)
+	}
+}
+
+func TestTheMockupFolderAPendingProposalAlsoChangesNamesThatProposalWhichShowsTheFolderItReplaces(t *testing.T) {
+	p := mockupsOverBase(t)
+	p.Write("move.yaml", "summary: keep Mockups with the docs\nitems:\n  - {mockups: docs/mockups}\n")
+	if r := p.RunInSession("A", "propose", "move.yaml"); r.ExitCode != 0 {
+		t.Fatalf("proposing the Mockup folder exited %d:\n%s%s", r.ExitCode, r.Stdout, r.Stderr)
+	}
+	ui := p.StartUI()
+
+	for _, page := range []string{get(t, ui, "/playbook"), look(t, ui, "/playbook")} {
+		mockups := section(t, page, "Mockups")
+		wantText(t, mockups, "pending Proposal P-1 changes it too")
+		if !strings.Contains(mockups, `href="/#P-1"`) {
+			t.Errorf("the Mockup folder should link P-1:\n%s", mockups)
+		}
+	}
+	wantText(t, section(t, get(t, ui, "/"), "Pending Proposals"), "set the Mockup folder to docs/mockups replacing design/screens")
+}
+
+func TestSavingNoMockupFolderIsRefusedSayingWhatItNeeds(t *testing.T) {
+	p := mockupsOverBase(t)
+	ui := p.StartUI()
+	before := tree(t, p)
+
+	action, form := mockupsForm(t, get(t, ui, "/playbook"), "Save")
+	form.Set("folder", " ")
+	page := ui.Post(action, form)
+	if page.Status != http.StatusConflict {
+		t.Fatalf("saving no Mockup folder: status %d, want 409\n%s", page.Status, text(page.HTML))
+	}
+	wantText(t, section(t, page.HTML, "Not done"), "the Mockup folder needs a folder inside the project")
+	if after := tree(t, p); !maps.Equal(after, before) {
+		t.Errorf("a refused change changed the project:\n%v", after)
+	}
+}

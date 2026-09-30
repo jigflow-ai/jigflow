@@ -18,8 +18,8 @@ import (
 )
 
 // Apply writes the items of an approved Proposal that change the Playbook
-// into the project rooted at root: a Gate's command into the Playbook file,
-// or out of it, which keeps the rest of what it says, a Guideline, an Artifact Type or a
+// into the project rooted at root: a Gate's command or the Mockup folder
+// into the Playbook file, or out of it, which keeps the rest of what it says, a Guideline, an Artifact Type or a
 // Skill into its own file, overriding the Base Playbook's of the same name.
 // It applies all of them or none: when one can't be, or the Playbook they
 // make fails its checks or verify, it puts every file back as it was.
@@ -111,7 +111,7 @@ func changes(root string, items []engine.ProposalItem) (map[string][]byte, error
 	files := map[string][]byte{}
 	for _, it := range items {
 		switch {
-		case it.Gate != "":
+		case it.Gate != "" || it.Mockups != "":
 			data, ok := files["playbook.yaml"]
 			if !ok {
 				var err error
@@ -123,11 +123,7 @@ func changes(root string, items []engine.ProposalItem) (map[string][]byte, error
 			if err != nil {
 				return nil, err
 			}
-			if it.Remove {
-				if !f.Remove("gates", it.Gate) {
-					return nil, fmt.Errorf("%s gives Gate %q no command to remove", path.Join(Dir, "playbook.yaml"), it.Gate)
-				}
-			} else if err := f.Set(it.Cmd, "gates", it.Gate); err != nil {
+			if err := setValue(f, it); err != nil {
 				return nil, err
 			}
 			if files["playbook.yaml"], err = f.encode(); err != nil {
@@ -150,6 +146,33 @@ func changes(root string, items []engine.ProposalItem) (map[string][]byte, error
 		}
 	}
 	return files, nil
+}
+
+// setValue makes the Playbook file f say the value the item gives, or
+// nothing where the item removes it.
+func setValue(f *File, it engine.ProposalItem) error {
+	file := path.Join(Dir, "playbook.yaml")
+	switch {
+	case it.Gate != "" && it.Remove:
+		if !f.Remove("gates", it.Gate) {
+			return fmt.Errorf("%s gives Gate %q no command to remove", file, it.Gate)
+		}
+	case it.Gate != "":
+		return f.Set(it.Cmd, "gates", it.Gate)
+	case it.Remove:
+		// It names the folder it removes, so that it removes no other.
+		var own string
+		if n := lookup(f.doc.Content[0], "mockups"); n != nil {
+			own = n.Value
+		}
+		if own == "" || path.Clean(own) != path.Clean(it.Mockups) {
+			return fmt.Errorf("%s gives no Mockup folder %s to remove", file, it.Mockups)
+		}
+		f.Remove("mockups")
+	default:
+		return f.Set(it.Mockups, "mockups")
+	}
+	return nil
 }
 
 // typePath is the path in dir, the project's Playbook, of the file the

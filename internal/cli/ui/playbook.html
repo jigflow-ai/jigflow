@@ -92,11 +92,11 @@
 {{with .Mockups}}
 <section class="panel" id="mockups">
   <h2>Mockups</h2>
-  <p class="muted small">The one folder for Mockups, which the <a href="/design">Design page</a> lists and the Dashboard serves sandboxed.</p>
+  <p class="muted small">The one folder for Mockups, which the <a href="/design">Design page</a> lists and the Dashboard serves sandboxed. Bodies reference Mockups by their path from the project root, so it moves only while it holds none.</p>
   <div class="scroll">
   <table>
     <thead><tr><th>Folder</th><th>Comes from</th></tr></thead>
-    <tbody><tr><td><code>{{.Name}}</code></td><td class="small">{{.From}}</td></tr></tbody>
+    <tbody><tr><td>{{if $.CanAct}}<form method="post" action="/playbook/mockups" class="value"><input type="text" name="folder" value="{{.Folder}}" aria-label="the Mockup folder" placeholder="a folder in the project, such as .jigflow/mockups"><button type="submit">Save</button></form>{{if .Base}}<form method="post" action="/playbook/mockups/base" class="value"><button type="submit">Back to the Base's</button></form>{{end}}{{else}}<code>{{.Folder}}</code>{{end}}{{range .Pending}}<div class="small">pending Proposal <a class="id" href="/#{{.}}">{{.}}</a> changes it too</div>{{end}}</td><td class="small">{{.From}}</td></tr></tbody>
   </table>
   </div>
 </section>

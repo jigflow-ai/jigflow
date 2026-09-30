@@ -32,7 +32,7 @@ type playbookPage struct {
 	Guidelines []namedPart
 	Personas   []personaPart
 	Gates      []gatePart
-	Mockups    *namedPart // the Mockup folder, when the Playbook declares one
+	Mockups    *mockupsPart // the Mockup folder, when the Playbook declares one
 	Adapters   []adapterPart
 }
 
@@ -55,6 +55,17 @@ type gatePart struct {
 	Base bool
 	// Pending are the pending Proposals that change its command too, which
 	// the person's own change doesn't wait for (ADR 0030).
+	Pending []string
+}
+
+// mockupsPart is the Mockup folder as the Playbook page shows it.
+type mockupsPart struct {
+	Folder, From string
+	// Base is whether the project's Playbook file gives it over one its
+	// Base Playbook's gives, which it can go back to.
+	Base bool
+	// Pending are the pending Proposals that change it too, which the
+	// person's own change doesn't wait for (ADR 0030).
 	Pending []string
 }
 
@@ -174,7 +185,12 @@ func (e *env) playbookPage() (playbookPage, error) {
 		}
 	}
 	if pb.Mockups != "" {
-		v.Mockups = &namedPart{pb.Mockups, from(pb.Origins.Mockups)}
+		o := pb.Origins.Mockups
+		v.Mockups = &mockupsPart{
+			Folder: pb.Mockups, From: from(o),
+			Base:    o.Project && o.Base != "",
+			Pending: changing[engine.ProposalItem{Mockups: pb.Mockups}.FileValue()],
+		}
 	}
 	if v.Personas, err = e.personaParts(pb); err != nil {
 		return playbookPage{}, err

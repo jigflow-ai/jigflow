@@ -203,3 +203,20 @@ func (e *env) linkedMockups(dir string, paths []string) ([]mockupFile, error) {
 	}
 	return files, nil
 }
+
+// mockupsStay refuses a Playbook next that moves the Mockup folder of pb
+// elsewhere while the folder holds a Mockup: bodies reference Mockups by
+// their path from the project root, and jfl never edits a body (ADR 0030).
+func (e *env) mockupsStay(pb, next *engine.Playbook) error {
+	if pb.Mockups == "" || next.Mockups == pb.Mockups {
+		return nil
+	}
+	files, err := mockupFiles(e.dir, pb.Mockups)
+	if err != nil {
+		return err
+	}
+	if len(files) > 0 {
+		return fmt.Errorf("the Mockup folder %s holds %s, which Artifact bodies reference by their path from the project root, and jfl never edits a body: it stays %s while it holds any", pb.Mockups, plural(len(files), "Mockup"), pb.Mockups)
+	}
+	return nil
+}

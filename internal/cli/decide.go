@@ -137,6 +137,26 @@ func stopPublishingFor(c *env, r *http.Request) error {
 	return cmdPublish(c, []string{"--remove", r.PathValue("name")})
 }
 
+// setMockupFolder makes the folder the person posted the Mockup folder, in
+// the project's Playbook file.
+func setMockupFolder(c *env, r *http.Request) error {
+	folder := strings.TrimSpace(r.PostForm.Get("folder"))
+	if folder == "" {
+		return errors.New("not proposed: the Mockup folder needs a folder inside the project, relative to its root, such as .jigflow/mockups")
+	}
+	return c.changePlaybook(engine.ProposalItem{Mockups: folder})
+}
+
+// mockupsBackToBase removes from the project's Playbook file the Mockup
+// folder it gives, so that the Base Playbook's is the folder again.
+func mockupsBackToBase(c *env, r *http.Request) error {
+	pb, _, err := c.load()
+	if err != nil {
+		return err
+	}
+	return c.changePlaybook(engine.ProposalItem{Mockups: pb.Mockups, Remove: true})
+}
+
 // changePlaybook makes it, a change to the Playbook file, a Proposal of
 // the person's, as jfl propose would, and approves it at once, as jfl
 // approve would with the click as its Confirmation (ADR 0030): the change
