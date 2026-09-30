@@ -203,13 +203,13 @@ func (s *Connector) Text(id string) (Text, error) {
 func (s *Connector) Create(a engine.Artifact, by engine.Actor) (engine.Artifact, error) {
 	t := s.pb.Type(a.Type)
 	m := s.c.Types[t.Name]
-	status := statusTerm(m, a.Status)
+	status := m.StatusTerm(a.Status)
 	it := &item{Title: a.Title, State: status.State, Links: s.wireLinks(t, a.Links)}
 	if status.Label != "" {
 		it.Labels = append(it.Labels, status.Label)
 	}
 	for _, field := range slices.Sorted(maps.Keys(a.Fields)) {
-		ft := fieldTerm(m, field, a.Fields[field])
+		ft := m.FieldTerm(field, a.Fields[field])
 		if ft.Label != "" {
 			it.Labels = append(it.Labels, ft.Label)
 		}
@@ -245,7 +245,7 @@ func (s *Connector) Save(a engine.Artifact) error {
 	t, tid, _ := s.split(a.ID)
 	m := s.c.Types[t.Name]
 	if a.Status != before.Status {
-		from, to := term(statusTerm(m, before.Status)), term(statusTerm(m, a.Status))
+		from, to := term(m.StatusTerm(before.Status)), term(m.StatusTerm(a.Status))
 		if _, err := s.call(t, request{Op: "status", ID: tid, From: &from, To: &to}); err != nil {
 			return err
 		}
@@ -298,6 +298,134 @@ func (s *Connector) Comment(id, text string, by engine.Actor) error {
 	return err
 }
 
+// Remap is a Status, or a field's value, of an Artifact Type the Connector
+// keeps that a change to the Playbook file maps to another label or state,
+// and the Artifacts carrying the one it replaces, which approving the change
+// relabels so that each still reads as it did (ADR 0030).
+type Remap struct {
+	Connector string
+	Type      string
+	Status    string // the Status remapped, or empty for a field's value
+	Field     string // the field whose Value is remapped
+	Value     string
+	From, To  engine.TrackerTerm
+	Carriers  []engine.Artifact // those carrying From, as the Playbook is now
+}
+
+// What says what is remapped, as a person reads it: the Type's Status, or
+// its field's value.
+func (r Remap) What() string {
+	if r.Status != "" {
+		return r.Type + " " + r.Status
+	}
+	return r.Type + " " + r.Field + " " + r.Value
+}
+
+// Remaps returns each Status and field value of the Artifact Types the
+// Connector keeps that next, the Connector as a change to the Playbook
+// file would make it, maps to another label or state, with the Artifacts
+// that read as that Status or value now and carry its label or state. An
+// Artifact reading as a Type's first initial Status because it matches
+// none carries nothing to relabel. The Store is listed only for the Types
+// that have a remap.
+func (s *Connector) Remaps(next *engine.Connector) ([]Remap, error) {
+	var out []Remap
+	for _, t := range s.types() {
+		now, then := s.c.Types[t.Name], next.Types[t.Name]
+		var remaps []Remap
+		for _, st := range t.Statuses {
+			if from, to := now.StatusTerm(st), then.StatusTerm(st); from != to {
+				remaps = append(remaps, Remap{Connector: s.c.Name, Type: t.Name, Status: st, From: from, To: to})
+			}
+		}
+		for _, field := range slices.Sorted(maps.Keys(t.Fields)) {
+			for _, v := range t.Fields[field] {
+				if from, to := now.FieldTerm(field, v), then.FieldTerm(field, v); from != to {
+					remaps = append(remaps, Remap{Connector: s.c.Name, Type: t.Name, Field: field, Value: v, From: from, To: to})
+				}
+			}
+		}
+		if len(remaps) == 0 {
+			continue
+		}
+		resp, err := s.call(t, request{Op: "list"})
+		if err != nil {
+			return nil, err
+		}
+		for _, it := range resp.Items {
+			a := s.artifact(t, it)
+			for i, r := range remaps {
+				reads := a.Status == r.Status
+				if r.Status == "" {
+					reads = a.Fields[r.Field] == r.Value
+				}
+				if reads && it.has(r.From) {
+					remaps[i].Carriers = append(remaps[i].Carriers, a)
+				}
+			}
+		}
+		out = append(out, remaps...)
+	}
+	return out, nil
+}
+
+// Relabel moves each Artifact carrying the label or state a remap replaces
+// to the one it maps to instead, through the status operation, which needs
+// nothing more of a Connector. A tracker has no transaction, so when one
+// fails it puts back those it relabelled, and returns the failure.
+func (s *Connector) Relabel(remaps []Remap) (err error) {
+	type done struct {
+		t        *engine.ArtifactType
+		id       string
+		from, to term
+	}
+	var relabelled []done
+	defer func() {
+		if err == nil {
+			return
+		}
+		var back, stuck []string
+		for _, d := range slices.Backward(relabelled) {
+			id := d.t.Prefix + "-" + d.id
+			if _, undo := s.call(d.t, request{Op: "status", ID: d.id, From: &d.to, To: &d.from}); undo != nil {
+				stuck = append(stuck, fmt.Sprintf("%s (%v)", id, undo))
+				continue
+			}
+			back = append(back, id)
+		}
+		slices.Reverse(back)
+		slices.Reverse(stuck)
+		if len(back) > 0 {
+			err = fmt.Errorf("%w; %s %s put back", err, strings.Join(back, ", "), plural(len(back), "was", "were"))
+		}
+		if len(stuck) > 0 {
+			err = fmt.Errorf("%w; %s couldn't be put back: %s", err, plural(len(stuck), "this one", "these"), strings.Join(stuck, ", "))
+		}
+	}()
+	for _, r := range remaps {
+		for _, a := range r.Carriers {
+			t, tid, ok := s.split(a.ID)
+			if !ok {
+				return fmt.Errorf("%s: %w", a.ID, ErrNotFound)
+			}
+			from, to := term(r.From), term(r.To)
+			if _, err := s.call(t, request{Op: "status", ID: tid, From: &from, To: &to}); err != nil {
+				return fmt.Errorf("relabelling %s from %s to %s: %w", a.ID, r.From, r.To, err)
+			}
+			relabelled = append(relabelled, done{t, tid, from, to})
+		}
+	}
+	return nil
+}
+
+// plural is one or many, as n says.
+func plural(n int, one, many string) string {
+	if n == 1 {
+		return one
+	}
+	return many
+}
+
 // types returns the Artifact Types the Connector keeps, in declaration
 // order.
 func (s *Connector) types() []*engine.ArtifactType {
@@ -328,14 +456,14 @@ func (s *Connector) split(id string) (*engine.ArtifactType, string, bool) {
 func (s *Connector) artifact(t *engine.ArtifactType, it item) engine.Artifact {
 	m := s.c.Types[t.Name]
 	a := engine.Artifact{ID: t.Prefix + "-" + it.ID, Type: t.Name, Title: it.Title, Claim: it.Claim}
-	if i := slices.IndexFunc(t.Statuses, func(st string) bool { return it.has(statusTerm(m, st)) }); i >= 0 {
+	if i := slices.IndexFunc(t.Statuses, func(st string) bool { return it.has(m.StatusTerm(st)) }); i >= 0 {
 		a.Status = t.Statuses[i]
 	} else if len(t.Initial) > 0 {
 		a.Status = t.Initial[0]
 	}
 	for _, field := range slices.Sorted(maps.Keys(t.Fields)) {
 		values := t.Fields[field]
-		if i := slices.IndexFunc(values, func(v string) bool { return it.has(fieldTerm(m, field, v)) }); i >= 0 {
+		if i := slices.IndexFunc(values, func(v string) bool { return it.has(m.FieldTerm(field, v)) }); i >= 0 {
 			if a.Fields == nil {
 				a.Fields = map[string]string{}
 			}
@@ -385,24 +513,6 @@ func (s *Connector) wireLinks(t *engine.ArtifactType, links map[string][]string)
 // has reports whether the item has the label and the state of tt.
 func (it item) has(tt engine.TrackerTerm) bool {
 	return (tt.Label == "" || slices.Contains(it.Labels, tt.Label)) && (tt.State == "" || it.State == tt.State)
-}
-
-// statusTerm is the label or state the project settings map a Status to:
-// by default, a label named after it.
-func statusTerm(m engine.TrackerMapping, status string) engine.TrackerTerm {
-	if tt, ok := m.Statuses[status]; ok {
-		return tt
-	}
-	return engine.TrackerTerm{Label: status}
-}
-
-// fieldTerm is the label or state the project settings map a field's value
-// to: by default, a label named after the value.
-func fieldTerm(m engine.TrackerMapping, field, value string) engine.TrackerTerm {
-	if tt, ok := m.Fields[field][value]; ok {
-		return tt
-	}
-	return engine.TrackerTerm{Label: value}
 }
 
 // call runs the Connector with one request for an Artifact of Artifact

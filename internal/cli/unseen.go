@@ -55,6 +55,22 @@ func (e *env) noLongerSeen(pb, next *engine.Playbook, items []engine.ProposalIte
 	return engine.InOrder(pb, lost), nil
 }
 
+// reach says what the items, changing the Playbook pb into next, do in a
+// tracker, which the person is told before they confirm them: which
+// Artifacts a Store they re-point will no longer see, and, for each Status
+// and field value they remap, which Artifacts are relabelled.
+func (e *env) reach(pb, next *engine.Playbook, items []engine.ProposalItem) (string, error) {
+	lost, err := e.noLongerSeen(pb, next, items)
+	if err != nil {
+		return "", err
+	}
+	remaps, err := e.remaps(pb, next, items)
+	if err != nil {
+		return "", err
+	}
+	return unseenLine(lost) + remapLines(remaps), nil
+}
+
 // unseenBy returns the Artifacts that a Store the pending Proposal p
 // re-points will no longer see, as noLongerSeen does.
 func (e *env) unseenBy(pb *engine.Playbook, p engine.Proposal) ([]engine.Artifact, error) {

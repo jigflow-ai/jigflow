@@ -346,6 +346,19 @@ type pendingProposal struct {
 	Unseen        []string
 	NoLongerSeen  string
 	UnseenProblem string
+	// Relabels are, for each Status and field value it remaps, how many
+	// Artifacts carry the label or state it replaces, which approving it
+	// relabels; RelabelProblem says why that can't be told now, when it
+	// can't (ADR 0030).
+	Relabels       []relabelView
+	RelabelProblem string
+}
+
+// relabelView is what approving a Proposal relabels for one Status or field
+// value it remaps, and the Artifacts it relabels.
+type relabelView struct {
+	Text      string
+	Artifacts []string
 }
 
 // proposalItem is an item of a pending Proposal, and, for a creation, the
@@ -507,6 +520,13 @@ func (e *env) backlog() (backlog, error) {
 		}
 		if len(lost) > 0 {
 			pp.Unseen, pp.NoLongerSeen = ids(lost), plural(len(lost), "Artifact")
+		}
+		remaps, err := e.remapsBy(pb, p)
+		if err != nil {
+			pp.RelabelProblem = trouble(err)
+		}
+		for _, r := range remaps {
+			pp.Relabels = append(pp.Relabels, relabelView{remapSays(r), ids(r.Carriers)})
 		}
 		v.Proposals = append(v.Proposals, pp)
 	}

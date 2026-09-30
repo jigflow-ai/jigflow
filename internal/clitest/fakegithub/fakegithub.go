@@ -54,6 +54,7 @@ type Server struct {
 	next        int
 	noDeps      bool
 	rateLimited bool
+	limited     []int // the issues whose changes are rate-limited
 	failStatus  int
 	pageSize    int
 	requests    []string
@@ -142,6 +143,15 @@ func (s *Server) WithoutDependencies() { s.mu.Lock(); s.noDeps = true; s.mu.Unlo
 // RateLimit makes every request fail as GitHub does when the token's rate
 // limit is used up.
 func (s *Server) RateLimit() { s.mu.Lock(); s.rateLimited = true; s.mu.Unlock() }
+
+// RateLimitChangesTo makes every request changing the issue with the given
+// number fail as RateLimit does, and every other request succeed, so that
+// a command changing several issues fails partway.
+func (s *Server) RateLimitChangesTo(number int) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.limited = append(s.limited, number)
+}
 
 // Fail makes every request fail with the given HTTP status.
 func (s *Server) Fail(status int) { s.mu.Lock(); s.failStatus = status; s.mu.Unlock() }
@@ -332,7 +342,7 @@ func (s *Server) routes() http.Handler {
 		switch {
 		case r.Header.Get("Authorization") != "Bearer "+Token:
 			reply(w, 401, map[string]any{"message": "Bad credentials"})
-		case s.rateLimited:
+		case s.rateLimited || (r.Method != http.MethodGet && slices.Contains(s.limited, issueOf(r.URL.Path))):
 			w.Header().Set("X-RateLimit-Remaining", "0")
 			w.Header().Set("Retry-After", "42")
 			reply(w, 403, map[string]any{"message": "API rate limit exceeded for user ID 1."})
@@ -346,6 +356,14 @@ func (s *Server) routes() http.Handler {
 			mux.ServeHTTP(w, r)
 		}
 	})
+}
+
+// issueOf returns the number of the issue a /repos/…/issues/ path names,
+// or 0.
+func issueOf(path string) int {
+	_, rest, _ := strings.Cut(path, "/issues/")
+	n, _ := strconv.Atoi(strings.SplitN(rest, "/", 2)[0])
+	return n
 }
 
 // inRepo returns the repository the request's path names, as owner/name.

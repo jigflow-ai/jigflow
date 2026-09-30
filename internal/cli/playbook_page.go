@@ -58,11 +58,60 @@ type connectorPart struct {
 }
 
 // connectorTypePart is an Artifact Type a Connector keeps, with the
-// settings merged over the Connector's for it.
+// settings merged over the Connector's for it, and the label or state each
+// of its Statuses and field values is mapped to.
 type connectorTypePart struct {
 	Name     string
 	Settings []settingField
+	Mappings []mappingField
 	Prefix   string // what the names of its fields start with
+}
+
+// mappingField is a Status, or a field's value, of an Artifact Type a
+// Connector keeps, as the Playbook page's form draws it, with the label and
+// the state it is mapped to: by default, a label of its own name. Changing
+// it relabels the Artifacts carrying the one it replaces (ADR 0030).
+type mappingField struct {
+	Name         string // e.g. status in-progress, or category enhancement
+	Field        string // what the names of its label's and state's fields start with
+	Label, State string
+	status       string // the Status it maps, or empty for a field's value
+	field, value string // the field and the value it maps
+}
+
+// mappingFields draws each Status of the Artifact Type t, then each value
+// of each of its fields, in the order t declares them, with what m maps it
+// to, as fields whose names start with prefix.
+func mappingFields(prefix string, t *engine.ArtifactType, m engine.TrackerMapping) []mappingField {
+	var fields []mappingField
+	for _, st := range t.Statuses {
+		term := m.StatusTerm(st)
+		fields = append(fields, mappingField{Name: "status " + st, Field: prefix + "status." + st + ".", Label: term.Label, State: term.State, status: st})
+	}
+	for _, field := range slices.Sorted(maps.Keys(t.Fields)) {
+		for _, v := range t.Fields[field] {
+			term := m.FieldTerm(field, v)
+			fields = append(fields, mappingField{Name: field + " " + v, Field: prefix + "field." + field + "." + v + ".", Label: term.Label, State: term.State, field: field, value: v})
+		}
+	}
+	return fields
+}
+
+// posted reads the mapping back from the form the person posted: the label
+// or state as the Playbook file writes it, nil when they emptied both, which
+// makes it a label of its own name again, and whether they changed it.
+func (f mappingField) posted(form url.Values) (any, bool) {
+	if !form.Has(f.Field+"label") && !form.Has(f.Field+"state") {
+		return nil, false
+	}
+	t := engine.TrackerTerm{Label: strings.TrimSpace(form.Get(f.Field + "label")), State: strings.TrimSpace(form.Get(f.Field + "state"))}
+	switch {
+	case t == engine.TrackerTerm{Label: f.Label, State: f.State}:
+		return nil, false
+	case t == engine.TrackerTerm{}:
+		return nil, true
+	}
+	return t.Value(), true
 }
 
 // settingField is a Connector's setting as the Playbook page's form draws
@@ -334,7 +383,8 @@ func connectorView(pb *engine.Playbook, c *engine.Connector, changing map[string
 			continue
 		}
 		prefix := "type." + t.Name + "."
-		v.Types = append(v.Types, connectorTypePart{Name: t.Name, Prefix: prefix, Settings: settingFields(prefix, c.Types[t.Name].Settings)})
+		m := c.Types[t.Name]
+		v.Types = append(v.Types, connectorTypePart{Name: t.Name, Prefix: prefix, Settings: settingFields(prefix, m.Settings), Mappings: mappingFields(prefix, t, m)})
 	}
 	return v
 }

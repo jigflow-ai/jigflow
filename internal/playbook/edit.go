@@ -256,9 +256,32 @@ func setConnector(f *File, it engine.ProposalItem) error {
 	if err := settings(it.Settings); err != nil {
 		return err
 	}
+	// A mapping given no value is removed, as a setting is.
+	mappings := func(given map[string]any, keys ...string) error {
+		for _, name := range slices.Sorted(maps.Keys(given)) {
+			path := append(slices.Clone(keys), name)
+			if given[name] == nil {
+				f.Remove(append(slices.Clone(at), path...)...)
+				continue
+			}
+			if err := set(given[name], path...); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
 	for _, t := range slices.Sorted(maps.Keys(it.ConnectorTypes)) {
-		if err := settings(it.ConnectorTypes[t].Settings, "types", t); err != nil {
+		ct := it.ConnectorTypes[t]
+		if err := settings(ct.Settings, "types", t); err != nil {
 			return err
+		}
+		if err := mappings(ct.Statuses, "types", t, "statuses"); err != nil {
+			return err
+		}
+		for _, field := range slices.Sorted(maps.Keys(ct.Fields)) {
+			if err := mappings(ct.Fields[field], "types", t, "fields", field); err != nil {
+				return err
+			}
 		}
 	}
 	return nil
@@ -437,7 +460,7 @@ func (f *File) DeclareConnector(c *engine.Connector) error {
 			if tf.Statuses == nil {
 				tf.Statuses = map[string]any{}
 			}
-			tf.Statuses[status] = termValue(term)
+			tf.Statuses[status] = term.Value()
 		}
 		for field, values := range m.Fields {
 			if tf.Fields == nil {
@@ -445,7 +468,7 @@ func (f *File) DeclareConnector(c *engine.Connector) error {
 			}
 			tf.Fields[field] = map[string]any{}
 			for value, term := range values {
-				tf.Fields[field][value] = termValue(term)
+				tf.Fields[field][value] = term.Value()
 			}
 		}
 		if cf.Types == nil {
@@ -454,19 +477,6 @@ func (f *File) DeclareConnector(c *engine.Connector) error {
 		cf.Types[name] = tf
 	}
 	return f.Set(cf, "connectors", c.Name)
-}
-
-// termValue is a label or state as a Playbook file writes it: the label's
-// name, or a mapping naming a label, a state, or both.
-func termValue(t engine.TrackerTerm) any {
-	if t.State == "" {
-		return t.Label
-	}
-	m := map[string]string{"state": t.State}
-	if t.Label != "" {
-		m["label"] = t.Label
-	}
-	return m
 }
 
 // Changed reports whether anything was set.

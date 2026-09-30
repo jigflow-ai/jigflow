@@ -67,7 +67,7 @@ func TestTheMCPProposeToolSaysAnItemMayChangeAConnectorOrRemoveTheProjects(t *te
 		if tool.Name != "propose" {
 			continue
 		}
-		for _, want := range []string{"{connector: <name>, command: <command>, args: [<arg>, …], marker: <text>, settings: {<setting>: <value>}, types: {<Type>: {settings: {<setting>: <value>}}}}", "{connector: <name>, remove: true}"} {
+		for _, want := range []string{"{connector: <name>, command: <command>, args: [<arg>, …], marker: <text>, settings: {<setting>: <value>}, types: {<Type>: {settings: {<setting>: <value>}, statuses: {<Status>: <label> or {label: <label>, state: <state>}}, fields: {<field>: {<value>: <label> or {label, state}}}}}}", "{connector: <name>, remove: true}", "how many Artifacts carry the old label or state, and which, since approving it relabels them"} {
 			if !strings.Contains(tool.Description, want) {
 				t.Errorf("the propose tool's description should list %s:\n%s", want, tool.Description)
 			}

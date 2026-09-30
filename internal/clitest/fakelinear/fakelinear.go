@@ -82,6 +82,7 @@ type Server struct {
 	next        int
 	ids         int
 	rateLimited bool
+	limited     []int // the issues whose updates are rate-limited
 	failStatus  int
 	pageSize    int
 }
@@ -175,6 +176,15 @@ func (s *Server) Edit(number int, edit func(*Issue)) {
 // rate limit is used up, until 42 seconds from now.
 func (s *Server) RateLimit() { s.mu.Lock(); s.rateLimited = true; s.mu.Unlock() }
 
+// RateLimitChangesTo makes every update of the issue with the given number
+// fail as RateLimit does, and every other request succeed, so that a
+// command changing several issues fails partway.
+func (s *Server) RateLimitChangesTo(number int) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.limited = append(s.limited, number)
+}
+
 // Fail makes every request fail with the given HTTP status.
 func (s *Server) Fail(status int) { s.mu.Lock(); s.failStatus = status; s.mu.Unlock() }
 
@@ -265,7 +275,7 @@ func (s *Server) routes() http.Handler {
 		switch {
 		case r.Header.Get("Authorization") != Key:
 			fail(w, 401, "AUTHENTICATION_ERROR", "Authentication required, not authenticated")
-		case s.rateLimited:
+		case s.rateLimited || (m[2] == "UpdateIssue" && s.limitedIssue(req.Variables)):
 			w.Header().Set("X-RateLimit-Requests-Remaining", "0")
 			w.Header().Set("X-RateLimit-Requests-Reset", strconv.FormatInt(time.Now().Add(42*time.Second).UnixMilli(), 10))
 			fail(w, 400, "RATELIMITED", "Rate limit exceeded")
@@ -281,6 +291,15 @@ func (s *Server) routes() http.Handler {
 			h(w, req.Variables)
 		}
 	})
+}
+
+// limitedIssue reports whether the variables of an UpdateIssue name an
+// issue whose updates are rate-limited.
+func (s *Server) limitedIssue(v map[string]json.RawMessage) bool {
+	var id string
+	json.Unmarshal(v["id"], &id)
+	i := s.byID(id)
+	return i != nil && slices.Contains(s.limited, i.Number)
 }
 
 type handler func(http.ResponseWriter, map[string]json.RawMessage)

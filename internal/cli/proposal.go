@@ -28,11 +28,11 @@ func cmdPropose(e *env, args []string) error {
 	if err != nil {
 		return fmt.Errorf("%s: %w", args[0], err)
 	}
-	p, dashboard, lost, err := e.propose(summary, items)
+	p, dashboard, reach, err := e.propose(summary, items)
 	if err != nil {
 		return err
 	}
-	fmt.Fprint(e.stdout, proposedForAHuman(p)+unseenLine(lost))
+	fmt.Fprint(e.stdout, proposedForAHuman(p)+reach)
 	if e.form == nil || dashboard != "" {
 		fmt.Fprintln(e.stdout, e.waiting(p.ID, dashboard))
 		return nil
@@ -43,51 +43,52 @@ func cmdPropose(e *env, args []string) error {
 // propose records a pending Proposal of items, with summary, as this
 // command's actor puts it forward, refusing it unless every item would
 // apply as things stand. It says too which Transition of the Proposal the
-// Playbook requires the Dashboard for, if one does, and which Artifacts a
-// Store it re-points will no longer see.
-func (e *env) propose(summary string, items []engine.ProposalItem) (engine.Proposal, string, []engine.Artifact, error) {
+// Playbook requires the Dashboard for, if one does, and what it does in a
+// tracker, as reach says it: which Artifacts a Store it re-points will no
+// longer see, and which it relabels.
+func (e *env) propose(summary string, items []engine.ProposalItem) (engine.Proposal, string, string, error) {
 	pb, st, err := e.load()
 	if err != nil {
-		return engine.Proposal{}, "", nil, err
+		return engine.Proposal{}, "", "", err
 	}
 	all, err := st.List()
 	if err != nil {
-		return engine.Proposal{}, "", nil, err
+		return engine.Proposal{}, "", "", err
 	}
 	ps := store.NewProposals(e.dir)
 	existing, err := ps.List()
 	if err != nil {
-		return engine.Proposal{}, "", nil, err
+		return engine.Proposal{}, "", "", err
 	}
 	p, err := engine.Propose(pb, e.actor, summary, items, all, existing)
 	if err != nil {
-		return engine.Proposal{}, "", nil, fmt.Errorf("not proposed: %w", err)
+		return engine.Proposal{}, "", "", fmt.Errorf("not proposed: %w", err)
 	}
 	// A Playbook the Proposal would break is reported now, to the agent,
 	// rather than to the person approving it.
-	var lost []engine.Artifact
+	var reach string
 	if changes := playbookItems(items); len(changes) > 0 {
 		next, err := e.candidate(changes)
 		if err != nil {
-			return engine.Proposal{}, "", nil, fmt.Errorf("not proposed: as the Proposal would make it, %w", err)
+			return engine.Proposal{}, "", "", fmt.Errorf("not proposed: as the Proposal would make it, %w", err)
 		}
 		if err := e.mockupsStay(pb, next); err != nil {
-			return engine.Proposal{}, "", nil, fmt.Errorf("not proposed: %w", err)
+			return engine.Proposal{}, "", "", fmt.Errorf("not proposed: %w", err)
 		}
-		if lost, err = e.noLongerSeen(pb, next, changes); err != nil {
-			return engine.Proposal{}, "", nil, fmt.Errorf("not proposed: %w", err)
+		if reach, err = e.reach(pb, next, changes); err != nil {
+			return engine.Proposal{}, "", "", fmt.Errorf("not proposed: %w", err)
 		}
 	}
 	// A Proposal making a Transition the Playbook requires the Dashboard
 	// for is approved there only, so no one is asked about it here.
 	changes, err := engine.Approve(pb, p, all)
 	if err != nil {
-		return engine.Proposal{}, "", nil, fmt.Errorf("not proposed: %w", err)
+		return engine.Proposal{}, "", "", fmt.Errorf("not proposed: %w", err)
 	}
 	if err := ps.Save(p); err != nil {
-		return engine.Proposal{}, "", nil, err
+		return engine.Proposal{}, "", "", err
 	}
-	return p, dashboardChange(changes), lost, nil
+	return p, dashboardChange(changes), reach, nil
 }
 
 // proposedForAHuman says that an agent session put the Proposal p forward,
@@ -302,9 +303,11 @@ func (e *env) approve(id string, edit func(pb *engine.Playbook, p *engine.Propos
 	// A Mockup folder that holds a Mockup now, as it may not when the
 	// Proposal was made, and a git Base Playbook's ref that can't be
 	// fetched now, are refused before the person is asked, who is told
-	// which Artifacts a Store the Proposal re-points will no longer see.
+	// which Artifacts a Store the Proposal re-points will no longer see,
+	// and which Artifacts approving it relabels.
 	changesPlaybook := playbookItems(p.Items)
 	var lost []engine.Artifact
+	var remaps []store.Remap
 	if slices.ContainsFunc(changesPlaybook, func(it engine.ProposalItem) bool { return it.Mockups != "" || it.BaseRef != "" || it.Connector != "" }) {
 		next, err := e.candidate(changesPlaybook)
 		if err != nil {
@@ -316,8 +319,12 @@ func (e *env) approve(id string, edit func(pb *engine.Playbook, p *engine.Propos
 		if lost, err = e.noLongerSeen(pb, next, changesPlaybook); err != nil {
 			return notApplied(err)
 		}
+		if remaps, err = e.remaps(pb, next, changesPlaybook); err != nil {
+			return notApplied(err)
+		}
 	}
-	via, err := e.confirmApproval(pb, p, lost)
+	reach := unseenLine(lost) + remapLines(remaps)
+	via, err := e.confirmApproval(pb, p, reach)
 	if err != nil {
 		return err
 	}
@@ -337,9 +344,17 @@ func (e *env) approve(id string, edit func(pb *engine.Playbook, p *engine.Propos
 		return err
 	}
 	// The Playbook's changes are written first, all of them or none, so
-	// that a Playbook they'd break changes no Artifact either.
+	// that a Playbook they'd break changes no Artifact either. The
+	// Artifacts carrying a label or state they remap are relabelled last:
+	// a relabel failing puts back those relabelled, and then the files.
 	if len(changesPlaybook) > 0 {
-		if err := playbook.Apply(e.dir, changesPlaybook, e.checkOrphans); err != nil {
+		verify := func(next *engine.Playbook) error {
+			if err := e.checkOrphans(next); err != nil {
+				return err
+			}
+			return e.relabel(pb, remaps)
+		}
+		if err := playbook.Apply(e.dir, changesPlaybook, verify); err != nil {
 			return notApplied(err)
 		}
 		if err := e.recordPlaybook(p.ID, changesPlaybook, via); err != nil {
@@ -390,7 +405,7 @@ func (e *env) approve(id string, edit func(pb *engine.Playbook, p *engine.Propos
 	for _, it := range changesPlaybook {
 		fmt.Fprintf(e.stdout, "  %s\n", it)
 	}
-	fmt.Fprint(e.stdout, unseenLine(lost))
+	fmt.Fprint(e.stdout, reach)
 	for _, c := range changes {
 		if c.Created() {
 			fmt.Fprintf(e.stdout, "  created %s %q in %s\n", c.Artifact.ID, c.Artifact.Title, c.Artifact.Status)

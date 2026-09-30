@@ -89,14 +89,15 @@ var errNotAnswered = errors.New("still pending")
 // and returns the channel their Confirmation came through. In the
 // Dashboard, the person's click is the confirmation. In the agent's client,
 // the person is asked in a form jfl writes from p, and may reject it there.
-// Either way they are told which Artifacts, lost, will no longer be seen.
-func (e *env) confirmApproval(pb *engine.Playbook, p engine.Proposal, lost []engine.Artifact) (engine.Channel, error) {
+// Either way they are told what it does in a tracker, as reach says: which
+// Artifacts will no longer be seen, and which it relabels.
+func (e *env) confirmApproval(pb *engine.Playbook, p engine.Proposal, reach string) (engine.Channel, error) {
 	if e.clicked {
 		return engine.ViaDashboard, nil
 	}
 	by := p.ProposedBy()
 	question := func(items, or string) string {
-		return fmt.Sprintf("%s from %s: %s\n%s%sApprove all %s as one unit%s?", p.ID, by, p.Summary, items, unseenLine(lost), plural(len(p.Items), "change"), or)
+		return fmt.Sprintf("%s from %s: %s\n%s%sApprove all %s as one unit%s?", p.ID, by, p.Summary, items, reach, plural(len(p.Items), "change"), or)
 	}
 	if e.form != nil {
 		choice, err := e.form(question(formItems(pb, p), ", or reject "+p.ID), "approve", "reject")

@@ -90,6 +90,7 @@ type itemFile struct {
 //	  - {connector: github, command: jfl-connector-github, args: [--verbose], marker: "_Drafted by an agent._"}
 //	  - {connector: github, settings: {repo: acme/web, create_labels: true, assignee: null}}
 //	  - {connector: github, types: {Ticket: {settings: {label: ticket}}}}
+//	  - {connector: github, types: {Ticket: {statuses: {in-progress: doing, done: {state: closed}}, fields: {category: {bug: null}}}}}
 //	  - {connector: linear, remove: true}
 //	  - {guideline: conventions, text: "# Conventions\n…"}
 //	  - {type: Note, text: "name: Note\nprefix: N\n…"}
@@ -100,7 +101,10 @@ type itemFile struct {
 // the Mockup folder, named as the project's Playbook file gives it, or the
 // whole of a Connector's declaration. An item changing a Connector sets the
 // values it gives, keeping the others, the project's declaration first
-// copied whole from the Base Playbook's; a setting given null is removed.
+// copied whole from the Base Playbook's; a setting given null is removed,
+// and so is a Status's or field value's mapping, which makes it a label of
+// its own name again. Approving a remap relabels the Artifacts carrying the
+// label or state it replaces (ADR 0030).
 // An item with base_ref moves a git Base Playbook to that ref, which
 // approving it pins in playbook.lock.
 func ParseProposal(data []byte) (summary string, items []engine.ProposalItem, err error) {

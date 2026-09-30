@@ -63,7 +63,7 @@ type ProposalItem struct {
 	BaseRef string
 	// Connector names the Connector whose values in the Playbook file the
 	// item changes: Command, Args, Marker, Settings and each Type's
-	// settings, those it gives and no others; or, with Remove, the
+	// settings and mappings, those it gives and no others; or, with Remove, the
 	// project's declaration of it, so that the Base Playbook's is the
 	// Connector again. A setting given no value is removed.
 	Connector      string
@@ -79,9 +79,85 @@ type ProposalItem struct {
 }
 
 // ConnectorType is what an item changing a Connector gives for one of the
-// Artifact Types it keeps: the settings merged over the Connector's for it.
+// Artifact Types it keeps: the settings merged over the Connector's for it,
+// and the label or state each Status and field value it names is mapped to,
+// as the Playbook file writes them: a label's name, or {label, state}. A
+// mapping given no value is removed, so that the Status or value is a label
+// of its own name again. Approving it relabels, in the tracker, the
+// Artifacts carrying the label or state it replaces (ADR 0030).
 type ConnectorType struct {
-	Settings map[string]any `yaml:"settings,omitempty"`
+	Settings map[string]any            `yaml:"settings,omitempty"`
+	Statuses map[string]any            `yaml:"statuses,omitempty"`
+	Fields   map[string]map[string]any `yaml:"fields,omitempty"`
+}
+
+// Term reads a label or state as the Playbook file, and an item changing a
+// Connector, write it: a label's name, or a mapping naming a label, a
+// state, or both. It reports false for anything else, and for nothing.
+func Term(v any) (TrackerTerm, bool) {
+	switch v := v.(type) {
+	case string:
+		return TrackerTerm{Label: v}, v != ""
+	case map[string]any:
+		var t TrackerTerm
+		for k, x := range v {
+			s, ok := x.(string)
+			switch {
+			case !ok:
+				return TrackerTerm{}, false
+			case k == "label":
+				t.Label = s
+			case k == "state":
+				t.State = s
+			default:
+				return TrackerTerm{}, false
+			}
+		}
+		return t, t != TrackerTerm{}
+	}
+	return TrackerTerm{}, false
+}
+
+// Value is the label or state as the Playbook file writes it: the label's
+// name, or a mapping naming a label, a state, or both.
+func (t TrackerTerm) Value() any {
+	if t.State == "" {
+		return t.Label
+	}
+	m := map[string]any{"state": t.State}
+	if t.Label != "" {
+		m["label"] = t.Label
+	}
+	return m
+}
+
+// String says the label or state as a person reads it.
+func (t TrackerTerm) String() string {
+	switch {
+	case t.State == "":
+		return fmt.Sprintf("label %q", t.Label)
+	case t.Label == "":
+		return fmt.Sprintf("state %q", t.State)
+	}
+	return fmt.Sprintf("label %q and state %q", t.Label, t.State)
+}
+
+// StatusTerm is the label or state the mapping maps a Status to: by
+// default, a label named after it.
+func (m TrackerMapping) StatusTerm(status string) TrackerTerm {
+	if t, ok := m.Statuses[status]; ok {
+		return t
+	}
+	return TrackerTerm{Label: status}
+}
+
+// FieldTerm is the label or state the mapping maps a field's value to: by
+// default, a label named after the value.
+func (m TrackerMapping) FieldTerm(field, value string) TrackerTerm {
+	if t, ok := m.Fields[field][value]; ok {
+		return t
+	}
+	return TrackerTerm{Label: value}
 }
 
 // List is a list of values an item gives, which it gives even when empty,
@@ -180,7 +256,23 @@ func (pb *Playbook) Now(it ProposalItem) (string, bool) {
 				if it.ConnectorTypes == nil {
 					it.ConnectorTypes = map[string]ConnectorType{}
 				}
-				it.ConnectorTypes[name] = ConnectorType{Settings: m.Settings}
+				ct := ConnectorType{Settings: m.Settings}
+				for status, t := range m.Statuses {
+					if ct.Statuses == nil {
+						ct.Statuses = map[string]any{}
+					}
+					ct.Statuses[status] = t.Value()
+				}
+				for field, values := range m.Fields {
+					if ct.Fields == nil {
+						ct.Fields = map[string]map[string]any{}
+					}
+					ct.Fields[field] = map[string]any{}
+					for v, t := range values {
+						ct.Fields[field][v] = t.Value()
+					}
+				}
+				it.ConnectorTypes[name] = ct
 			}
 		}
 		return connectorValues(it, c), true
@@ -292,9 +384,43 @@ func connectorValues(it ProposalItem, c *Connector) string {
 	}
 	settings("", it.Settings, now.Settings)
 	for _, t := range slices.Sorted(maps.Keys(it.ConnectorTypes)) {
-		settings(t+" ", it.ConnectorTypes[t].Settings, now.Types[t].Settings)
+		ct, m := it.ConnectorTypes[t], now.Types[t]
+		settings(t+" ", ct.Settings, m.Settings)
+		for _, status := range slices.Sorted(maps.Keys(ct.Statuses)) {
+			value(t+" status "+status, mapped(ct.Statuses[status], status), termText(m.StatusTerm(status)))
+		}
+		for _, field := range slices.Sorted(maps.Keys(ct.Fields)) {
+			for _, v := range slices.Sorted(maps.Keys(ct.Fields[field])) {
+				value(t+" "+field+" "+v, mapped(ct.Fields[field][v], v), termText(m.FieldTerm(field, v)))
+			}
+		}
 	}
 	return strings.Join(parts, "; ")
+}
+
+// mapped says the label or state an item maps a Status or field value
+// named name to, as a person reads it: given no value, a label of its own
+// name.
+func mapped(v any, name string) string {
+	if v == nil {
+		return termText(TrackerTerm{Label: name})
+	}
+	if t, ok := Term(v); ok {
+		return termText(t)
+	}
+	return fmt.Sprint(v)
+}
+
+// termText says a label or state as a Playbook file's reader knows it: a
+// label by its name alone.
+func termText(t TrackerTerm) string {
+	switch {
+	case t.State == "":
+		return t.Label
+	case t.Label == "":
+		return "state " + t.State
+	}
+	return "label " + t.Label + ", state " + t.State
 }
 
 // lines says how long the item's text is.
@@ -392,7 +518,7 @@ func Approve(pb *Playbook, p Proposal, all []Artifact) ([]Change, error) {
 				return fail(errors.New("removing a Connector's declaration from the Playbook file takes no other values"))
 			}
 			if !it.Remove && !it.changesConnector() {
-				return fail(errors.New("changing a Connector needs its command, args, marker, settings or an Artifact Type's settings"))
+				return fail(errors.New("changing a Connector needs its command, args, marker, settings or an Artifact Type's settings, statuses or fields"))
 			}
 			// Its values are checked with the Playbook they make.
 		case it.Mockups != "":
@@ -475,7 +601,7 @@ func (it ProposalItem) changesConnector() bool {
 }
 
 // itemKinds says what a Proposal item may be.
-const itemKinds = "an item either creates (create, title, and optionally status, fields and links), moves (move, to), gives a Gate its command (gate, cmd) or removes the one the project's Playbook file gives it (gate, remove: true), sets the Mockup folder (mockups) or removes the one the project's Playbook file gives (mockups, remove: true), moves a git Base Playbook to another ref (base_ref), changes a Connector (connector, and any of command, args, marker, settings and types) or removes the project's declaration of it (connector, remove: true), adds a Guideline (guideline, text), declares an Artifact Type (type, text) or writes a Skill (skill, text)"
+const itemKinds = "an item either creates (create, title, and optionally status, fields and links), moves (move, to), gives a Gate its command (gate, cmd) or removes the one the project's Playbook file gives it (gate, remove: true), sets the Mockup folder (mockups) or removes the one the project's Playbook file gives (mockups, remove: true), moves a git Base Playbook to another ref (base_ref), changes a Connector (connector, and any of command, args, marker, settings and types, each Type's settings, statuses and fields) or removes the project's declaration of it (connector, remove: true), adds a Guideline (guideline, text), declares an Artifact Type (type, text) or writes a Skill (skill, text)"
 
 // touched returns, for every Artifact an item of a pending Proposal moves, the
 // id of that Proposal. Creations touch nothing yet: their Artifacts don't

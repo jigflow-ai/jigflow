@@ -50,6 +50,7 @@
       {{end}}
       </ol>
       {{template "unseen" .}}
+      {{template "relabels" .}}
       <button type="submit" class="approve">{{.Approve}}</button>
     </form>
     <form method="post" action="/proposals/{{.ID}}/reject" class="reject">
@@ -58,6 +59,7 @@
     {{else}}
     <ol class="items">{{range .Items}}<li>{{.Text}}{{template "replaces" .}}{{template "named" .Artifacts}}</li>{{end}}</ol>
     {{template "unseen" .}}
+      {{template "relabels" .}}
     {{end}}
   </div>
   {{else}}

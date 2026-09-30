@@ -202,10 +202,13 @@ Commands:
                           Playbook to another ref, whose commit approving
                           it pins in playbook.lock, changing a Connector's
                           command, args, marker, settings or an Artifact
-                          Type's settings, copying the Base Playbook's
-                          declaration of it first, or removing the
-                          project's declaration, saying which Artifacts
-                          its Store will no longer see, adding a Guideline, or
+                          Type's settings, or the label or state a Status or
+                          field value is mapped to, copying the Base
+                          Playbook's declaration of it first, or removing
+                          the project's declaration, saying which Artifacts
+                          its Store will no longer see and, per remapped
+                          value, how many carry the old label or state and
+                          which, which approving relabels, adding a Guideline, or
                           declaring an Artifact Type or writing a Skill,
                           either replacing the one of that name; a Proposal whose
                           Playbook would fail check is refused. It says
@@ -229,7 +232,11 @@ Commands:
                           Transition the Playbook requires the Dashboard for
                           is approved only there; one changing a Connector
                           says first which Artifacts its Store will no
-                          longer see; an agent session is refused, and told
+                          longer see, and which carry a label or state it
+                          remaps, which it relabels through the Connector,
+                          putting back those relabelled and the Playbook
+                          file when one fails, a tracker problem; an agent
+                          session is refused, and told
                           the MCP tool that asks the person
   reject <proposal>       drop a pending Proposal, changing nothing; only a
                           person may, and an agent session is told the MCP

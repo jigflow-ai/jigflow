@@ -211,15 +211,41 @@ func changeConnector(c *env, r *http.Request) error {
 		return err
 	}
 	for _, t := range form["type"] {
-		settings, err := postedSettings(form, "type."+t+".", now.Types[t].Settings)
+		prefix := "type." + t + "."
+		settings, err := postedSettings(form, prefix, now.Types[t].Settings)
 		if err != nil {
 			return err
 		}
-		if settings != nil {
+		ct := engine.ConnectorType{Settings: settings}
+		// Each Status and field value whose label or state the person
+		// changed is remapped, which relabels the Artifacts carrying the
+		// one it replaces.
+		if typ := pb.Type(t); typ != nil && typ.Store == name {
+			for _, f := range mappingFields(prefix, typ, now.Types[t]) {
+				v, ok := f.posted(form)
+				switch {
+				case !ok:
+				case f.status != "":
+					if ct.Statuses == nil {
+						ct.Statuses = map[string]any{}
+					}
+					ct.Statuses[f.status] = v
+				default:
+					if ct.Fields == nil {
+						ct.Fields = map[string]map[string]any{}
+					}
+					if ct.Fields[f.field] == nil {
+						ct.Fields[f.field] = map[string]any{}
+					}
+					ct.Fields[f.field][f.value] = v
+				}
+			}
+		}
+		if ct.Settings != nil || ct.Statuses != nil || ct.Fields != nil {
 			if it.ConnectorTypes == nil {
 				it.ConnectorTypes = map[string]engine.ConnectorType{}
 			}
-			it.ConnectorTypes[t] = engine.ConnectorType{Settings: settings}
+			it.ConnectorTypes[t] = ct
 		}
 	}
 	if !changed && it.Settings == nil && it.ConnectorTypes == nil {

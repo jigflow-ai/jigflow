@@ -103,7 +103,7 @@
 </section>
 <section class="panel" id="connectors">
   <h2>Connectors</h2>
-  <p class="muted small">The executables that keep an Artifact Type's Artifacts in an outside tracker, and the settings each is sent as they are. The project's declaration of a Connector replaces its Base Playbook's whole, so changing one the Base declares copies it into the Playbook file first. A token never is among them: a Connector reads it from its environment.</p>
+  <p class="muted small">The executables that keep an Artifact Type's Artifacts in an outside tracker, the settings each is sent as they are, and the label or state each Status and field value is mapped to, by default a label of its own name; mapping one to another relabels the Artifacts carrying the old one. The project's declaration of a Connector replaces its Base Playbook's whole, so changing one the Base declares copies it into the Playbook file first. A token never is among them: a Connector reads it from its environment.</p>
   {{range .Connectors}}
   <div class="connector" id="connector-{{.Name}}">
   <h3 class="id">{{.Name}} <span class="muted small">{{.From}}</span></h3>
@@ -120,6 +120,7 @@
     {{$type := .Name}}
     {{range .Settings}}<tr><th>{{$type}} setting {{.Name}}</th><td>{{template "settingField" .}}</td></tr>{{end}}
     <tr><th>new {{.Name}} setting</th><td><input type="hidden" name="type" value="{{.Name}}"><input type="text" name="{{.Prefix}}new-setting" value="" aria-label="the name of a {{.Name}} setting to add" placeholder="name"> <input type="text" name="{{.Prefix}}new-value" value="" aria-label="its value" placeholder="value, or true or false for a toggle"></td></tr>
+    {{range .Mappings}}<tr><th>{{$type}} {{.Name}}</th><td><input type="text" name="{{.Field}}label" value="{{.Label}}" aria-label="the label {{$type}} {{.Name}} is mapped to" placeholder="label"> <input type="text" name="{{.Field}}state" value="{{.State}}" aria-label="the state {{$type}} {{.Name}} is mapped to" placeholder="state"></td></tr>{{end}}
     {{end}}
     </tbody>
   </table>
@@ -133,7 +134,7 @@
     <tr><th>args</th><td>{{with .Args}}<code>{{.}}</code>{{else}}<span class="muted">none</span>{{end}}</td></tr>
     <tr><th>marker</th><td>{{.Marker}}</td></tr>
     {{range .Settings}}<tr><th>setting {{.Name}}</th><td>{{if .Toggle}}{{.On}}{{else}}<code>{{.Value}}</code>{{end}}</td></tr>{{end}}
-    {{range .Types}}{{$type := .Name}}{{range .Settings}}<tr><th>{{$type}} setting {{.Name}}</th><td>{{if .Toggle}}{{.On}}{{else}}<code>{{.Value}}</code>{{end}}</td></tr>{{end}}{{end}}
+    {{range .Types}}{{$type := .Name}}{{range .Settings}}<tr><th>{{$type}} setting {{.Name}}</th><td>{{if .Toggle}}{{.On}}{{else}}<code>{{.Value}}</code>{{end}}</td></tr>{{end}}{{range .Mappings}}<tr><th>{{$type}} {{.Name}}</th><td>{{with .Label}}label <code>{{.}}</code>{{end}} {{with .State}}state <code>{{.}}</code>{{end}}</td></tr>{{end}}{{end}}
     </tbody>
   </table>
   {{end}}

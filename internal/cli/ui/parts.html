@@ -6,6 +6,8 @@
 {{define "replaces"}}{{if .Replaces}} <span class="muted small">replacing {{with .Now}}<code>{{.}}</code>{{else}}nothing: it has none yet{{end}}</span>{{end}}{{end}}
 {{/* The Artifacts a pending Proposal's re-pointed Store will no longer see, or why that can't be told now. */}}
 {{define "unseen"}}{{with .Unseen}}<p class="small">{{$.NoLongerSeen}} will no longer be seen{{template "named" .}}</p>{{end}}{{with .UnseenProblem}}<p class="small">Which Artifacts will no longer be seen can't be told now: {{.}}</p>{{end}}{{end}}
+{{/* What a pending Proposal remapping a Status or field value relabels, or why that can't be told now. */}}
+{{define "relabels"}}{{range .Relabels}}<p class="small">{{.Text}}{{template "named" .Artifacts}}</p>{{end}}{{with .RelabelProblem}}<p class="small">Which Artifacts are relabelled can't be told now: {{.}}</p>{{end}}{{end}}
 {{/* What a decision made in the Dashboard did, or why it was refused. */}}
 {{define "outcome"}}<section class="panel outcome {{if .Refused}}refused{{else}}done{{end}}" id="outcome">
   <h2>{{if .Refused}}Not done{{else}}Done{{end}}</h2>
