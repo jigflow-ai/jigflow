@@ -340,6 +340,12 @@ type pendingProposal struct {
 	ID, By, Summary string
 	Approve         string // what approving it does, e.g. "Approve all 4 changes"
 	Items           []proposalItem
+	// Unseen are the ids of the Artifacts a Store it re-points will no
+	// longer see, NoLongerSeen how many, as "2 Artifacts"; UnseenProblem
+	// says why that can't be told now, when it can't (ADR 0030).
+	Unseen        []string
+	NoLongerSeen  string
+	UnseenProblem string
 }
 
 // proposalItem is an item of a pending Proposal, and, for a creation, the
@@ -494,6 +500,13 @@ func (e *env) backlog() (backlog, error) {
 		}
 		for i, it := range p.Items {
 			pp.Items = append(pp.Items, itemView(pb, i, it, kept))
+		}
+		lost, err := e.unseenBy(pb, p)
+		if err != nil {
+			pp.UnseenProblem = trouble(err)
+		}
+		if len(lost) > 0 {
+			pp.Unseen, pp.NoLongerSeen = ids(lost), plural(len(lost), "Artifact")
 		}
 		v.Proposals = append(v.Proposals, pp)
 	}

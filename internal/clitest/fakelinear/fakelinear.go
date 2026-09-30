@@ -1,6 +1,7 @@
 // Package fakelinear is an in-memory Linear for tests: an httptest server
 // answering the GraphQL operations that the Linear Connector sends, for one
-// workspace with one team, so no test reaches the real Linear.
+// workspace with one team, and any others a test adds, so no test reaches
+// the real Linear.
 //
 // It tells operations apart by the name each query or mutation declares
 // (query Issues(…)), and answers them with Linear's response shapes. Like
@@ -21,6 +22,7 @@ import (
 	"regexp"
 	"slices"
 	"strconv"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -31,6 +33,8 @@ const Key = "lin_api_test"
 
 // Issue is an issue of the fake team.
 type Issue struct {
+	// Team is the key of the team it is in: the Server's own when empty.
+	Team        string
 	Number      int
 	Title       string
 	Description string
@@ -71,6 +75,7 @@ type Server struct {
 	Users  []string // the display names of the workspace's users
 
 	mu          sync.Mutex
+	others      []string // the keys of the other teams
 	issues      []*Issue
 	labels      []string
 	otherLabels []string // labels of another team
@@ -101,6 +106,9 @@ func (s *Server) Add(i Issue) int {
 		i.Number = s.next
 	}
 	s.next = max(s.next, i.Number+1)
+	if i.Team == "" {
+		i.Team = s.Team
+	}
 	if i.State == "" {
 		i.State = defaultState
 	}
@@ -109,6 +117,15 @@ func (s *Server) Add(i Issue) int {
 	}
 	s.issues = append(s.issues, &i)
 	return i.Number
+}
+
+// AddTeam adds another team, with the key, which issues may be added to
+// and the API key's user can see. Issue numbers go on from the team's, so
+// that an issue's number alone tells it apart.
+func (s *Server) AddTeam(key string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.others = append(s.others, key)
 }
 
 // AddLabel creates a label in the team.
@@ -201,6 +218,14 @@ func userID(name string) string  { return "user-" + name }
 
 const teamID = "team-eng"
 
+// idOf is the id of the team with the key: teamID for the Server's own.
+func (s *Server) idOf(key string) string {
+	if key == s.Team {
+		return teamID
+	}
+	return "team-" + strings.ToLower(key)
+}
+
 func stateByID(id string) (state, bool) {
 	for _, st := range states {
 		if stateID(st.name) == id {
@@ -287,13 +312,13 @@ func (s *Server) team(w http.ResponseWriter, v map[string]json.RawMessage) {
 	var key string
 	json.Unmarshal(v["key"], &key)
 	nodes := []any{}
-	if key == s.Team {
+	if key == s.Team || slices.Contains(s.others, key) {
 		st := []any{}
 		for _, x := range states {
 			st = append(st, map[string]any{"id": stateID(x.name), "name": x.name, "type": x.typ})
 		}
 		nodes = append(nodes, map[string]any{
-			"id": teamID, "key": s.Team, "name": "Engineering",
+			"id": s.idOf(key), "key": key, "name": key,
 			"states":            map[string]any{"nodes": st},
 			"defaultIssueState": map[string]any{"id": stateID(defaultState), "name": defaultState},
 		})
@@ -334,7 +359,7 @@ func (s *Server) list(w http.ResponseWriter, v map[string]json.RawMessage) {
 	json.Unmarshal(v["after"], &after)
 	var match []any
 	for _, i := range s.issues {
-		if f.Team.ID.Eq != teamID {
+		if f.Team.ID.Eq != s.idOf(i.Team) {
 			continue
 		}
 		if f.Number != nil && float64(i.Number) != f.Number.Eq {
@@ -419,7 +444,7 @@ func (s *Server) createIssue(w http.ResponseWriter, v map[string]json.RawMessage
 		fail(w, 400, "INVALID_INPUT", "Argument Validation Error")
 		return
 	}
-	i := &Issue{Number: s.next, Title: in.Title, Description: in.Description, State: defaultState, Labels: labels}
+	i := &Issue{Team: s.Team, Number: s.next, Title: in.Title, Description: in.Description, State: defaultState, Labels: labels}
 	if in.StateID != "" {
 		st, ok := stateByID(in.StateID)
 		if !ok {
@@ -568,17 +593,17 @@ func (s *Server) json(i *Issue) map[string]any {
 	}
 	relations := []any{}
 	for _, n := range i.BlockedBy {
-		relations = append(relations, map[string]any{"type": "blocks", "issue": map[string]any{"id": issueID(n), "number": n, "team": map[string]any{"key": s.Team}}})
+		relations = append(relations, map[string]any{"type": "blocks", "issue": map[string]any{"id": issueID(n), "number": n, "team": map[string]any{"key": i.Team}}})
 	}
 	attachments := []any{}
 	for _, a := range i.Attachments {
 		attachments = append(attachments, map[string]any{"id": a.ID, "url": a.URL, "title": a.Title, "subtitle": a.Subtitle, "metadata": a.Metadata})
 	}
 	out := map[string]any{
-		"id": issueID(i.Number), "identifier": fmt.Sprintf("%s-%d", s.Team, i.Number), "number": i.Number,
+		"id": issueID(i.Number), "identifier": fmt.Sprintf("%s-%d", i.Team, i.Number), "number": i.Number,
 		"title": i.Title, "description": i.Description,
 		"state":            map[string]any{"id": stateID(st.name), "name": st.name, "type": st.typ},
-		"team":             map[string]any{"id": teamID, "key": s.Team},
+		"team":             map[string]any{"id": s.idOf(i.Team), "key": i.Team},
 		"assignee":         nil,
 		"labels":           map[string]any{"nodes": labels},
 		"inverseRelations": map[string]any{"nodes": relations},

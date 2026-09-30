@@ -49,6 +49,7 @@
         {{end}}</li>
       {{end}}
       </ol>
+      {{template "unseen" .}}
       <button type="submit" class="approve">{{.Approve}}</button>
     </form>
     <form method="post" action="/proposals/{{.ID}}/reject" class="reject">
@@ -56,6 +57,7 @@
     </form>
     {{else}}
     <ol class="items">{{range .Items}}<li>{{.Text}}{{template "replaces" .}}{{template "named" .Artifacts}}</li>{{end}}</ol>
+    {{template "unseen" .}}
     {{end}}
   </div>
   {{else}}

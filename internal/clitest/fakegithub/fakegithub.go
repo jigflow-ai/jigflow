@@ -1,6 +1,7 @@
 // Package fakegithub is an in-memory GitHub for tests: an httptest server
 // answering the part of GitHub's REST API that the GitHub Issues Connector
-// uses, for one repository, so no test reaches the real GitHub.
+// uses, for one repository and any others a test adds, so no test reaches
+// the real GitHub.
 //
 // Like GitHub, it requires a token, adds a label to an issue even when the
 // repository has no such label (creating it), reports an issue's
@@ -25,6 +26,9 @@ const Token = "test-token"
 
 // Issue is an issue, or a pull request, in the fake repository.
 type Issue struct {
+	// Repo is the repository it is in, as owner/name: the Server's own
+	// when empty.
+	Repo        string
 	Number      int
 	ID          int64 // the database id, which the dependencies API uses
 	Title       string
@@ -44,6 +48,7 @@ type Server struct {
 	Login       string // the login of the token's user
 
 	mu          sync.Mutex
+	others      []string // the other repositories, as owner/name
 	issues      []*Issue
 	labels      []string
 	next        int
@@ -74,7 +79,8 @@ func (s *Server) Add(i Issue) int {
 		i.Number = s.next
 	}
 	s.next = max(s.next, i.Number+1)
-	i.ID = int64(i.Number) * 1000
+	i.Repo = cmp.Or(i.Repo, s.Owner+"/"+s.Repo)
+	i.ID = s.dbID(i.Repo, i.Number)
 	if i.State == "" {
 		i.State = "open"
 	}
@@ -83,6 +89,14 @@ func (s *Server) Add(i Issue) int {
 	}
 	s.issues = append(s.issues, &i)
 	return i.Number
+}
+
+// AddRepo adds another repository, named owner/name, which issues may be
+// added to and the token's user can see.
+func (s *Server) AddRepo(name string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.others = append(s.others, name)
 }
 
 // AddLabel creates a label in the repository.
@@ -148,9 +162,19 @@ func (s *Server) addLabel(name string) {
 	}
 }
 
-func (s *Server) find(number int) *Issue {
+// find returns the issue of the Server's own repository with the number.
+func (s *Server) find(number int) *Issue { return s.findIn(s.Owner+"/"+s.Repo, number) }
+
+// dbID is the database id of the issue of repo with the number: its
+// number in thousands, told apart from other repositories' by the rest.
+func (s *Server) dbID(repo string, number int) int64 {
+	return int64(number)*1000 + int64(slices.Index(s.others, repo)+1)
+}
+
+// findIn returns the issue of the repository repo with the number.
+func (s *Server) findIn(repo string, number int) *Issue {
 	for _, i := range s.issues {
-		if i.Number == number {
+		if i.Repo == repo && i.Number == number {
 			return i
 		}
 	}
@@ -259,7 +283,7 @@ func (s *Server) routes() http.Handler {
 		}
 		out := []any{}
 		for _, n := range i.BlockedBy {
-			out = append(out, s.json(s.find(n)))
+			out = append(out, s.json(s.findIn(i.Repo, n)))
 		}
 		reply(w, 200, out)
 	}))
@@ -315,7 +339,7 @@ func (s *Server) routes() http.Handler {
 		case s.failStatus != 0:
 			reply(w, s.failStatus, map[string]any{"message": http.StatusText(s.failStatus)})
 		default:
-			if owner, repo, ok := repoOf(r.URL.Path); ok && (owner != s.Owner || repo != s.Repo) {
+			if owner, repo, ok := repoOf(r.URL.Path); ok && (owner != s.Owner || repo != s.Repo) && !slices.Contains(s.others, owner+"/"+repo) {
 				reply(w, 404, map[string]any{"message": "Not Found"})
 				return
 			}
@@ -323,6 +347,9 @@ func (s *Server) routes() http.Handler {
 		}
 	})
 }
+
+// inRepo returns the repository the request's path names, as owner/name.
+func inRepo(r *http.Request) string { return r.PathValue("owner") + "/" + r.PathValue("repo") }
 
 // repoOf returns the repository a /repos/ path names.
 func repoOf(path string) (owner, repo string, ok bool) {
@@ -338,6 +365,9 @@ func (s *Server) list(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	var match []any
 	for _, i := range s.issues {
+		if i.Repo != inRepo(r) {
+			continue
+		}
 		if st := q.Get("state"); st != "all" && i.State != cmp.Or(st, "open") {
 			continue
 		}
@@ -379,7 +409,7 @@ func (s *Server) create(w http.ResponseWriter, r *http.Request) {
 		reply(w, 422, map[string]any{"message": "Validation Failed: title"})
 		return
 	}
-	i := &Issue{Number: s.next, ID: int64(s.next) * 1000, Title: in.Title, Body: in.Body, State: "open", Labels: in.Labels, Assignees: in.Assignees}
+	i := &Issue{Repo: inRepo(r), Number: s.next, ID: s.dbID(inRepo(r), s.next), Title: in.Title, Body: in.Body, State: "open", Labels: in.Labels, Assignees: in.Assignees}
 	s.next++
 	for _, l := range in.Labels {
 		s.addLabel(l)
@@ -391,7 +421,7 @@ func (s *Server) create(w http.ResponseWriter, r *http.Request) {
 func (s *Server) withIssue(h func(http.ResponseWriter, *http.Request, *Issue)) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		n, _ := strconv.Atoi(r.PathValue("number"))
-		i := s.find(n)
+		i := s.findIn(inRepo(r), n)
 		if i == nil {
 			reply(w, 404, map[string]any{"message": "Not Found"})
 			return

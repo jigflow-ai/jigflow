@@ -23,7 +23,7 @@ connectors:
 
 | setting | |
 |---|---|
-| `repo` | the repository, `owner/name`. Required. |
+| `repo` | the repository, `owner/name`. Required. Changing it, or `label`, re-points the Store: the Proposal says which Artifacts will no longer be seen. |
 | `label` | the label that tells this Artifact Type's issues apart, set per Type. The Connector lists and gets only issues with it, and adds it to the issues it creates. Without it, every issue of the repository is one of the Type's, so at most one Type can go without it. |
 | `create_labels` | `true` creates a label the repository doesn't have when an issue needs it, with a grey colour you can change in GitHub. By default the Connector refuses the request instead (an `invalid` error naming the label), so a mistyped mapping doesn't fill the repository with labels. |
 | `assignee` | the GitHub login a Claim assigns. By default, the user the token belongs to. |

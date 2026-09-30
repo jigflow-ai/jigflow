@@ -204,7 +204,8 @@ Commands:
                           command, args, marker, settings or an Artifact
                           Type's settings, copying the Base Playbook's
                           declaration of it first, or removing the
-                          project's declaration, adding a Guideline, or
+                          project's declaration, saying which Artifacts
+                          its Store will no longer see, adding a Guideline, or
                           declaring an Artifact Type or writing a Skill,
                           either replacing the one of that name; a Proposal whose
                           Playbook would fail check is refused. It says
@@ -226,8 +227,10 @@ Commands:
                           items may then make Human Transitions and create
                           into Statuses with a Binding; one making a
                           Transition the Playbook requires the Dashboard for
-                          is approved only there; an agent session is
-                          refused, and told the MCP tool that asks the person
+                          is approved only there; one changing a Connector
+                          says first which Artifacts its Store will no
+                          longer see; an agent session is refused, and told
+                          the MCP tool that asks the person
   reject <proposal>       drop a pending Proposal, changing nothing; only a
                           person may, and an agent session is told the MCP
                           tool that asks them

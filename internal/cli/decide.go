@@ -274,7 +274,7 @@ func connectorBackToBase(c *env, r *http.Request) error {
 // of any Proposal. One that can't be applied is rejected, so that nothing
 // the person meant to confirm at once waits for them afterwards.
 func (e *env) changePlaybook(it engine.ProposalItem) error {
-	p, _, err := e.propose(it.String(), []engine.ProposalItem{it})
+	p, _, _, err := e.propose(it.String(), []engine.ProposalItem{it})
 	if err != nil {
 		return err
 	}
