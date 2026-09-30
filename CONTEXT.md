@@ -14,6 +14,10 @@ _Avoid_: Framework, workflow, pack, methodology
 The single Playbook another Playbook extends; the extending Playbook overrides its parts by name.
 _Avoid_: Parent, template, preset
 
+**Playbook file**:
+The project's own file of values for its Playbook: which Base Playbook it extends, its Connectors with their settings and mappings, the commands of its Gates and its Mockup folder. Each value overrides the Base Playbook's of the same name; the Types, Skills, Guidelines and Personas are files of their own, not values in it.
+_Avoid_: Project settings, config, settings (a Connector's settings are one part of it)
+
 **Playbook Migration**:
 A declared mapping from old Statuses to new ones, applied to existing Artifacts when a Playbook or its Base Playbook changes.
 _Avoid_: Upgrade, schema change
@@ -81,7 +85,7 @@ The Artifact a session is currently working on; set by `next` and moved by Trans
 _Avoid_: Claim, current task, active item
 
 **Proposal**:
-A set of one or more Artifacts, Transitions or changes to the Playbook (a Gate's command, a Guideline, an Artifact Type, a Skill) an agent, or `jfl init`, puts forward together, approved, through a Confirmation, or rejected by a human as one unit.
+A set of one or more Artifacts, Transitions or changes to the Playbook (a value in the Playbook file, a Guideline, an Artifact Type, a Skill) an agent, `jfl init` or a person in the Dashboard puts forward together, approved, through a Confirmation, or rejected by a human as one unit.
 _Avoid_: Batch, changeset, request
 
 **Claim**:
@@ -99,7 +103,7 @@ An external executable, written in any language, through which the CLI reads and
 _Avoid_: Integration, plugin, sync
 
 **Dashboard**:
-The local web view of a project's Artifacts, each on a page of its own with its body, Links and history, and of its human queue, pending Proposals, Ledger, a Timeline of how long each Artifact spent in each Status, the branch's commits each linked to the Artifact it names when in a git repository, the Mockups, served sandboxed, Status machines and the parts of its Playbook with where each comes from, served only on the developer's machine, and the preferred place to approve or reject Proposals and perform Human Transitions. It never edits an Artifact's body, except to add a person's comment to it through jfl.
+The local web view of a project's Artifacts, each on a page of its own with its body, Links and history, and of its human queue, pending Proposals, Ledger, a Timeline of how long each Artifact spent in each Status, the branch's commits each linked to the Artifact it names when in a git repository, the Mockups, served sandboxed, Status machines and the parts of its Playbook with where each comes from, served only on the developer's machine, and the preferred place to approve or reject Proposals, perform Human Transitions and change the Playbook file, each change a Proposal the person confirms as they make it. It never edits an Artifact's body, except to add a person's comment to it through jfl.
 _Avoid_: UI, console, admin panel
 
 **Mockup**:
