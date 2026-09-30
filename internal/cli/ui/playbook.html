@@ -72,7 +72,7 @@
   <div class="scroll">
   <table>
     <thead><tr><th>Gate</th><th>Artifact Type</th><th>Transition</th><th>Command</th><th>Declared in</th></tr></thead>
-    <tbody>{{range .Gates}}<tr><td>{{.Name}}</td><td>{{.Type}}</td><td>{{.Transition}}</td><td>{{if $.CanAct}}<form method="post" action="/playbook/gates/{{.Name}}" class="value"><input type="text" name="cmd" value="{{.Cmd}}" aria-label="the command of Gate {{.Name}}" placeholder="a command, such as make test"><button type="submit">Save</button></form>{{if .Base}}<form method="post" action="/playbook/gates/{{.Name}}/base" class="value"><button type="submit">Back to the Base's</button></form>{{end}} {{else}}{{with .Cmd}}<code>{{.}}</code> {{end}}{{end}}<span class="small{{if .Missing}} pill human{{else}} muted{{end}}">{{.CmdFrom}}</span></td><td class="small">{{.From}}</td></tr>{{end}}</tbody>
+    <tbody>{{range .Gates}}<tr><td>{{.Name}}</td><td>{{.Type}}</td><td>{{.Transition}}</td><td>{{if $.CanAct}}<form method="post" action="/playbook/gates/{{.Name}}" class="value"><input type="text" name="cmd" value="{{.Cmd}}" aria-label="the command of Gate {{.Name}}" placeholder="a command, such as make test"><button type="submit">Save</button></form>{{if .Base}}<form method="post" action="/playbook/gates/{{.Name}}/base" class="value"><button type="submit">Back to the Base's</button></form>{{end}} {{else}}{{with .Cmd}}<code>{{.}}</code> {{end}}{{end}}<span class="small{{if .Missing}} pill human{{else}} muted{{end}}">{{.CmdFrom}}</span>{{range .Pending}}<div class="small">pending Proposal <a class="id" href="/#{{.}}">{{.}}</a> changes it too</div>{{end}}</td><td class="small">{{.From}}</td></tr>{{end}}</tbody>
   </table>
   </div>
   {{else}}

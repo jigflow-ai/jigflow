@@ -40,7 +40,7 @@
     <form method="post" action="/proposals/{{.ID}}/approve">
       <ol class="items">
       {{range .Items}}
-        <li>{{.Text}}{{template "named" .Artifacts}}{{if .Create}}
+        <li>{{.Text}}{{template "replaces" .}}{{template "named" .Artifacts}}{{if .Create}}
           <div class="edit">
             <label>Title <input type="text" name="item-{{.N}}-title" value="{{.Title}}" required></label>
             <label>in <select name="item-{{.N}}-status">{{range .Statuses}}<option value="{{.Value}}"{{if .Selected}} selected{{end}}>{{.Value}}</option>{{end}}</select></label>
@@ -55,7 +55,7 @@
       <button type="submit">Reject</button>
     </form>
     {{else}}
-    <ol class="items">{{range .Items}}<li>{{.Text}}{{template "named" .Artifacts}}</li>{{end}}</ol>
+    <ol class="items">{{range .Items}}<li>{{.Text}}{{template "replaces" .}}{{template "named" .Artifacts}}</li>{{end}}</ol>
     {{end}}
   </div>
   {{else}}

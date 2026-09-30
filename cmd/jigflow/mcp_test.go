@@ -433,7 +433,7 @@ items:
 	}
 }
 
-func TestTheFormNamesEachPlaybookChange(t *testing.T) {
+func TestTheFormNamesEachPlaybookChangeWithTheValueItReplaces(t *testing.T) {
 	p := pocockPlaybook(t)
 	p.Write("tone.yaml", "summary: agree a tone\nitems:\n  - {guideline: tone, text: Be terse.}\n  - {gate: tests, cmd: go test ./...}\n")
 	if r := p.RunInSession("A", "propose", "tone.yaml"); r.ExitCode != 0 {
@@ -443,7 +443,7 @@ func TestTheFormNamesEachPlaybookChange(t *testing.T) {
 	m.Answer(clitest.Cancel)
 
 	m.MustCallTool("approve", map[string]any{"proposal": "P-1"})
-	want := "P-1 from agent session A: agree a tone\n  1. add Guideline \"tone\" (1 line)\n  2. give Gate \"tests\" the command go test ./...\nApprove all 2 changes as one unit, or reject P-1?"
+	want := "P-1 from agent session A: agree a tone\n  1. add Guideline \"tone\" (1 line)\n  2. give Gate \"tests\" the command go test ./... (replacing test -f tests-pass)\nApprove all 2 changes as one unit, or reject P-1?"
 	if forms := m.Forms(); len(forms) != 1 || forms[0].Message != want {
 		t.Errorf("forms = %+v, want one with message\n%s", forms, want)
 	}

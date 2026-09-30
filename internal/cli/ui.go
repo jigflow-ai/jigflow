@@ -342,6 +342,11 @@ type pendingProposal struct {
 type proposalItem struct {
 	N    int // its number in the Proposal, from 1
 	Text string
+	// Replaces is whether it changes a value of the Playbook file, which
+	// is Now as things stand, empty when it has none yet: approving it
+	// replaces that, whatever it was when it was proposed (ADR 0030).
+	Replaces bool
+	Now      string
 	// Artifacts are the ids of the Artifacts it names, each with a page.
 	Artifacts []string
 	Create    bool

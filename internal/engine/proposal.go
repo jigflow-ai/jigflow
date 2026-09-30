@@ -89,6 +89,63 @@ func (it ProposalItem) ChangesPlaybook() bool {
 	return it.Gate != "" || it.Guideline != "" || it.Type != "" || it.Skill != ""
 }
 
+// FileValue names the value of the Playbook file the item changes, as the
+// path of keys it is kept under, such as gates.tests, or is empty when it
+// changes none: an Artifact, or a Playbook file of its own such as a
+// Guideline's. Each kind of item that changes a value of the Playbook file
+// names it here, and Playbook.Now says what that value is (ADR 0030).
+func (it ProposalItem) FileValue() string {
+	switch {
+	case it.Gate != "":
+		return "gates." + it.Gate
+	}
+	return ""
+}
+
+// Now says what the value of the Playbook file that the item changes is
+// in pb as things stand, which approving the item replaces, as a person
+// reads it: empty when it has none yet. It reports false when the item
+// changes no value of the Playbook file.
+func (pb *Playbook) Now(it ProposalItem) (string, bool) {
+	switch {
+	case it.Gate != "":
+		// The command the Gates of that name run, which a Playbook file
+		// gives them over the one they are declared with.
+		if cmd, ok := pb.Gates[it.Gate]; ok {
+			return cmd, true
+		}
+		for _, t := range pb.Types {
+			for _, tr := range t.Transitions {
+				for _, g := range tr.Gates {
+					if g.Name == it.Gate && g.Cmd != "" {
+						return g.Cmd, true
+					}
+				}
+			}
+		}
+		return "", true
+	}
+	return "", false
+}
+
+// Changing returns, for each value of the Playbook file that a pending
+// Proposal changes, by the path FileValue names it by, the ids of those
+// Proposals, each once, in the order of proposals.
+func Changing(proposals []Proposal) map[string][]string {
+	out := map[string][]string{}
+	for _, p := range proposals {
+		if p.Status != Pending {
+			continue
+		}
+		for _, it := range p.Items {
+			if v := it.FileValue(); v != "" && !slices.Contains(out[v], p.ID) {
+				out[v] = append(out[v], p.ID)
+			}
+		}
+	}
+	return out
+}
+
 // String describes the item for a person deciding on it.
 func (it ProposalItem) String() string {
 	if it.Create != "" {

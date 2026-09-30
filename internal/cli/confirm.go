@@ -107,7 +107,7 @@ func (e *env) confirmApproval(pb *engine.Playbook, p engine.Proposal) (engine.Ch
 		}
 		return engine.ViaAgent, nil
 	}
-	ok, err := e.confirm(question(listItems(p), ""))
+	ok, err := e.confirm(question(listItemsNow(pb, p), ""))
 	if errors.Is(err, errNoTerminal) {
 		return "", fmt.Errorf("approving %s needs confirming in an interactive terminal, but stdin isn't one", p.ID)
 	}
@@ -120,9 +120,9 @@ func (e *env) confirmApproval(pb *engine.Playbook, p engine.Proposal) (engine.Ch
 	return engine.ViaTerminal, nil
 }
 
-// formItems lists a Proposal's items as listItems does, each creation with
-// the Status it would start in even where the Proposal leaves it to the
-// Type: the form must show every change in state.
+// formItems lists a Proposal's items as listItemsNow does, each creation
+// with the Status it would start in even where the Proposal leaves it to
+// the Type: the form must show every change in state.
 func formItems(pb *engine.Playbook, p engine.Proposal) string {
 	started := p
 	started.Items = slices.Clone(p.Items)
@@ -131,7 +131,32 @@ func formItems(pb *engine.Playbook, p engine.Proposal) string {
 			started.Items[i].Status = startStatus(it.Status, t.Initial)
 		}
 	}
-	return listItems(started)
+	return listItemsNow(pb, started)
+}
+
+// listItemsNow lists a Proposal's items as listItems does, each that
+// changes a value of the Playbook file with what the value is in pb now,
+// which approving it replaces, so that nobody overwrites a value without
+// seeing it (ADR 0030).
+func listItemsNow(pb *engine.Playbook, p engine.Proposal) string {
+	s := ""
+	for i, it := range p.Items {
+		s += fmt.Sprintf("  %d. %s%s\n", i+1, it, replacing(pb, it))
+	}
+	return s
+}
+
+// replacing says what the value of the Playbook file the item changes is
+// in pb now, or nothing when it changes none.
+func replacing(pb *engine.Playbook, it engine.ProposalItem) string {
+	now, ok := pb.Now(it)
+	switch {
+	case !ok:
+		return ""
+	case now == "":
+		return " (replacing nothing: it has none yet)"
+	}
+	return " (replacing " + now + ")"
 }
 
 // dashboardOnly says that the Transition tr of the Artifact id is one the

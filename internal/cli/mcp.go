@@ -143,9 +143,9 @@ var mcpTools = []mcpTool{
 	},
 	{
 		Name:        "show",
-		Description: "Print an Artifact as query lists it, then its body and the comments its tracker keeps, like `jfl show <id>`.",
+		Description: "Print an Artifact as query lists it, then its body and the comments its tracker keeps, like `jfl show <id>`; given a Proposal's id, print the Proposal, a pending one's items with the value of the Playbook file each replaces now.",
 		InputSchema: schema([]string{"id"}, map[string]any{
-			"id": map[string]any{"type": "string", "description": "the Artifact's id"},
+			"id": map[string]any{"type": "string", "description": "the Artifact's id, or a Proposal's"},
 		}),
 		args: func(raw json.RawMessage) ([]string, error) {
 			var in struct{ ID string }

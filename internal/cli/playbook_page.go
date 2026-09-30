@@ -53,6 +53,9 @@ type gatePart struct {
 	// Base is whether the project's Playbook file gives it a command over
 	// one its Base Playbook's gives, which it can go back to.
 	Base bool
+	// Pending are the pending Proposals that change its command too, which
+	// the person's own change doesn't wait for (ADR 0030).
+	Pending []string
 }
 
 // namedPart is a part of the Playbook known by its name alone, such as a
@@ -151,6 +154,11 @@ func (e *env) playbookPage() (playbookPage, error) {
 	for _, name := range slices.Sorted(maps.Keys(pb.Guidelines)) {
 		v.Guidelines = append(v.Guidelines, namedPart{name, from(pb.Origins.Guidelines[name])})
 	}
+	proposals, err := store.NewProposals(e.dir).List()
+	if err != nil {
+		return playbookPage{}, err
+	}
+	changing := engine.Changing(proposals)
 	for _, t := range pb.Types {
 		for _, tr := range t.Transitions {
 			for _, g := range tr.Gates {
@@ -158,8 +166,9 @@ func (e *env) playbookPage() (playbookPage, error) {
 				v.Gates = append(v.Gates, gatePart{
 					Name: g.Name, Type: t.Name, Transition: tr.From + " → " + tr.To, Cmd: g.Cmd,
 					CmdFrom: gateCmdFrom(pb, g), Missing: g.Cmd == "",
-					From: from(pb.Origins.Types[t.Name]),
-					Base: o.Project && o.Base != "",
+					From:    from(pb.Origins.Types[t.Name]),
+					Base:    o.Project && o.Base != "",
+					Pending: changing[engine.ProposalItem{Gate: g.Name}.FileValue()],
 				})
 			}
 		}

@@ -77,8 +77,9 @@ jfl publish --remove claude-code</code></pre>
 jfl comment T-1 --persona security-reviewer &quot;No secrets logged: checked the auth handlers and their tests.&quot;</code></pre>
 <h3 id="show"><code>show</code> <span class="tag agent">MCP</span></h3>
 <pre><code>jfl show &lt;id&gt;</code></pre>
-<p>Print an Artifact as query lists it, then its body and the comments its tracker keeps, so Skills read Artifacts kept in a tracker through jfl too.</p>
-<p class="label">Example</p><pre><code>jfl show T-1</code></pre>
+<p>Print an Artifact as query lists it, then its body and the comments its tracker keeps, so Skills read Artifacts kept in a tracker through jfl too. Given a Proposal's id, print the Proposal: who put it forward, its summary, whether it is pending, approved or rejected, and its items, a pending one's each with the value of the Playbook file it replaces now.</p>
+<p class="label">Example</p><pre><code>jfl show T-1
+jfl show P-2</code></pre>
 <h3 id="query"><code>query</code> <span class="tag agent">MCP</span></h3>
 <pre><code>jfl query [--type &lt;Type&gt;] [--status &lt;status&gt;]</code></pre>
 <p>List the Artifacts, with their Status, Claim and Links, optionally only those of one Type or in one Status.</p>
@@ -94,7 +95,7 @@ jfl comment T-1 --persona security-reviewer &quot;No secrets logged: checked the
 <p class="label">Example</p><pre><code>jfl propose breakdown.yaml</code></pre>
 <h3 id="approve"><code>approve</code> <span class="tag human">person</span></h3>
 <pre><code>jfl approve &lt;proposal&gt;</code></pre>
-<p>Apply every change in a pending Proposal, or none; only a person may, confirming it in an interactive terminal, in the Dashboard, or in the form the agent's client shows them through <a href="#mcp"><code>jfl mcp</code></a>, and its items may then make Human Transitions and create into Statuses with a Binding; one making a Transition the Playbook requires the Dashboard for is approved only there; an agent session is refused, and told the MCP tool that asks the person.</p>
+<p>Apply every change in a pending Proposal, or none; only a person may, confirming it in an interactive terminal, in the Dashboard, or in the form the agent's client shows them through <a href="#mcp"><code>jfl mcp</code></a>, and its items may then make Human Transitions and create into Statuses with a Binding; one making a Transition the Playbook requires the Dashboard for is approved only there; an agent session is refused, and told the MCP tool that asks the person. Each item that changes a value of the Playbook file is listed with what that value is now, which approving replaces.</p>
 <p class="label">Example</p><pre><code>jfl approve P-2</code></pre>
 <h3 id="reject"><code>reject</code> <span class="tag human">person</span></h3>
 <pre><code>jfl reject &lt;proposal&gt;</code></pre>

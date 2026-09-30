@@ -171,6 +171,17 @@ func dashboardChange(changes []engine.Change) string {
 	return ""
 }
 
+// showProposal says who put the Proposal p forward, what for and whether
+// it is still pending, and lists its items: a pending one's with the
+// values of the Playbook file they replace now.
+func showProposal(pb *engine.Playbook, p engine.Proposal) string {
+	items := listItems(p)
+	if p.Status == engine.Pending {
+		items = listItemsNow(pb, p)
+	}
+	return fmt.Sprintf("%s from %s: %s (%s)\n%s", p.ID, p.ProposedBy(), p.Summary, p.Status, items)
+}
+
 // listItems lists a Proposal's items, one numbered line each.
 func listItems(p engine.Proposal) string {
 	s := ""

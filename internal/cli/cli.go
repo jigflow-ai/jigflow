@@ -207,7 +207,10 @@ Commands:
                           Status
   show <id>               print an Artifact as query lists it, then its body
                           and the comments its tracker keeps, so Skills read
-                          Artifacts kept in a tracker through jfl too
+                          Artifacts kept in a tracker through jfl too; given
+                          a Proposal's id, print the Proposal, a pending
+                          one's items with the value of the Playbook file
+                          each replaces now
   approve <proposal>      apply every change in a pending Proposal, or none;
                           only a person may, confirming it in an interactive
                           terminal, in the Dashboard, or in the form the
@@ -807,16 +810,23 @@ func summary(a engine.Artifact) string {
 
 // cmdShow prints an Artifact as query lists it, then its body and the
 // comments its tracker keeps apart from it, so a Skill reads an Artifact
-// kept in a tracker through jfl as it reads one in files.
+// kept in a tracker through jfl as it reads one in files. Given the id of a
+// Proposal no Artifact has, it prints the Proposal instead.
 func cmdShow(e *env, args []string) error {
 	if len(args) != 1 {
 		return fmt.Errorf("%w: jfl show <id>", errUsage)
 	}
-	_, st, err := e.load()
+	pb, st, err := e.load()
 	if err != nil {
 		return err
 	}
 	a, err := st.Get(args[0])
+	if errors.Is(err, store.ErrNotFound) {
+		if p, perr := store.NewProposals(e.dir).Get(args[0]); perr == nil {
+			fmt.Fprint(e.stdout, showProposal(pb, p))
+			return nil
+		}
+	}
 	if err != nil {
 		return err
 	}

@@ -174,6 +174,7 @@ func (e *env) clickedBy(out *bytes.Buffer) *env {
 // kept is every Artifact the Stores keep, by id.
 func itemView(pb *engine.Playbook, i int, it engine.ProposalItem, kept map[string]engine.Artifact) proposalItem {
 	v := proposalItem{N: i + 1, Text: it.String()}
+	v.Now, v.Replaces = pb.Now(it)
 	// The Artifacts it names, as against refs to creations of the Proposal.
 	for _, id := range it.Names() {
 		if _, ok := kept[id]; ok {

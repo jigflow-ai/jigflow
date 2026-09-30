@@ -2,6 +2,8 @@
 {{define "moves"}}{{$id := .ID}}{{range .Moves}}<form method="post" action="/artifacts/{{$id}}/move" class="move"><input type="hidden" name="to" value="{{.}}"><button type="submit">→ {{.}}</button></form>{{end}}{{end}}
 {{define "work"}}<span class="pill {{if eq . "agent work"}}agent{{else if eq . "human work"}}human{{else}}finished{{end}}">{{.}}</span>{{end}}
 {{define "named"}}{{with .}} <span class="muted small">({{range $i, $id := .}}{{if $i}}, {{end}}<a href="/artifacts/{{$id}}">{{$id}}</a>{{end}})</span>{{end}}{{end}}
+{{/* The value of the Playbook file a Proposal item replaces, as it is now. */}}
+{{define "replaces"}}{{if .Replaces}} <span class="muted small">replacing {{with .Now}}<code>{{.}}</code>{{else}}nothing: it has none yet{{end}}</span>{{end}}{{end}}
 {{/* What a decision made in the Dashboard did, or why it was refused. */}}
 {{define "outcome"}}<section class="panel outcome {{if .Refused}}refused{{else}}done{{end}}" id="outcome">
   <h2>{{if .Refused}}Not done{{else}}Done{{end}}</h2>

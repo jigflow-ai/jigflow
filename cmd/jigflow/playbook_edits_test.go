@@ -332,3 +332,103 @@ func TestOnlyTheBrowserThatOpenedTheLinkMayPublishOrStopPublishing(t *testing.T)
 		t.Errorf("a refused request changed the project")
 	}
 }
+
+// racingTests is gatesOverBase with a pending Proposal of agent session A,
+// P-1, giving the Gate tests another command.
+func racingTests(t *testing.T) *clitest.Project {
+	t.Helper()
+	p := gatesOverBase(t)
+	p.Write("race.yaml", "summary: race the tests\nitems:\n  - {gate: tests, cmd: go test -race ./...}\n")
+	if r := p.RunInSession("A", "propose", "race.yaml"); r.ExitCode != 0 {
+		t.Fatalf("proposing the race command exited %d:\n%s%s", r.ExitCode, r.Stdout, r.Stderr)
+	}
+	return p
+}
+
+func TestAGateFieldAPendingProposalAlsoChangesNamesAndLinksThatProposal(t *testing.T) {
+	p := racingTests(t)
+	ui := p.StartUI()
+
+	for _, page := range []string{get(t, ui, "/playbook"), look(t, ui, "/playbook")} {
+		gates := section(t, page, "Gates")
+		wantText(t, gates, "tests Ticket in-progress → done")
+		tests, lint, _ := strings.Cut(gates, "<td>lint</td>")
+		wantText(t, tests, "pending Proposal P-1 changes it too")
+		if !strings.Contains(tests, `href="/#P-1"`) {
+			t.Errorf("the tests Gate should link P-1:\n%s", tests)
+		}
+		if strings.Contains(lint, "P-1") {
+			t.Errorf("the lint Gate names P-1, which doesn't change it:\n%s", text(lint))
+		}
+	}
+}
+
+func TestSavingAGateFieldAPendingProposalAlsoChangesGoesThroughAndLeavesThatProposalPending(t *testing.T) {
+	p := racingTests(t)
+	ui := p.StartUI()
+
+	action, form := gateForm(t, section(t, get(t, ui, "/playbook"), "Gates"), "tests", "Save")
+	form.Set("cmd", "go test -short ./...")
+	page := ui.Post(action, form)
+	if page.Status != http.StatusOK {
+		t.Fatalf("saving the tests command: status %d\n%s", page.Status, text(page.HTML))
+	}
+	wantText(t, section(t, page.HTML, "Done"), `approved P-2 as one unit: give Gate "tests" the command go test -short ./...`)
+	if got := p.Read(".jigflow/playbook.yaml"); !strings.Contains(got, "tests: go test -short ./...") {
+		t.Errorf("the Playbook file should give tests the person's command:\n%s", got)
+	}
+	if got := p.Read(".jigflow/proposals/P-1.yaml"); !strings.Contains(got, "status: pending") {
+		t.Errorf("P-1 should still be pending:\n%s", got)
+	}
+	wantText(t, section(t, page.HTML, "Gates"), "pending Proposal P-1 changes it too")
+}
+
+func TestAPendingProposalInTheDashboardShowsTheValueOfThePlaybookFileItReplacesAsItIsNow(t *testing.T) {
+	p := racingTests(t)
+	ui := p.StartUI()
+
+	for _, page := range []string{get(t, ui, "/"), look(t, ui, "/")} {
+		wantText(t, section(t, page, "Pending Proposals"), `P-1 race the tests from agent session A give Gate "tests" the command go test -race ./... replacing go test ./...`)
+	}
+	action, form := gateForm(t, section(t, get(t, ui, "/playbook"), "Gates"), "tests", "Save")
+	form.Set("cmd", "go test -short ./...")
+	if page := ui.Post(action, form); page.Status != http.StatusOK {
+		t.Fatalf("saving the tests command: status %d\n%s", page.Status, text(page.HTML))
+	}
+	wantText(t, section(t, get(t, ui, "/"), "Pending Proposals"), `give Gate "tests" the command go test -race ./... replacing go test -short ./...`)
+}
+
+func TestApproveAsksWithTheValueOfThePlaybookFileEachItemReplacesAsItIsNow(t *testing.T) {
+	p := racingTests(t)
+	p.Write(".jigflow/playbook.yaml", strings.Replace(p.Read(".jigflow/playbook.yaml"), "tests: go test ./...", "tests: go test -short ./...", 1))
+
+	term := p.StartInTerminal("approve", "P-1")
+	term.Expect("P-1 from agent session A: race the tests")
+	term.Expect(`1. give Gate "tests" the command go test -race ./... (replacing go test -short ./...)`)
+	term.Expect("Approve all 1 change as one unit? [y/N] ")
+	term.Type("y\n")
+	if r := term.Wait(); r.ExitCode != 0 {
+		t.Fatalf("approve exited %d; terminal:\n%s", r.ExitCode, r.Output)
+	}
+	if got := p.Read(".jigflow/playbook.yaml"); !strings.Contains(got, "tests: go test -race ./...") {
+		t.Errorf("the Playbook file should give tests P-1's command:\n%s", got)
+	}
+}
+
+func TestShowOfAPendingProposalListsItsItemsWithTheValueOfThePlaybookFileEachReplacesNow(t *testing.T) {
+	p := racingTests(t)
+	p.Write(".jigflow/playbook.yaml", strings.Replace(p.Read(".jigflow/playbook.yaml"), "tests: go test ./...", "tests: go test -short ./...", 1))
+
+	want := "P-1 from agent session A: race the tests (pending)\n  1. give Gate \"tests\" the command go test -race ./... (replacing go test -short ./...)\n"
+	if got := p.MustRun("show", "P-1").Stdout; got != want {
+		t.Errorf("jfl show P-1 printed:\n%s\nwant:\n%s", got, want)
+	}
+	approveInTerminal(t, p, "P-1")
+	want = "P-1 from agent session A: race the tests (approved)\n  1. give Gate \"tests\" the command go test -race ./...\n"
+	if got := p.MustRun("show", "P-1").Stdout; got != want {
+		t.Errorf("jfl show of the approved P-1 printed:\n%s\nwant:\n%s", got, want)
+	}
+	if r := p.Run("show", "P-9"); r.ExitCode == 0 {
+		t.Errorf("jfl show P-9, which is neither an Artifact nor a Proposal, succeeded:\n%s", r.Stdout)
+	}
+}
