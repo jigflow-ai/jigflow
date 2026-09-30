@@ -176,3 +176,198 @@ func TestTheGitPageAnswersOnlyThisMachineAndUpdatesItselfOnACommit(t *testing.T)
 		t.Errorf("the Git page should list the new commit first:\n%s", strings.Join(rows, "\n"))
 	}
 }
+
+// commitAt commits nothing but the subject given, dated the given minute
+// of a day, so that commits of different branches have an order by time.
+func commitAt(t *testing.T, p *clitest.Project, minute int, subject string, args ...string) {
+	t.Helper()
+	at := fmt.Sprintf("2026-09-30T10:%02d:00Z", minute)
+	cmd := exec.Command("git", append([]string{"commit", "-q", "--allow-empty", "-m", subject}, args...)...)
+	cmd.Dir = p.Dir
+	cmd.Env = append(cmd.Environ(), append(gitIdentity, "GIT_AUTHOR_DATE="+at, "GIT_COMMITTER_DATE="+at)...)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git commit %q: %v\n%s", subject, err, out)
+	}
+}
+
+// graphRows returns the HTML of each commit's row the Git page lists, in
+// the order it lists them.
+func graphRows(t *testing.T, page string) []string {
+	t.Helper()
+	var rows []string
+	for _, r := range strings.Split(section(t, page, "Commits"), "<tr")[1:] {
+		if !strings.Contains(r, "<td") {
+			continue // the header
+		}
+		r, _, _ = strings.Cut(r, "</tr>")
+		rows = append(rows, r)
+	}
+	return rows
+}
+
+// wantDot fails the test unless the row draws its commit's dot in the
+// column given, from 0 at the left.
+func wantDot(t *testing.T, row string, col int) {
+	t.Helper()
+	if !strings.Contains(row, fmt.Sprintf(`data-col="%d"`, col)) {
+		t.Errorf("the commit %q should be drawn in lane %d:\n%s", text(row), col, row)
+	}
+}
+
+func TestTheGitPageDrawsEveryLocalBranchInLanesWithItsRefs(t *testing.T) {
+	p := ticketPlaybook(t)
+	gitProject(t, p)
+	commitAt(t, p, 1, "the project")
+	git(t, p, "tag", "v1")
+	git(t, p, "checkout", "-q", "-b", "feat")
+	commitAt(t, p, 2, "feat work")
+	git(t, p, "checkout", "-q", "main")
+	commitAt(t, p, 3, "main work")
+	git(t, p, "update-ref", "refs/remotes/origin/main", "HEAD")
+	git(t, p, "checkout", "-q", "feat")
+	ui := p.StartUI()
+
+	page := get(t, ui, "/git")
+	wantText(t, page, "The commits of every local branch, newest first, in lanes showing where branches split off and merge; you are on feat")
+	rows := graphRows(t, page)
+	want := []struct {
+		subject string
+		col     int
+		refs    []string
+	}{
+		{"main work", 0, []string{"main", "origin/main"}},
+		{"feat work", 1, []string{"HEAD", "feat"}},
+		{"the project", 0, []string{"v1"}},
+	}
+	if len(rows) != len(want) {
+		t.Fatalf("the Git page should list %d commits, of main and feat, lists %d:\n%s", len(want), len(rows), text(strings.Join(rows, "\n")))
+	}
+	for i, w := range want {
+		if !strings.Contains(text(rows[i]), w.subject) {
+			t.Errorf("commit %d should be %q, newest first across branches, is %q", i+1, w.subject, text(rows[i]))
+		}
+		// main is the default branch: its lane runs straight down the left
+		// whichever branch is checked out.
+		wantDot(t, rows[i], w.col)
+		for _, ref := range w.refs {
+			if !strings.Contains(rows[i], `class="pill ref`) || !strings.Contains(text(rows[i]), ref) {
+				t.Errorf("the commit %q should be labelled %q:\n%s", w.subject, ref, rows[i])
+			}
+		}
+	}
+	if !strings.Contains(rows[1], `class="pill ref head"`) {
+		t.Errorf("HEAD's label should stand out:\n%s", rows[1])
+	}
+	if !strings.Contains(rows[0], "<svg") {
+		t.Errorf("each row should draw its lanes:\n%s", rows[0])
+	}
+}
+
+func TestTheGitPageDrawsAMergeAsAHollowDotAndTheBranchInItsOwnLane(t *testing.T) {
+	p := ticketPlaybook(t)
+	gitProject(t, p)
+	commitAt(t, p, 1, "the project")
+	git(t, p, "checkout", "-q", "-b", "feat")
+	commitAt(t, p, 2, "feat work")
+	git(t, p, "checkout", "-q", "main")
+	commitAt(t, p, 3, "main work")
+	git(t, p, "merge", "-q", "--no-ff", "--no-commit", "feat")
+	commitAt(t, p, 4, "merge feat")
+	ui := p.StartUI()
+
+	rows := graphRows(t, get(t, ui, "/git"))
+	if len(rows) != 4 {
+		t.Fatalf("the Git page should list 4 commits, lists %d:\n%s", len(rows), text(strings.Join(rows, "\n")))
+	}
+	for i, col := range []int{0, 0, 1, 0} {
+		wantDot(t, rows[i], col)
+	}
+	if !strings.Contains(rows[0], `class="dot merge`) {
+		t.Errorf("the merge should be drawn as a hollow dot:\n%s", rows[0])
+	}
+	if strings.Contains(rows[1], `class="dot merge`) {
+		t.Errorf("only a merge should be drawn as a hollow dot:\n%s", rows[1])
+	}
+}
+
+func TestTheGitPageDrawsTheCommitsOfADetachedHead(t *testing.T) {
+	p := ticketPlaybook(t)
+	gitProject(t, p)
+	commitAt(t, p, 1, "the project")
+	git(t, p, "checkout", "-q", "--detach")
+	commitAt(t, p, 2, "on no branch")
+	ui := p.StartUI()
+
+	page := get(t, ui, "/git")
+	wantText(t, page, "you are on a detached HEAD.")
+	rows := graphRows(t, page)
+	if len(rows) != 2 || !strings.Contains(text(rows[0]), "on no branch") || !strings.Contains(rows[0], `class="pill ref head"`) {
+		t.Errorf("the Git page should list the detached HEAD's commit first, labelled HEAD:\n%s", strings.Join(rows, "\n"))
+	}
+}
+
+func TestTheGitPageKeepsEachLaneInItsColumnFromPageToPage(t *testing.T) {
+	p := ticketPlaybook(t)
+	gitProject(t, p)
+	commitAt(t, p, 1, "the project")
+	for i := 2; i <= 51; i++ {
+		commitAt(t, p, i, fmt.Sprintf("change %d", i))
+	}
+	git(t, p, "checkout", "-q", "-b", "feat", "HEAD~50")
+	commitAt(t, p, 52, "feat work")
+	git(t, p, "checkout", "-q", "main")
+	ui := p.StartUI()
+
+	// feat work, the newest, and 49 changes fill the first page; feat's lane
+	// runs from it down past the page's bottom edge, on into the second, to
+	// the project it split off from.
+	first := graphRows(t, get(t, ui, "/git"))
+	wantDot(t, first[0], 1)
+	if !strings.Contains(first[49], `data-through="1"`) {
+		t.Errorf("feat's lane should run through the last row of the first page:\n%s", first[49])
+	}
+	second := graphRows(t, get(t, ui, "/git?page=2"))
+	if len(second) != 2 {
+		t.Fatalf("the second page should list change 2 and the project, lists:\n%s", text(strings.Join(second, "\n")))
+	}
+	if !strings.Contains(second[0], `data-through="1"`) {
+		t.Errorf("feat's lane should run in from the top of the second page, still in lane 1:\n%s", second[0])
+	}
+	wantDot(t, second[1], 0)
+}
+
+func TestTheGitPageUpdatesItselfOnACommitToAnotherBranch(t *testing.T) {
+	p := ticketPlaybook(t)
+	gitProject(t, p)
+	commitAt(t, p, 1, "the project")
+	git(t, p, "branch", "feat")
+	ui := p.StartUI()
+
+	s := listenAsPage(t, ui, get(t, ui, "/git"))
+	// A commit on feat, not checked out, as in another worktree.
+	tree := git(t, p, "rev-parse", "HEAD^{tree}")
+	c := git(t, p, "commit-tree", tree, "-p", "feat", "-m", "feat work")
+	git(t, p, "update-ref", "refs/heads/feat", c)
+	wantSignal(t, s, "a commit on another branch")
+	if rows := commitRows(t, get(t, ui, "/git")); len(rows) != 2 || !strings.Contains(rows[0], "feat work") {
+		t.Errorf("the Git page should list feat's new commit:\n%s", strings.Join(rows, "\n"))
+	}
+}
+
+func TestTheDefaultBranchKeepsTheLeftLaneEvenWhereItsCommitsAreOnALaterPage(t *testing.T) {
+	p := ticketPlaybook(t)
+	gitProject(t, p)
+	commitAt(t, p, 1, "the project")
+	git(t, p, "checkout", "-q", "-b", "feat")
+	for i := 2; i <= 51; i++ {
+		commitAt(t, p, i, fmt.Sprintf("feat change %d", i))
+	}
+	git(t, p, "checkout", "-q", "main")
+	ui := p.StartUI()
+
+	// feat's 50 changes fill the first page; main's lane is kept for it.
+	first := graphRows(t, get(t, ui, "/git"))
+	wantDot(t, first[0], 1)
+	wantDot(t, first[49], 1)
+	wantDot(t, graphRows(t, get(t, ui, "/git?page=2"))[0], 0)
+}

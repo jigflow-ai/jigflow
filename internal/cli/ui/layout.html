@@ -164,6 +164,20 @@ form.comment-form textarea:focus { border-color: var(--accent); outline: 3px sol
   :root { --s0: #5a9fc4; --s1: #4cb6ee; --s2: #f5b454; --s3: #4fd1a5; --s4: #b393ec; --s5: #ff8aa0; --s6: #6fc8c2; --s7: #b6c45a; --s-other: #7d93a3; --agent: #e4f0f7; }
 }
 .tl { min-width: 640px; }
+/* The Git page: each row's lanes, one colour per column, the commit's dot
+   on them, hollow for a merge, and the refs pointing at it. */
+.git-graph td.lanes { position: relative; padding: 0; }
+.git-graph td.lanes svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+.git-graph .lane { fill: none; stroke-width: 2; }
+.git-graph .dot { position: absolute; width: 10px; height: 10px; margin: -5px 0 0 -5px; box-sizing: border-box; border-radius: 50%; background: currentColor; border: 2px solid currentColor; }
+.git-graph .dot.merge { background: var(--panel); }
+.git-graph .c0 { stroke: var(--s1); color: var(--s1); } .git-graph .c1 { stroke: var(--s2); color: var(--s2); }
+.git-graph .c2 { stroke: var(--s3); color: var(--s3); } .git-graph .c3 { stroke: var(--s4); color: var(--s4); }
+.git-graph .c4 { stroke: var(--s5); color: var(--s5); } .git-graph .c5 { stroke: var(--s6); color: var(--s6); }
+.git-graph .c6 { stroke: var(--s7); color: var(--s7); } .git-graph .c7 { stroke: var(--s0); color: var(--s0); }
+.pill.ref { padding: 1px 7px; margin-right: 2px; font: 500 11.5px var(--mono); }
+.pill.ref.head { background: var(--accent); color: var(--on-accent); }
+.pill.ref.remote, .pill.ref.tag { background: transparent; border: 1px solid var(--line); }
 ul.timeline, ul.timeline ul { list-style: none; margin: 0; padding: 0; }
 .tl-row { display: grid; grid-template-columns: minmax(180px, 32%) 1fr; align-items: center; gap: 12px; border-bottom: 1px solid var(--line-soft); }
 .tl-axis { border-bottom: 1px solid var(--line); }

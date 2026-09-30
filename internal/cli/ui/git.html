@@ -4,10 +4,29 @@
 {{if not .Repo}}
 <p class="panel empty">This project isn't in a git repository, so there is no history to show.</p>
 {{else}}
-<p class="muted small">The commits of {{with .Branch}}the branch <strong>{{.}}</strong>{{else}}the detached HEAD{{end}}, newest first. A commit whose subject starts with an Artifact's id and a colon, as accepting a Task names it, links to that Artifact's page.</p>
+<p class="muted small">The commits of every local branch, newest first, in lanes showing where branches split off and merge; you are on {{with .Branch}}<strong>{{.}}</strong>{{else}}a detached HEAD{{end}}. A commit whose subject starts with an Artifact's id and a colon, as accepting a Task names it, links to that Artifact's page.</p>
 <section class="panel" id="commits">
   <h2>Commits</h2>
-  {{if .Commits}}{{template "commits" .Commits}}
+  {{if .Commits}}
+  <div class="scroll">
+  <table class="git-graph">
+    <thead><tr><th aria-label="Lanes"></th><th>Commit</th><th>Subject</th><th>Author</th><th>When</th></tr></thead>
+    <tbody>
+    {{range .Commits}}
+      <tr>
+        {{with .Lanes}}<td class="lanes" style="width: {{.Width}}px; min-width: {{.Width}}px">
+          <svg aria-hidden="true" data-through="{{.Through}}">{{range .Runs}}<line class="lane c{{.Color}}" x1="{{.X}}" y1="{{.Y}}" x2="{{.X}}" y2="100%"/>{{end}}{{range .Bends}}<path class="lane c{{.Color}}" d="{{.D}}"/>{{end}}</svg>
+          <span class="dot{{if .Merge}} merge{{end}} c{{.Color}}" data-col="{{.Col}}" style="left: {{.Left}}px; top: {{.Top}}px"></span>
+        </td>{{end}}
+        <td><code title="{{.Hash}}">{{.Short}}</code></td>
+        <td>{{range .Refs}}<span class="pill ref {{.Kind}}">{{.Name}}</span> {{end}}{{if .Artifact}}<a class="id" href="/artifacts/{{.Artifact}}">{{.Artifact}}</a>{{.Rest}}{{else}}{{.Subject}}{{end}}</td>
+        <td class="small">{{.Author}}</td>
+        <td class="small"><time datetime="{{.At.UTC.Format "2006-01-02T15:04:05Z07:00"}}">{{.At.Local.Format "2 Jan 2006 15:04"}}</time></td>
+      </tr>
+    {{end}}
+    </tbody>
+  </table>
+  </div>
   {{else if eq .N 1}}<p class="empty">No commit yet.</p>
   {{else}}<p class="empty">No commit on page {{.N}}.</p>{{end}}
   {{if or .Newer .Older}}
